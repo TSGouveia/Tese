@@ -1,0 +1,14 @@
+Faz sentido colocar um acronimo sendo que ele só é falado uma vez? 
+    ACRONIMOS SÓ SÃO USADOS SE FOREM USADOS 3 VEZES!
+
+NASA é um acronimo?
+    SIM
+
+Como escrevo PLCopen XML? com acronimos?
+    XML COM ACRONIMO, PLCOPEN NAO
+
+Se eu fizer uma tabela, tenho que dizer de que papers tirei as infos ou está explicito no texto
+    SIM
+
+Devo deixar o capitulo Listings mesmo que nao tenha feito nenhum?
+    NAO

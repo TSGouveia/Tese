@@ -1,0 +1,28 @@
+%!TEX root = ../template.tex
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% abstract-pt.tex
+%% NOVA thesis document file
+%%
+%% Abstract in Portuguese
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\ExplSyntaxOn
+\cs_if_exist:NT \TitleOnHeader
+  { \TitleOnHeader }
+\ExplSyntaxOff
+
+\typeout{NT FILE abstract-pt.tex}%
+
+O paradigma da Indústria 4.0 depende intrinsecamente da virtualização dos sistemas de produção através de Digital Twins. No entanto, a criação destes modelos virtuais permanece um processo predominantemente manual, fragmentado e dispendioso, criando uma barreira significativa à sua adoção generalizada, especialmente em cenários de reconfiguração frequente. Existe, atualmente, uma descontinuidade crítica entre os dados ricos gerados durante a fase de engenharia de sistemas e os modelos semânticos necessários para a fase de operação.
+
+Esta dissertação propõe uma framework baseada em Engenharia Conduzida por Modelos para a geração automatizada de Digital Twins dinâmicos em sistemas de manufatura. A metodologia adota AutomationML como formato de integração de dados de engenharia e Asset Administration Shell como standard alvo para a interoperabilidade e representação digital na fase operacional. Através de regras de transformação definidas, a framework processa ficheiros AutomationML para instanciar automaticamente a estrutura de Asset Administration Shell e gerar, simultaneamente, o ambiente de simulação comportamental num motor de física.
+
+Esta abordagem valida a utilização de AutomationML como precursor essencial para a criação expedita de Asset Administration Shells, garantindo a consistência semântica entre o projeto físico e a sua contraparte digital.
+
+\keywords{
+  Digital Twin \and
+  Indústria 4.0 \and
+  AutomationML \and
+  Asset Administration Shell \and
+  Geração Automática
+}

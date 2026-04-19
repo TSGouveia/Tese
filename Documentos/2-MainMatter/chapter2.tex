@@ -1,0 +1,360 @@
+%!TEX root = ../template.tex
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% chapter2.tex
+%% NOVA thesis document file
+%%
+%% Chapter with the template manual
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\typeout{NT FILE chapter2.tex}%
+
+
+\chapter{State of the Art}
+\label{cha:stateoftheart}
+
+\prependtographicspath{{5-Figures/Covers/}}
+
+% epigraph configuration
+\epigraphfontsize{\small\itshape}
+\setlength\epigraphwidth{12.5cm}
+\setlength\epigraphrule{0pt}
+
+\section{Evolution of Production Systems in Industry 4.0}
+
+Industry 4.0, the fourth industrial revolution, is driven by \gls{CPS}. This paradigm builds upon three prior eras. The first (18th century) introduced water and steam-powered mechanical production. The second enabled mass production through electrification and division of labor. The third utilized electronics and IT for production automation \cite{Hermann2016}. \textcite{Xu2018} terms these eras ``The Age of Steam'', ``The Age of Electricity'', ``The Information Age'', and ``The Age of \gls{CPS}'', as illustrated in \Cref{fig:industry_evolution}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{5-Figures/i4.0_history.pdf} 
+    \caption{Evolution from Industry 1.0 to Industry 4.0 \cite{Xu2018}.}
+    \label{fig:industry_evolution}
+\end{figure}
+
+\subsection{Enabling Technologies}
+
+Industry 4.0 merges advanced digital technologies with traditional industrial processes. Key technologies facilitate communication, data analysis, and intelligent automation, supporting the shift to smart manufacturing.
+
+\gls{CPS} form the core of Industry 4.0. They integrate physical processes with software and communication, deeply intertwining these components. \gls{CPS} bridge the physical and virtual worlds, allowing networked devices to monitor and regulate physical processes \cite{Abdel-Aty2022}.
+
+Regarding connectivity, \gls{IOT} and \gls{IIOT} are crucial. \gls{IOT} creates virtual networks for smart factories, assigning devices virtual identities \cite{Xu2018}. \textcite{Amthiou2023} highlight \gls{IIOT}'s role in real-time monitoring and signal collection, essential for information fusion and digital model accuracy.
+
+Cloud Computing and Big Data analytics are vital for processing massive data volumes. \textcite{Xu2018} discuss cloud-based manufacturing and \gls{MAAS}, which enables sharing distributed production resources \cite{Amthiou2023}.
+
+Finally, the \gls{DT} is a key integrating technology. As the virtual counterpart of a physical system, it is distinguished from \glspl{DM} and \glspl{DS} by its fully integrated, bidirectional data flow \cite{Kritzinger2018}. \textcite{Jones2020} characterize the \gls{DT} by its synchronization and fidelity in replicating the physical state, enabling lifecycle optimization.
+
+\subsection{Reference Architectural Model Industrie 4.0}
+\label{sec:rami}
+Industry 4.0 demands a unified framework to manage digital manufacturing complexity. \gls{RAMI} standardizes interoperable communications and terminology, structuring Industry 4.0 elements into a three-dimensional architecture \cite{Pajpach2025}, depicted in \Cref{fig:rami40_structure}:
+
+\begin{itemize}
+    \item \textbf{Layers (Vertical Axis):} Represents asset perspectives, from physical reality to business processes.
+    \item \textbf{Life Cycle and Value Stream (Horizontal Axis):} Based on IEC 62890, this distinguishes between the ``Type'' and ``Instance'' phases.
+    \item \textbf{Hierarchy Levels (Third Axis):} Organizes functional units per IEC 62264/61512. \gls{RAMI} expands the traditional automation pyramid to include levels from ``Connected World'' down to ``Product''.
+\end{itemize}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{5-Figures/rami.pdf}
+    \caption{The three-dimensional structure of RAMI \cite{Pajpach2025}.}
+    \label{fig:rami40_structure}
+\end{figure}
+
+The Industry 4.0 Component integrates physical and virtual worlds. It comprises the asset and its \gls{AAS}, connected via a standard interface \cite{Abdel-Aty2022}. In \gls{RAMI}, the \gls{AAS} acts as the Integration Layer, creating a standardized digital representation that exposes structured data to higher layers \cite{Pajpach2023}. 
+The architecture relies on standards like \gls{OPCUA} for semantic interoperability. \gls{OPCUA} covers the ``Communication'' and ``Information'' layers of \gls{RAMI}, specifically for the ``Instance'' phase. Its Information Model uses an object-oriented metamodel to describe complex structures, ensuring data consistency.
+
+\section{The Digital Twin Paradigm in Manufacturing}
+
+In Industry 4.0, the \gls{DT} is vital for efficiency and quality. While now a cornerstone of smart manufacturing, its development has evolved over decades.
+
+\subsection{Historical Evolution}
+\label{subsec:dt_history}
+
+The \gls{DT} concept originated in the 1970s with early ideas of digitally mirroring physical systems. However, terminology and formal definitions have evolved through distinct phases, as shown in \Cref{fig:dt_timeline}.
+
+According to \textcite{Khan2025}, the evolution of the \gls{DT} can be categorized into three main periods:
+
+\begin{itemize}
+    \item \textbf{Theorization (1970--2010):} While the concept appeared in the 1970s, the term ``Digital Twin'' was formally introduced in the early 2000s regarding \gls{PLM}. NASA established the first formal definition around 2010--2012 for spacecraft lifecycle simulation.
+    
+    \item \textbf{Consolidation (2010--2016):} Following aerospace origins, the concept consolidated around real-time adaptability. Focus shifted to industrial applications, driven by Industry 4.0, predictive maintenance, and fault detection.
+    
+    \item \textbf{Expansion and Sustainability (2016--Present):} Recently (2021--2023), \gls{DT} scope expanded beyond manufacturing to encompass open standards and platforms. Current trends highlight \gls{DT} adoption in smart cities and sustainability.
+\end{itemize}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{5-Figures/dt_timeline.pdf}
+    \caption{Timeline of the Digital Twin evolution \cite{Khan2025}.}
+    \label{fig:dt_timeline}
+\end{figure}
+
+This trajectory shows the \gls{DT} is not a static model but a dynamic technology, evolving from simple mirroring to complex systems supporting open platforms and sustainability.
+
+\subsection{Concept and Taxonomy}
+\label{subsec:dt_definition}
+
+This work adopts \textcite{Kritzinger2018}'s framework, classifying virtual representations into three categories based on data flow:
+
+\textbf{Digital Model:} The \gls{DM} is a digital replica of an object, lacking automated data exchange between physical and digital systems.
+
+This includes static assets like blueprints lacking any automatic data flow, as seen in \Cref{fig:digital_model}. Without automatic transfer, the \gls{DM} requires manual updates upon physical changes.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{5-Figures/digital_model_flow.pdf} 
+    \caption{Data flow in a DM: Manual data exchange in both directions \cite{Kritzinger2018}.}
+    \label{fig:digital_model}
+\end{figure}
+
+\textbf{Digital Shadow:} The \gls{DS} offers higher integration with automated, one-way data flow from physical to digital. Physical state changes immediately update the digital representation.
+
+The system monitors reality in real-time, but the flow is unidirectional, as illustrated in \Cref{fig:digital_shadow}. The physical object influences the digital one, but not vice versa.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{5-Figures/digital_shadow_flow.pdf} 
+    \caption{Data flow in a DS: Automated flow from physical to digital \cite{Kritzinger2018}.}
+    \label{fig:digital_shadow}
+\end{figure}
+
+\textbf{Digital Twin:} The \gls{DT} represents the highest integration level, featuring fully automated bidirectional data flow.
+
+Unlike the \gls{DS}, the \gls{DT} is bidirectional, as shown in \Cref{fig:digital_twin}. Physical changes update the digital object, and the digital object can control the physical system.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{5-Figures/digital_twin_flow.pdf} 
+    \caption{Data flow in a DT: Fully integrated bidirectional automated flow \cite{Kritzinger2018}.}
+    \label{fig:digital_twin}
+\end{figure}
+
+Commercially, the term ``Digital Twin'' is often used loosely. Many vendors market \glspl{DS} as \glspl{DT}, ignoring the critical requirement of automated control feedback. This work adheres to the strict definition requiring bidirectional automation.
+
+\subsection{The Digital Twin Lifecycle}
+
+A \gls{DT} evolves alongside the system \cite{Jones2020}. \textcite{Khan2025} propose a five-phase evolution model:
+
+\begin{description}
+    \item[Phase 1 - Design and Modeling:] The system operates as a \gls{DM} without automated exchange. Focus lies on representation, simulation, and validation before construction.
+    \item[Phase 2 - Data Integration and Connectivity:] The system becomes a \gls{DS} via real-time data collection, integrating \gls{IOT} sensors and protocols.
+    \item[Phase 3 - Simulation and Analysis:] The \gls{DT} simulates operational scenarios, analyzing real-time data to identify patterns, predict failures, and optimize processes.
+    \item[Phase 4 - Optimization and Control:] The \gls{DT} reaches maturity with bidirectional flow. Data-driven decisions enable real-time adjustments to optimize performance.
+    \item[Phase 5 - Evolution and Decommissioning:] The \gls{DT} evolves with the physical system, updating the \gls{DM} to reflect design changes. Upon lifecycle end, the \gls{DT} is decommissioned, preserving historical data.
+\end{description}
+
+\subsection{Reference Architectures}
+
+While \textcite{Semeraro2021} note various architectures, this work uses a consolidated three-layer functional architecture, based on \textcite{Semeraro2021} and recent \gls{AAS}-based systems:
+
+\begin{description}
+    \item[Physical Layer:] Includes manufacturing assets (robots, sensors) and controllers (\glspl{PLC}) generating operational data.
+
+    \item[Network Layer:] Bridges physical and virtual worlds using protocols like \gls{MQTT} and \gls{OPCUA}. It employs \gls{AAS} to structure and expose asset data.
+
+    \item[Service Layer:] The Computing Layer containing virtual models and applications. It consumes normalized data for 3D visualization, simulation, and optimization.
+\end{description}
+
+\section{Model-Based Engineering (MBE)}
+
+Since a \gls{DT} requires structured data, traditional document-centric approaches (such as spreadsheets, isolated \gls{CAD}) are inadequate \cite{Drath2008, Alexopoulos2025}. Industry 4.0 advocates for \gls{MBE}, replacing documents with domain models for information exchange. This section analyzes the modeling languages used: \gls{AML} (engineering) and \gls{AAS} (operation).
+
+\subsection{Modeling Automation Systems}
+
+Modeling automated systems requires capturing geometry, kinematics, logic, and electrical connections. While \gls{SysML} offers high-level abstraction \cite{Alexopoulos2025}, it often lacks the granularity for detailed automation engineering. Standards like \gls{AML} better address electrical configurations and control logic \cite{Alexopoulos2025,Heermann2024}.
+
+The \gls{AAS} operates as a data structure and runtime framework, maintaining a standardized digital representation throughout the asset lifecycle \cite{Alexopoulos2025}. This requires machine-readable formats capable of aggregating heterogeneous engineering data, a prerequisite for automated \gls{DT} generation.
+
+
+\subsection{AutomationML for Engineering}
+
+\gls{AML} (IEC 62714) is a leading open standard for engineering data exchange. This \gls{XML}-based format supports import, export, reuse, and collaboration on system models, facilitating \gls{DT} integration \cite{Lu2025}.
+
+\gls{AML} connects existing tools rather than replacing them. Based on \gls{CAEX} \cite{Drath2008}, it stores:
+\begin{itemize}
+    \item \textbf{Plant topology:} Describes the plant as a hierarchical tree (e.g., Factory $\rightarrow$ Station $\rightarrow$ Robot).
+    \item \textbf{Geometry and Kinematic:} Stores 3D geometry using \gls{COLLADA}, linking \gls{CAEX} objects to files that can also store kinematics.
+    \item \textbf{Behaviour description:} Stores behavioral sequences following the PLCopen \gls{XML} format as \gls{SFC}, including \gls{IO} relations.
+    \item \textbf{References and relations:} References link objects to external files. Relations link two \gls{CAEX} objects (e.g., robot to \gls{IO} board).
+\end{itemize}
+
+The fundamental architecture of \gls{AML}, structured as a hierarchy of objects, is illustrated in \Cref{fig:aml_architecture}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{5-Figures/AML_Architecture.pdf} 
+    \caption{Basic architecture of AML \cite{Drath2008}.}
+    \label{fig:aml_architecture}
+\end{figure}
+
+However, \gls{AML} has significant limitations regarding runtime integration. It lacks a standardized service interface (\gls{API}) for real-time interaction. Once engineering concludes, the \gls{AML} file typically becomes a static artifact, that does not evolve with the physical system.
+
+\subsection{Asset Administration Shell for Interoperability}
+\label{sec:aas}
+While effective for static design, \gls{AML} is not optimized for runtime data exchange \cite{Barnard2024}. \gls{AAS} addresses this limitation.
+
+Introduced in 2016 as part of \gls{RAMI}, \gls{AAS} acts as a standardized digital representation enabling interoperability \cite{Abdel-Aty2022}, as depicted in \Cref{fig:aas_introduction}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{5-Figures/AAS_introduction.pdf} 
+    \caption{Industry 4.0 Component \cite{Pajpach2025}.}
+    \label{fig:aas_introduction}
+\end{figure}
+
+The \gls{AAS} structure employs a standardized metamodel comprising a header and body. The header contains attributes like a unique ID. The body references asset information \cite{Pajpach2025}.
+
+\textcite{Pajpach2025} identify key metamodel elements:
+\begin{itemize}
+    \item \textbf{\gls{AAS}:} A shell with a unique ID unifying asset information.
+    \item \textbf{Asset:} Information defining the physical asset as a ``Type'' or ``Instance''.
+    \item \textbf{Submodel:} Groups asset properties from the same domain.
+    \item \textbf{Property:} A specific asset property implemented as a SubmodelElement.
+\end{itemize}
+
+The \gls{IDTA} standardizes these models to ensure semantic compatibility. The current challenge is not the lack of standards, but the scarcity of tools capable of automatically instantiating these \gls{IDTA} Submodel Templates from engineering data.
+
+\gls{AAS} and \gls{DT} definitions overlap, and their relationship varies in literature.
+
+\textcite{Abdel-Aty2022} identify three relationships:
+\begin{itemize}
+    \item \textbf{Synonym:} \gls{AAS} is synonymous with \gls{DT}.
+    \item \textbf{Implementation:} \gls{AAS} implements the \gls{DT} or specific functions.
+    \item \textbf{Information Model:} \gls{AAS} is the standardized data format supporting the \gls{DT}.
+\end{itemize}
+
+%Following the classification of a \gls{DT} by \textcite{Kritzinger2018} described in \Cref{subsec:dt_definition}, an AAS can be considered a technical synonym regarding the implementation of a \gls{DT}, provided it establishes an automated bidirectional data flow with the physical asset. Within this framework, the Unity environment serves as the visualization component of the DT, utilized to mirror the physical state based on the data provided by specific AAS submodels (such as UnityData \cite{Pajpach2025}).
+
+A key advantage of \gls{AAS} is interoperability. It is crucial to distinguish the \gls{AAS} (information model) from transport protocols. \gls{AAS} does not replace \gls{OPCUA} or \gls{MQTT}. Instead, it remains protocol-agnostic, often using these protocols to transport its standardized payload. Software clients can query the \gls{AAS} via standardized \gls{API} to retrieve asset status, ignoring underlying hardware complexity \cite{Quadrini2023}.
+
+\subsection{Synergy between AutomationML and Asset Administration Shell}
+\gls{AML} and \gls{AAS} are often discussed separately, but their convergence offers research opportunities. \gls{AML} is the predominant engineering format, encapsulating topology, geometry, and logic \cite{Barnard2024,Drath2008}. \gls{AAS} is the standardized \gls{DT} implementation for operations, ensuring interoperability and real-time exchange \cite{Pajpach2025}.
+
+In practice, a critical discontinuity exists. \gls{AML} is inherently file-based and static (engineering phase), whereas \gls{AAS} is \gls{API}-based and dynamic (runtime operations). This conflict complicates conversion because parsing \gls{XML} is insufficient without mapping semantic meaning to dynamic endpoints. Consequently, \gls{AML} data is often discarded after commissioning, forcing a manual, error-prone recreation of the \gls{AAS}. This thesis proposes using \gls{AML} to automatically generate the \gls{AAS} structure.
+
+\Cref{tab:aml_vs_aas} summarizes the distinctions and complementary nature of these two standards.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Comparison between AML and AAS \cite{Lu2025,Lder2020,Pajpach2025}.}
+    \label{tab:aml_vs_aas}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Feature} & \textbf{\gls{AML}} & \textbf{\gls{AAS}} \\ \midrule
+        \textbf{Lifecycle Phase} & Engineering \& Commissioning & Operation \& Maintenance \\
+        \textbf{Nature} & Static File (\gls{XML}) & Dynamic \gls{API} / \gls{DT} \\
+        \textbf{Structure} & Hierarchical Object Tree & Standardized Metamodel \\
+        \textbf{Interoperability} & Tool-to-Tool Exchange & Machine-to-Machine (M2M) \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+Studies by \textcite{Lu2025} and \textcite{Lder2020} validate mapping engineering models directly to \gls{AAS}. Automatically converting \gls{AML} to \gls{AAS} submodels ensures the \gls{DT} reflects the design, eliminating manual recreation and closing the data lifecycle.
+
+\textcite{Lder2020} established a serialization method leveraging \gls{AML}'s hierarchy. The \gls{AML} file acts as a pre-configured structure for the \gls{AAS}. This method scans \gls{AML}, mapping InternalElements to \gls{AAS} Submodels, and transforms technical attributes into \gls{AAS} Properties.
+
+%This data logistics flow is depicted in \Cref{fig:data_logistics}.
+
+% \begin{figure}[htbp]
+%     \centering
+%     \includegraphics[width=0.9\textwidth]{5-Figures/Data_logistics.pdf} 
+%     \caption{Engineering data logistics according to the methodology of \textcite{Lder2020}}
+%     \label{fig:data_logistics}
+% \end{figure}
+
+\textcite{Lu2025} propose a three-tier architecture for the industrial device function model, distinguishing a ``Physical Layer'' (device data) from an ``Administration Layer'' (mapping \gls{AAS} submodels to \gls{AML} Role Classes). An ``Application Layer'' integrates control logic and analytics, bridging \gls{AML} logic with \gls{OPCUA}.
+
+\section{Virtual Environments and Game Engines in Industry 4.0}
+
+The manufacturing industry is transforming production system visualization and validation. Traditional engineering relied on static 2D \gls{SCADA}, but Industry 4.0 demands dynamic, real-time environments. Game engines like Unity and Unreal Engine have become standard for industrial visualization \cite{Pajpach2022}, offering advantages over traditional tools. First, cost and accessibility: game engines often have lower licensing barriers than proprietary industrial suites. Second, \gls{API} flexibility: engines like Unity offer open scripting (C\#) for deep integration with custom protocols (\gls{MQTT}, \gls{REST}), whereas industrial tools often function as ``black boxes''. Third, rendering performance: game engines are optimized for real-time rendering of complex meshes, providing superior visual fidelity. Beyond traditional engines, platforms like NVIDIA Omniverse and the \gls{USD} format are emerging as powerful alternatives for industrial metaverse applications, though Unity remains dominant for custom application development.
+
+A significant challenge is the architectural shift from engineering design to real-time rendering. \gls{CAD} software uses parametric modeling for precise surfaces, whereas game engines rely on polygonal meshes optimized for \glspl{GPU} \cite{Zheng2024}. Manual conversion is labor-intensive, creating an "Asset Generation Gap." Automated pipelines now streamline imports, parsing \gls{CAD} files to generate optimized meshes while preserving hierarchy, ensuring synchronization between design and \gls{DT} \cite{Chowdhury2025}.
+
+Beyond static visualization, this section explores the role of game engines in behavioral simulation and connectivity integration.
+
+\subsection{Behavioral Simulation and Virtual Commissioning}
+Visual fidelity alone is insufficient, the virtual environment must also replicate kinematic and dynamic behavior \cite{Striffler2023}. This enables \gls{VC}, where the virtual model replaces the physical machine for software testing.
+
+Game engines host the \gls{VC} simulation. In \gls{HIL}, the engine communicates with a physical \gls{PLC}, exchanging signals. In \gls{SIL}, the \gls{PLC} is emulated via software. This allows safe debugging of control logic, reducing commissioning time \cite{Lee2014, Striffler2023}.
+
+The \gls{FMI} standard ensures physical accuracy without burdening the game engine's physics solver. Game engines import validated engineering models via \glspl{FMU}. The engine handles visualization, while the \gls{FMU} computes the kinematic state \cite{Chowdhury2025}.
+
+\subsection{Integration of Connectivity Standards in Game Engines}
+To function as a synchronous \gls{DT}, a game engine must connect its runtime loop with industrial networks, primarily via \gls{OPCUA} and \gls{AAS}.
+
+The game engine typically acts as a high-performance \gls{OPCUA} client. Since game engines use a continuous ``Update Loop'', communication must be asynchronous to prevent frame drops. Industrial network latency can vary significantly, which would freeze the rendering thread if accessed synchronously.
+
+To maintain performance, a separate thread typically handles \gls{OPCUA} subscriptions. The engine subscribes to node IDs on the \gls{PLC} server. Data changes are stored in a thread-safe buffer and read by the main loop to update 3D assets. This buffering strategy requires interpolation techniques to ensure smooth visual movement despite irregular network packet arrival, keeping the visual representation synchronized with the machine state \cite{Pajpach2022, Pajpach2023}.
+
+While \gls{OPCUA} handles real-time variables, \gls{AAS} provides semantic context for scene composition. Advanced environments query the \gls{AAS} via \gls{REST} or \gls{HTTP} \glspl{API} to build the \gls{DT}.
+
+\begin{itemize}
+    \item \textbf{Auto-Configuration:} The engine parses \gls{AAS} ``Bill of Material'' submodels to instantiate 3D prefabs.
+    \item \textbf{Signal Mapping:} \gls{AAS} maps mechanical components to controller signals. The engine uses this metadata to bind virtual actuators to \gls{OPCUA} nodes \cite{Schaper2025}.
+\end{itemize}
+
+This transforms the game engine into an intelligent component that understands the asset structure via \gls{AAS} \cite{Pajpach2025, Barnard2024}.
+
+\section{Automatic Generation of Digital Twins}
+
+Despite the benefits of \gls{DT}s and advanced visualization, high creation costs hinder widespread adoption. Developing a high-fidelity \gls{DT} is labor-intensive, requiring expertise in both domain engineering and software development.
+
+The traditional workflow is predominantly manual, involving exporting \gls{CAD} data, importing it into a visualization engine, and manually assigning kinematic properties and signal mappings. This manual approach is a ``complex, resource-intensive process'' that often outweighs the \gls{DT}'s benefits \cite{Alexopoulos2025}. \textcite{Garcia2023} emphasize that high data dimensionality and process complexity make manual modeling ``difficult and time-consuming.'' Furthermore, manual entry is prone to error, causing discrepancies between physical and digital states. As factories evolve, particularly in \gls{RMS}, manual \glspl{DT} require constant maintenance. If updates are slow, the \gls{DT} becomes outdated and useless for decision-making.
+
+Consequently, research has shifted towards automating \gls{DT} generation to reduce entry barriers and ensure synchronization. This section reviews model-driven, data-driven, and generative \gls{AI} methodologies.
+
+\subsection{Model-Driven Approaches}
+
+Model-driven approaches use existing engineering models as the ``digital seed'' for \gls{DT} generation. These methods parse structured files to extract topology, geometry, and logic, mapping them to the \gls{DT}'s internal structure.
+
+\gls{AML} is widely used as a digital blueprint. \textcite{Alexopoulos2025} propose a ``Model-Based \gls{DT} generation approach'' using \gls{AML} as input. Their platform parses \gls{AML} to extract manufacturing concepts (machines, controllers, topology) and automatically instantiates 3D assets in Unity. The parser also configures the connectivity layer, automating \gls{DT} infrastructure deployment from the design.
+
+Other domains also serve as sources. \textcite{Heermann2024} introduce a framework based on \gls{SysML} v2. Using textual \gls{SysML} models describing system architecture, they automatically generate \gls{DT} software components and communication interfaces for Industrial DevOps. This links \gls{DT} data models directly to system requirements.
+
+Focusing on simulation, \textcite{Schaper2025} use electrical and fluid circuit diagrams (\gls{ECAD}) to generate \gls{VC} models. Their approach integrates supplier information via \gls{AAS} and \gls{FMI}. By parsing diagrams, the system identifies components and connections, automatically stitching \glspl{FMU} into a cohesive simulation model reducing manual modeling effort.
+
+Generating the \gls{AAS} itself can also be automated. \textcite{Gollner2022} present a ``Use Case Driven'' approach. Instead of manually creating submodels, they specify use case requirements. A generator analyzes these requirements, fetches data from databases or assets, and assembles a populated \gls{AAS}, ensuring the \gls{DT} contains only relevant information.
+
+\subsection{Data-Driven Approaches}
+
+In scenarios where engineering models are missing or outdated, data-driven approaches ``discover'' the \gls{DT} from operational data.
+
+\textcite{Lugaresi2021} apply Process Mining to event logs. By analyzing timestamps and event sequences, their method discovers system topology, identifies material flows, and estimates simulation parameters. This generates discrete event simulation models even without design documentation.
+
+Similarly, \textcite{Garcia2023} investigate automatic \gls{DT} generation for energy estimation. Their framework uses historical sensor data for automatic variable selection and system identification. By training machine learning models on collected data, they generate accurate asset behavior models without first-principles physics.
+
+\subsection{Generative AI and Large Language Models}
+
+The latest trend applies Generative \gls{AI} and \glspl{LLM} to bridge the gap between human intent and technical implementation.
+
+\textcite{Dong2024} use \glspl{LLM} to generate \gls{DT} modeling code. Instead of manual coding, users provide natural language prompts. The \gls{LLM} interprets these instructions and generates the Python scripts to build the 3D scene in platforms like NVIDIA Omniverse, as shown in \Cref{fig:llm_nvidia_omniverse}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{5-Figures/nvidia_llm.pdf} 
+    \caption{Modeling code generation process for NVIDIA Omniverse \cite{Dong2024}.}
+    \label{fig:llm_nvidia_omniverse}
+\end{figure}
+
+Furthermore, \textcite{Alexopoulos2025} utilize \glspl{LLM} for dynamic process generation. An \gls{LLM} generates simulation scenarios as \gls{BPMN} diagrams, allowing the \gls{DT} to explore and validate production strategies by automatically generating the driving process logic.
+
+While \glspl{LLM} offer flexibility, they suffer from stochastic behavior and lack determinism. For safety-critical industrial automation, deterministic approaches remain essential as a foundational layer, with AI serving as an auxiliary tool for optimization rather than structural generation.
+
+\subsection{Current Limitations}
+
+Despite advancements, gaps persist. First, most solutions focus on generating either the visual 3D scene \cite{Dong2024} or the static data structure \cite{Gollner2022}. Few address the automated generation of ``dynamic connectivity'' between the 3D model and control logic. Second, existing frameworks often convert engineering data directly into proprietary scripts \cite{Schaper2025}. This creates ``data islands'' where the \gls{DT} works within its specific tool but cannot easily share its state with other Industry 4.0 services. By bypassing the \gls{AAS}, these approaches lock the data inside the visualization engine. Third, there is a lack of cohesive frameworks using \gls{AAS} as persistent, executable middleware driving the \gls{DT}.
+
+\Cref{tab:generation_comparison} compares the discussed approaches, highlighting the trade-offs that motivate the proposed solution.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Comparison of Digital Twin generation approaches \cite{Alexopoulos2025,Gollner2022,Garcia2023}.}
+    \label{tab:generation_comparison}
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        \textbf{Approach} & \textbf{Precision} & \textbf{Manual Effort} & \textbf{Determinism} \\ \midrule
+        \textbf{Model-Driven} & High (Design-based) & Low (Automated) & High \\
+        \textbf{Data-Driven} & Medium (Approximated) & Medium (Discovery) & Medium \\
+        \textbf{Generative AI} & Variable (Stochastic) & Very Low & Low \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+%This thesis addresses these limitations by proposing a framework where \gls{AML} automatically generates a dynamic \gls{AAS}. This \gls{AAS} then drives the visualization environment, ensuring automated creation and standardized runtime interoperability.
