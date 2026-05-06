@@ -1,20 +1,20 @@
 import requests
 import base64
 
-# --- CONFIGURAÇÃO ---
+# --- CONFIGURATION ---
 AAS_REGISTRY_URL = "http://localhost:8082/shell-descriptors"
 AAS_SERVER_URL = "http://localhost:8081/shells"
 SM_SERVER_URL = "http://localhost:8081/submodels"
 
 def encode_id(id_str):
-    """Codifica o ID para Base64 URL-safe."""
+    """Encodes the ID to Base64 URL-safe."""
     return base64.urlsafe_b64encode(id_str.encode()).decode().rstrip("=")
 
 def delete_all():
     print("=== BaSyx Full Cleanup (Shells & Submodels) ===")
     
-    # 1. APAGAR SHELLS
-    print("\n[1/2] A remover Shells...")
+    # 1. DELETE SHELLS
+    print("\n[1/2] Removing Shells...")
     try:
         res = requests.get(AAS_REGISTRY_URL)
         if res.status_code == 200:
@@ -27,20 +27,20 @@ def delete_all():
                 if not aas_id or aas_id in ["paging_metadata", "result"]: continue
                 
                 encoded_id = encode_id(aas_id)
-                print(f"   🗑️  Removendo Shell: {aas_id}")
+                print(f"   🗑️  Removing Shell: {aas_id}")
                 
-                # Apagar do Repository e do Registry
+                # Delete from Repository and Registry
                 requests.delete(f"{AAS_SERVER_URL}/{encoded_id}")
                 requests.delete(f"{AAS_REGISTRY_URL}/{encoded_id}")
                 count += 1
-            print(f"   ✅ {count} Shells removidas.")
+            print(f"   ✅ {count} Shells removed.")
         else:
-            print(f"   ⚠️  Registry devolveu status {res.status_code}.")
+            print(f"   ⚠️  Registry returned status {res.status_code}.")
     except Exception as e:
-        print(f"   ❌ Erro ao apagar Shells: {e}")
+        print(f"   ❌ Error deleting Shells: {e}")
 
-    # 2. APAGAR SUBMODELS
-    print("\n[2/2] A remover Submodels do Repository...")
+    # 2. DELETE SUBMODELS
+    print("\n[2/2] Removing Submodels from Repository...")
     try:
         res_sm = requests.get(SM_SERVER_URL)
         if res_sm.status_code == 200:
@@ -53,18 +53,18 @@ def delete_all():
                 if not sm_id: continue
                 
                 encoded_sm_id = encode_id(sm_id)
-                print(f"   🗑️  Removendo Submodel: {sm_id}")
+                print(f"   🗑️  Removing Submodel: {sm_id}")
                 requests.delete(f"{SM_SERVER_URL}/{encoded_sm_id}")
                 count_sm += 1
-            print(f"   ✅ {count_sm} Submodels removidos.")
+            print(f"   ✅ {count_sm} Submodels removed.")
     except Exception as e:
-        print(f"   ❌ Erro ao apagar Submodels: {e}")
+        print(f"   ❌ Error deleting Submodels: {e}")
 
-    print("\n✨ Ambiente limpo!")
+    print("\n✨ Environment cleaned!")
 
 if __name__ == "__main__":
-    confirm = input("⚠️  ATENÇÃO: Isto vai apagar TODOS os robôs. Continuar? (s/n): ").lower()
-    if confirm == 's':
+    confirm = input("⚠️  WARNING: This will delete ALL robots. Continue? (y/n): ").lower()
+    if confirm == 'y':
         delete_all()
     else:
-        print("Operação cancelada.")
+        print("Operation cancelled.")

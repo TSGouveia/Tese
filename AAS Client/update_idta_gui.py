@@ -5,7 +5,7 @@ import re
 import customtkinter as ctk
 from tkinter import messagebox
 
-# Configuração de Aparência
+# Appearance Configuration
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
@@ -97,13 +97,13 @@ class AASApp(ctk.CTk):
         self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         ctk.CTkLabel(self.sidebar, text="AAS Editor", font=ctk.CTkFont(size=20, weight="bold")).pack(pady=20)
-        ctk.CTkButton(self.sidebar, text="Carregar Templates", command=self.auto_detect).pack(pady=10, padx=20,
+        ctk.CTkButton(self.sidebar, text="Load Templates", command=self.auto_detect).pack(pady=10, padx=20,
                                                                                               fill="x")
-        self.template_var = ctk.StringVar(value="Aguardando...")
-        self.template_menu = ctk.CTkOptionMenu(self.sidebar, variable=self.template_var, values=["Nenhum"],
+        self.template_var = ctk.StringVar(value="Waiting...")
+        self.template_menu = ctk.CTkOptionMenu(self.sidebar, variable=self.template_var, values=["None"],
                                                command=self.trigger_refresh)
         self.template_menu.pack(pady=10, padx=20, fill="x")
-        ctk.CTkButton(self.sidebar, text="SALVAR TUDO", fg_color="#27ae60", command=self.save_all).pack(pady=20,
+        ctk.CTkButton(self.sidebar, text="SAVE ALL", fg_color="#27ae60", command=self.save_all).pack(pady=20,
                                                                                                         padx=20,
                                                                                                         fill="x")
         self.log_box = ctk.CTkTextbox(self.sidebar, height=200, font=ctk.CTkFont(size=10), fg_color="#121212")
@@ -116,7 +116,7 @@ class AASApp(ctk.CTk):
         self.main_frame.grid_rowconfigure(1, weight=1)
         self.search_var = ctk.StringVar();
         self.search_var.trace_add("write", self.trigger_refresh)
-        ctk.CTkEntry(self.main_frame, placeholder_text="Filtrar...", textvariable=self.search_var, height=35).grid(
+        ctk.CTkEntry(self.main_frame, placeholder_text="Filter...", textvariable=self.search_var, height=35).grid(
             row=0, column=0, sticky="ew", padx=20, pady=15)
         self.scrollable_frame = ctk.CTkScrollableFrame(self.main_frame, fg_color="transparent")
         self.scrollable_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
@@ -128,14 +128,14 @@ class AASApp(ctk.CTk):
         self.log_box.configure(state="disabled")
 
     def parse_version(self, path):
-        """Extrai números de versão de uma string de caminho (ex: '3.0.1' -> [3, 0, 1])."""
+        """Extracts version numbers from a path string (e.g. '3.0.1' -> [3, 0, 1])."""
         parts = re.findall(r'\d+', path)
         return [int(p) for p in parts] if parts else [0]
 
     def auto_detect(self):
         root = os.path.join(os.getcwd(), "AAS_TEMPLATES")
         if not os.path.exists(root):
-            messagebox.showwarning("Erro", "Pasta 'AAS_TEMPLATES' não encontrada.");
+            messagebox.showwarning("Error", "'AAS_TEMPLATES' folder not found.");
             return
 
         self.all_data.clear();
@@ -143,30 +143,29 @@ class AASApp(ctk.CTk):
         self.modified_files.clear()
         all_json = glob.glob(os.path.join(root, "**", "*.json"), recursive=True)
 
-        # Agrupar por Template Name para encontrar a versão mais recente
+        # Group by Template Name to find the latest version
         template_groups = {}
         for p in all_json:
             if "_updated.json" in p: continue
 
-            # Remove a parte da versão do caminho para identificar o 'nome' do template
-            # Ex: 'DigitalNameplate/3.0.1/file.json' -> 'DigitalNameplate'
+            # Remove version part from path to identify template 'name'
             rel_path = os.path.relpath(p, root)
             path_parts = rel_path.split(os.sep)
 
-            # O nome do template é o diretório pai que não é versão
+            # Template name is parent directory that is not a version
             name_parts = [part for part in path_parts[:-1] if not re.match(r'^[\d\._-]+$', part)]
-            tpl_key = " > ".join(name_parts) if name_parts else "Geral"
+            tpl_key = " > ".join(name_parts) if name_parts else "General"
 
             if tpl_key not in template_groups: template_groups[tpl_key] = []
             template_groups[tpl_key].append(p)
 
-        # Selecionar apenas o ficheiro com a maior versão para cada grupo
+        # Select only the file with the highest version for each group
         final_paths = []
         for key, paths in template_groups.items():
-            # Ordena pelo parse da versão contida no caminho completo
+            # Sort by version parse contained in full path
             latest = max(paths, key=self.parse_version)
             final_paths.append((key, latest))
-            self.log(f"Template '{key}' -> Versão detectada: {os.path.basename(os.path.dirname(latest))}")
+            self.log(f"Template '{key}' -> Version detected: {os.path.basename(os.path.dirname(latest))}")
 
         for label, path in final_paths:
             try:
@@ -180,7 +179,7 @@ class AASApp(ctk.CTk):
                         self.collect_elements(data['submodelElements'], path, "SM", temp)
                     for i in temp: i.template_label = label; self.all_items.append(i)
             except Exception as e:
-                self.log(f"Erro em {path}: {e}")
+                self.log(f"Error in {path}: {e}")
 
         labels = sorted(list(set(i.template_label for i in self.all_items)))
         self.template_menu.configure(values=labels)
@@ -209,7 +208,7 @@ class AASApp(ctk.CTk):
 
     def refresh_ui(self):
         tpl = self.template_var.get()
-        if tpl in ["Aguardando...", "Nenhum"]: return
+        if tpl in ["Waiting...", "None"]: return
         self.clear_ui();
         query = self.search_var.get().lower();
         curr_f = ""
@@ -217,7 +216,7 @@ class AASApp(ctk.CTk):
             if item.template_label != tpl or (query and query not in item.id_short.lower()): continue
             if item.file_path != curr_f:
                 curr_f = item.file_path
-                h = ctk.CTkLabel(self.scrollable_frame, text=f"📄 {item.filename} (Versão Ativa)",
+                h = ctk.CTkLabel(self.scrollable_frame, text=f"📄 {item.filename} (Active Version)",
                                  font=ctk.CTkFont(size=10, weight="bold"), text_color="#3498db")
                 h.pack(fill="x", pady=(10, 2), padx=5);
                 self.item_widgets.append(h)
@@ -240,8 +239,8 @@ class AASApp(ctk.CTk):
             new_p = path.replace(".json", "_updated.json")
             with open(new_p, 'w', encoding='utf-8') as f:
                 json.dump(self.all_data[path], f, indent=2, ensure_ascii=False)
-            self.log(f"Salvo: {os.path.basename(new_p)}")
-        messagebox.showinfo("Sucesso", "Ficheiros guardados!")
+            self.log(f"Saved: {os.path.basename(new_p)}")
+        messagebox.showinfo("Success", "Files saved!")
         self.modified_files.clear()
 
 
