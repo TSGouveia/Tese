@@ -323,15 +323,13 @@ class XacroArgsDialog(QDialog):
             row = i // cols
             col_offset = (i % cols) * 2
             
-            is_m = default is None
-            lbl = QLabel(f"<b>{name}</b>" + (" *" if is_m else ""))
-            if is_m: lbl.setStyleSheet("color: #e74c3c;")
+            lbl = QLabel(f"<b>{name}</b>")
             
             edit = QLineEdit()
             if default: edit.setPlaceholderText(str(default))
             edit.setMinimumWidth(120)
             
-            self.inputs[name] = (edit, is_m)
+            self.inputs[name] = edit
             self.grid.addWidget(lbl, row, col_offset)
             self.grid.addWidget(edit, row, col_offset + 1)
 
@@ -342,9 +340,8 @@ class XacroArgsDialog(QDialog):
         main_layout.addWidget(btn)
 
     def accept_all(self):
-        for n, (e, m) in self.inputs.items():
+        for n, e in self.inputs.items():
             v = e.text().strip()
-            if m and not v: return QMessageBox.warning(self, "Error", f"Variable '{n}' is mandatory!")
             if v: self.results[n] = v
         self.accept()
 
