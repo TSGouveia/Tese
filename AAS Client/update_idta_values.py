@@ -1,6 +1,7 @@
 import json
 import os
 import glob
+import re
 
 class EditableItem:
     def __init__(self, file_path, submodel_id, id_short, element, model_type):
@@ -13,18 +14,18 @@ class EditableItem:
 
     def get_current_value(self):
         if self.model_type == 'Property' or self.model_type == 'File':
-            return self.element.get('value', '(vazio)')
+            return self.element.get('value', '(empty)')
         elif self.model_type == 'MultiLanguageProperty':
             values = self.element.get('value', [])
             en_vals = [v for v in values if v.get('language') == 'en']
-            return en_vals[0].get('text', '(vazio)') if en_vals else '(vazio)'
-        return "(tipo não editável)"
+            return en_vals[0].get('text', '(empty)') if en_vals else '(empty)'
+        return "(non-editable type)"
 
     def update_value(self, new_value):
         if self.model_type == 'Property' or self.model_type == 'File':
             self.element['value'] = new_value
         elif self.model_type == 'MultiLanguageProperty':
-            # Garante que limpamos outras línguas e guardamos apenas en
+            # Ensure we clear other languages and save only en
             self.element['value'] = [{"language": "en", "text": new_value}]
 
 def collect_editable_elements(elements, file_path, submodel_id, items_list):
@@ -45,10 +46,8 @@ def find_folder_recursively(root, target_name):
             return os.path.join(dirpath, target_name)
     return None
 
-import re
-
 def get_version_tuple(v_str):
-    """Converte uma string de versão tipo '3-0-1' numa lista de inteiros para comparação."""
+    """Converts a version string like '3-0-1' into a list of integers for comparison."""
     try:
         return [int(x) for x in v_str.split('-')]
     except:
@@ -56,11 +55,11 @@ def get_version_tuple(v_str):
 
 def filter_latest_versions(file_paths):
     """
-    Agrupa ficheiros pelo nome do template e mantém apenas o que tem a versão mais alta.
-    Exemplo: 'IDTA 02006-3-0_Template' vs 'IDTA 02006-3-0-1_Template'
+    Groups files by template name and keeps only the highest version.
+    Example: 'IDTA 02006-3-0_Template' vs 'IDTA 02006-3-0-1_Template'
     """
     pattern = re.compile(r"IDTA\s+(\d+)-([\d-]+)_Template_(.*)\.json")
-    latest_files = {} # (id_numero, nome_template) -> (versao_tuple, full_path)
+    latest_files = {} # (id_number, template_name) -> (version_tuple, full_path)
 
     for path in file_paths:
         filename = os.path.basename(path)
@@ -76,75 +75,75 @@ def filter_latest_versions(file_paths):
             if key not in latest_files or v_tuple > latest_files[key][0]:
                 latest_files[key] = (v_tuple, path)
         else:
-            # Se não segue o padrão IDTA, incluímos sempre para não perder ficheiros custom
+            # If it doesn't follow IDTA pattern, always include it
             latest_files[path] = ([0], path)
 
     return [val[1] for val in latest_files.values()]
 
 def main():
     print("\n" + "="*60)
-    print("      INTERFACE INTERATIVA - EDITOR AAS / IDTA")
+    print("      INTERACTIVE INTERFACE - AAS / IDTA EDITOR")
     print("="*60)
     
-    folder_name = input("Introduza o nome da pasta: ")
+    folder_name = input("Enter folder name: ")
     folder_path = find_folder_recursively(os.getcwd(), folder_name)
     
     if not folder_path:
-        print(f"Erro: Pasta '{folder_name}' não encontrada.")
+        print(f"Error: Folder '{folder_name}' not found.")
         return
 
     all_json_paths = [f for f in glob.glob(os.path.join(folder_path, "**", "*.json"), recursive=True) 
                       if not f.endswith("_updated.json")]
     
     if not all_json_paths:
-        print("Nenhum ficheiro JSON encontrado.")
+        print("No JSON files found.")
         return
 
-    print("A filtrar versões mais recentes...")
+    print("Filtering latest versions...")
     json_files_paths = filter_latest_versions(all_json_paths)
-    print(f"Versões filtradas: {len(all_json_paths)} -> {len(json_files_paths)}")
+    print(f"Versions filtered: {len(all_json_paths)} -> {len(json_files_paths)}")
 
     all_data = {} # path -> json_data
     all_items = []
 
-    print("A carregar ficheiros e a limpar línguas não-'en'...")
+    print("Loading files and cleaning non-'en' languages...")
     for path in json_files_paths:
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 all_data[path] = data
                 
-                # Coleta elementos
+                # Collect elements
                 if 'submodels' in data:
                     for sm in data['submodels']:
                         collect_editable_elements(sm.get('submodelElements', []), path, sm.get('idShort', 'SM'), all_items)
                 elif 'submodelElements' in data:
                     collect_editable_elements(data['submodelElements'], path, data.get('idShort', 'SM'), all_items)
         except Exception as e:
-            print(f"Erro ao carregar {os.path.basename(path)}: {e}")
+            print(f"Error loading {os.path.basename(path)}: {e}")
 
     modified_files = set()
 
     while True:
         print("\n" + "-"*60)
-        print(f"{'ID':<4} | {'Ficheiro':<20} | {'Propriedade':<25} | {'Valor Atual'}")
+        print(f"{'ID':<4} | {'File':<20} | {'Property':<25} | {'Current Value'}")
         print("-"*60)
         
         for idx, item in enumerate(all_items):
             val = item.get_current_value()
-            # Truncar para não desformatar a tabela
+            # Truncate to avoid table formatting issues
             val_display = (val[:30] + '..') if isinstance(val, str) and len(val) > 30 else val
             print(f"{idx:<4} | {item.filename[:20]:<20} | {item.id_short[:25]:<25} | {val_display}")
 
-        print("\nComandos: [ID] para editar | 'S' para Gravar e Sair | 'Q' para Sair sem Gravar")
-        cmd = input("\nEscolha uma opção: ").strip().lower()
+        print("\nCommands: [ID] to edit | 'S' to Save and Exit | 'Q' to Quit without Saving")
+        cmd = input("\nChoose an option: ").strip().lower()
 
         if cmd == 'q':
-            print("Saída cancelada. Nada foi gravado.")
+            print("Exit cancelled. Nothing was saved.")
             break
         elif cmd == 's':
             if not modified_files:
-                print("Nenhuma alteração para gravar.")
+                print("No changes to save.")
                 break
             
             for path in modified_files:
@@ -154,27 +153,27 @@ def main():
                 try:
                     with open(new_path, 'w', encoding='utf-8') as f:
                         json.dump(data, f, indent=2, ensure_ascii=False)
-                    print(f"Gravado: {os.path.basename(new_path)}")
+                    print(f"Saved: {os.path.basename(new_path)}")
                 except Exception as e:
-                    print(f"Erro ao gravar {new_path}: {e}")
-            print("\nTodas as alterações foram guardadas em novos ficheiros!")
+                    print(f"Error saving {new_path}: {e}")
+            print("\nAll changes have been saved to new files!")
             break
         
         try:
             item_idx = int(cmd)
             if 0 <= item_idx < len(all_items):
                 target_item = all_items[item_idx]
-                print(f"\nA editar: {target_item.id_short} (em {target_item.filename})")
-                new_val = input(f"Novo valor (atual: '{target_item.get_current_value()}'): ").strip()
+                print(f"\nEditing: {target_item.id_short} (in {target_item.filename})")
+                new_val = input(f"New value (current: '{target_item.get_current_value()}'): ").strip()
                 
                 if new_val:
                     target_item.update_value(new_val)
                     modified_files.add(target_item.file_path)
-                    print("Valor atualizado temporariamente (ainda não gravado no disco).")
+                    print("Value updated temporarily (not yet saved to disk).")
             else:
-                print("ID inválido.")
+                print("Invalid ID.")
         except ValueError:
-            print("Comando não reconhecido.")
+            print("Command not recognized.")
 
 if __name__ == "__main__":
     main()

@@ -3,21 +3,21 @@ import requests
 import base64
 import json
 
-# --- CONFIGURAÇÃO ---
+# --- CONFIGURATION ---
 AAS_REGISTRY_URL = "http://localhost:8082/shell-descriptors"
 BASE_URL = "http://localhost:8081"
 
 def encode_id(id_str): return base64.urlsafe_b64encode(id_str.encode()).decode().rstrip("=")
 
 def list_available_shells():
-    print(f"\n[0] A consultar shells...")
+    print(f"\n[0] Querying shells...")
     try:
         res = requests.get(AAS_REGISTRY_URL)
         if res.status_code != 200: return None
         data = res.json()
         raw = data.get("result", data) if isinstance(data, dict) else data
         shells = []
-        print("\n# | ID Curto | ID da AAS")
+        print("\n# | Short ID | AAS ID")
         print("-" * 75)
         for item in raw:
             if isinstance(item, str):
@@ -55,8 +55,8 @@ def sync_robot(selected_shell):
     rid = selected_shell.get('idShort', 'Robot')
     download_dir = f"client_site/robots/{rid}"
     
-    # 1. GEOMETRIA
-    print(f"\n[1] Sincronizando Ativos...")
+    # 1. GEOMETRY
+    print(f"\n[1] Synchronizing Assets...")
     sm_id = find_sm(selected_shell, "GeometryData")
     if sm_id:
         res = requests.get(f"{BASE_URL}/submodels/{encode_id(sm_id)}/submodel-elements")
@@ -66,22 +66,23 @@ def sync_robot(selected_shell):
             if el.get('modelType') == 'File':
                 id_short = el.get('idShort')
                 if id_short == "Main_URDF":
-                    # URDF vai para a raiz (limpa o nome longo se existir)
+                    # URDF goes to root (cleans long name if exists)
                     val = el.get('value', 'robot.urdf')
                     dest = os.path.join(download_dir, os.path.basename(val).split('-')[-1])
                 elif id_short.startswith("PATH_"):
-                    # Descodificar caminho (PATH_meshes_SL_visual_SL_base_dae)
-                    rel = id_short.replace("PATH_", "").replace("_SL_", "/").replace("_DOT_", ".")
-                    # Se o id_short foi truncado pelo BaSyx, tentamos recuperar do value
+                    # Decode path (PATH_meshes_SL_visual_SL_base_dae)
+                    rel = id_short.replace("PATH_", "").replace("_SL_", "/").replace("_DOT_", ".").replace("_DASH_", "-")
+                    # Sanitize: Strip traversal to stay within download_dir
+                    rel = rel.replace("../", "")
                     dest = os.path.join(download_dir, rel)
                 else:
                     dest = os.path.join(download_dir, os.path.basename(el.get('value', 'file')))
 
                 print(f"    📦 -> {os.path.relpath(dest, download_dir)}")
                 if fetch_file(sm_id, id_short, dest): count += 1
-        print(f"    ✅ {count} ficheiros sincronizados.")
+        print(f"    ✅ {count} files synchronized.")
 
-    # 2. POSIÇÃO
+    # 2. POSITION
     sm_pos = find_sm(selected_shell, "PositionData")
     if sm_pos:
         els = requests.get(f"{BASE_URL}/submodels/{encode_id(sm_pos)}/submodel-elements").json().get('result', [])
@@ -92,5 +93,5 @@ if __name__ == "__main__":
     print("=== Digital Twin Sync (Correct Filenames) ===")
     shells = list_available_shells()
     if shells:
-        choice = input("\nEscolhe o número: ").strip()
+        choice = input("\nSelect a number: ").strip()
         if choice.isdigit() and 0 < int(choice) <= len(shells): sync_robot(shells[int(choice)-1])

@@ -1,152 +1,1003 @@
+import collections
+import collections.abc
+import math
+import fractions
+import sys
 import os
+import io
+import re
+import traceback
+import numpy as np
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
 import requests
 import mimetypes
 import hashlib
-import tkinter as tk
-from tkinter import filedialog
-import xml.etree.ElementTree as ET
-import io
-import re
+import posixpath
 import basyx.aas
 from basyx.aas import model
 from basyx.aas.adapter import aasx
 
-# --- CONFIGURAÇÃO ---
-BASE_URL = "http://localhost:8081"
-UPLOAD_URL = f"{BASE_URL}/upload"
-AAS_REGISTRY_URL = "http://localhost:8082/shell-descriptors"
+# =================================================================
+# 1. COMPATIBILITY PATCHES (Python 3.10+ & NetworkX)
+# =================================================================
+for name in ['Mapping', 'MutableMapping', 'Set', 'MutableSet', 'Iterable', 'MutableSequence', 'Sequence']:
+    if not hasattr(collections, name):
+        obj = getattr(collections.abc, name)
+        setattr(collections, name, obj)
+        if 'collections' in sys.modules:
+            setattr(sys.modules['collections'], name, obj)
 
-def get_path(mode="file", title="Select"):
-    root = tk.Tk(); root.withdraw(); root.attributes("-topmost", True)
-    path = filedialog.askopenfilename(title=title) if mode == "file" else filedialog.askdirectory(title=title)
-    root.destroy(); return path
+if not hasattr(fractions, 'gcd'): fractions.gcd = math.gcd
 
-def find_file_smart(search_root, target_filename, context_dir=None):
-    clean_name = target_filename.replace("package://", "").replace("file://", "").replace("./", "").replace("\\", "/")
-    basename = os.path.basename(clean_name)
-    
-    # 1. Contexto
-    if context_dir:
-        for p in [os.path.join(context_dir, clean_name), os.path.join(context_dir, basename)]:
-            np = os.path.normpath(p)
-            if os.path.exists(np) and os.path.isfile(np): return np
+np_patches = {'float': float, 'float_': np.float64, 'int': int, 'int_': np.int64, 'bool': bool}
+for old_attr, replacement in np_patches.items():
+    if not hasattr(np, old_attr): setattr(np, old_attr, replacement)
 
-    # 2. Recursivo
-    for root, _, files in os.walk(search_root):
-        if basename in files: return os.path.join(root, basename)
-    return None
+try:
+    import networkx.utils as nx_utils
+    import networkx as nx
+    nx.utils = nx_utils
+    import networkx.algorithms.bipartite
+    import networkx.generators.intersection
+except: pass
 
+import trimesh
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
+                             QWidget, QPushButton, QLabel, QFileDialog, QSlider,
+                             QFrame, QMessageBox, QInputDialog, QLineEdit, QDialog,
+                             QListWidget, QListWidgetItem, QScrollArea, QGridLayout)
+from PyQt6.QtCore import Qt, QTimer
+import pyvista as pv
+from pyvistaqt import BackgroundPlotter
+from urdfpy import URDF
+
+
+# =================================================================
+# 2. XACRO RESOLVER
+# =================================================================
+class XacroResolver:
+    def __init__(self, root_path):
+        self.root_path = os.path.abspath(root_path).replace('\\', '/')
+        self.file_map = {} # full_path.lower() -> full_path
+        self.basename_map = {} # basename.lower() -> [full_paths]
+        print(f"[RESOLVER] Mapping: {self.root_path}")
+        self._index_directory(self.root_path)
+        print(f"[RESOLVER] {len(self.file_map)} entries mapped.")
+
+    def _index_directory(self, path):
+        for r, d, fs in os.walk(path):
+            for f in fs:
+                full_path = os.path.abspath(os.path.join(r, f)).replace('\\', '/')
+                self.file_map[full_path.lower()] = full_path
+                bn = f.lower()
+                if bn not in self.basename_map: self.basename_map[bn] = []
+                if full_path not in self.basename_map[bn]:
+                    self.basename_map[bn].append(full_path)
+
+    def add_search_path(self, new_path):
+        print(f"[RESOLVER] Adding search path: {new_path}")
+        old_count = len(self.file_map)
+        self._index_directory(new_path)
+        print(f"[RESOLVER] {len(self.file_map) - old_count} more files added.")
+
+    def resolve(self, path):
+        if not path: return None
+        print(f"[RESOLVER] Trying to resolve: {path}")
+        p_lower = path.lower().replace('\\', '/')
+        
+        # 1. Direct hit (absolute or relative to CWD)
+        if p_lower in self.file_map: 
+            return self.file_map[p_lower]
+        
+        # 2. Normalize (remove package:// and $(find ...))
+        normalized = re.sub(r'\$\(find [^)]+\)', '', path.replace('package://', ''))
+        normalized = '/'.join([s for s in normalized.replace('\\', '/').split('/') if s and s != '.'])
+        norm_lower = normalized.lower()
+        
+        # 3. Best suffix match
+        best_match = None
+        max_score = -1
+        
+        bn = os.path.basename(normalized).lower()
+        candidates = self.basename_map.get(bn, [])
+        
+        for cand in candidates:
+            cand_lower = cand.lower()
+            if cand_lower.endswith(norm_lower):
+                score = len(norm_lower)
+                if score > max_score:
+                    max_score = score
+                    best_match = cand
+            else:
+                # Try partial suffix match (e.g. if package name is different)
+                parts = norm_lower.split('/')
+                for i in range(len(parts)-1, 0, -1):
+                    sub = '/'.join(parts[i:])
+                    if cand_lower.endswith(sub):
+                        score = len(sub)
+                        if score > max_score:
+                            max_score = score
+                            best_match = cand
+                        break
+        
+        if best_match:
+            print(f"   [RESOLVER] Resolved to: {best_match} (score {max_score})")
+            return best_match
+            
+        print(f"   [RESOLVER] WARNING: Could not resolve '{path}'")
+        return None
+
+
+# =================================================================
+# 3. ENGINE (PATCHED XACRO)
+# =================================================================
+import xacro
+_original_abs_filename_spec = xacro.abs_filename_spec
+_original_parse = xacro.parse
+_active_resolver = None
+
+def patched_abs_filename_spec(filename_spec):
+    if _active_resolver:
+        resolved = _active_resolver.resolve(filename_spec)
+        if resolved: return resolved
+    return _original_abs_filename_spec(filename_spec)
+
+def patched_parse(inp, filename=None):
+    if inp is None and filename and _active_resolver:
+        resolved = _active_resolver.resolve(filename)
+        if resolved:
+            print(f"[XACRO-PATCH] Reading resolved file: {resolved}")
+            with open(resolved, 'r', encoding='utf-8') as f: content = f.read()
+            return minidom.parseString(content)
+    return _original_parse(inp, filename)
+
+xacro.abs_filename_spec = patched_abs_filename_spec
+xacro.parse = patched_parse
+
+try:
+    import xacro.substitution_args
+    xacro.substitution_args._eval_find = lambda pkg: ""
+except: pass
+
+def expand_xacro_final(filepath, mappings, resolver):
+    print(f"[XACRO] Expanding {filepath} with mappings {mappings}")
+    global _active_resolver
+    _active_resolver = resolver
+    try:
+        doc = xacro.process_file(filepath, mappings=mappings)
+        print(f"[XACRO] Expansion completed successfully.")
+        return doc.toxml()
+    except Exception as e:
+        print(f"[XACRO] ERROR during expansion: {e}")
+        raise e
+    finally: _active_resolver = None
+
+
+# =================================================================
+# 4. AAS HELPERS
+# =================================================================
 class AssetManager:
     def __init__(self, assets_root):
         self.assets_root = os.path.abspath(assets_root)
-        self.files_to_upload = {} # local_path -> rel_path
+        self.files_to_upload = {}
+        self.exts = ['.stl', '.dae', '.obj', '.mtl', '.jpg', '.png', '.jpeg', '.yaml', '.json', '.txt', '.conf']
+        print(f"[ASSETS] AssetManager started at: {self.assets_root}")
 
-    def collect(self, filename, context_dir=None):
-        found = find_file_smart(self.assets_root, filename, context_dir)
-        if not found:
-            if not any(ext in filename.lower() for ext in ['.stl', '.dae', '.obj', '.jpg', '.png']): return None
-            print(f"   ⚠️  Faltou: {filename}")
+    def collect(self, filename, resolver):
+        if not filename: return None
+        print(f"[ASSETS] Collecting: {filename}")
+        found = resolver.resolve(filename)
+        if not found: 
+            print(f"   [ASSETS] WARNING: Failed to resolve '{filename}' for collection.")
             return None
-
         found = os.path.abspath(found)
-        if found in self.files_to_upload: return self.files_to_upload[found]
-
+        if found in self.files_to_upload: 
+            print(f"   [ASSETS] Already in cache: {self.files_to_upload[found]}")
+            return self.files_to_upload[found]
+        
         rel_path = os.path.relpath(found, self.assets_root).replace(os.sep, '/')
         self.files_to_upload[found] = rel_path
-        print(f"   [+] {rel_path}")
-
-        # Dependências internas
-        if found.lower().endswith(('.dae', '.obj', '.mtl')):
+        print(f"   [ASSETS] New asset: {found} -> {rel_path}")
+        
+        if found.lower().endswith(('.dae', '.obj', '.mtl', '.yaml')):
+            print(f"   [ASSETS] Analyzing dependencies of {os.path.basename(found)}...")
             try:
-                with open(found, 'r', errors='ignore') as f: content = f.read()
-                # Procurar texturas/materiais (init_from, mtllib, map_Kd)
-                refs = re.findall(r'<(?:init_from|texture|map_Kd|mtllib)[^>]*>\s*([^< \r\n]+)|(?:map_\w+|mtllib)\s+([^\s\r\n]+)', content)
+                with open(found, 'r', errors='ignore', encoding='utf-8') as f: content = f.read()
+                refs = re.findall(r'<(?:init_from|texture|map_Kd|mtllib)[^>]*>\s*([^< \r\n]+)|(?:map_\w+|mtllib|import)\s+([^\s\r\n]+)', content)
                 for r in refs:
                     ref = (r[0] or r[1]).strip()
-                    if ref: self.collect(ref, os.path.dirname(found))
-            except: pass
+                    if ref and any(ext in ref.lower() for ext in self.exts):
+                        print(f"      [ASSETS] Reference found: {ref}")
+                        self.collect(ref, resolver)
+            except Exception as e:
+                print(f"      [ASSETS] Error reading {found}: {e}")
         return rel_path
 
 class RobustFileRepo(dict):
     def get_content_type(self, fn): return mimetypes.guess_type(fn)[0] or "application/octet-stream"
     def add_file(self, n, c): self[n] = c
-    def get_sha256(self, fn): return hashlib.sha256(self[fn]).hexdigest() if fn in self else ""
     def write_file(self, fn, t): 
         if fn in self: t.write(self[fn])
+    def get_sha256(self, fn):
+        if fn in self:
+            return hashlib.sha256(self[fn]).hexdigest()
+        return ""
 
-def deploy_via_environment_api():
-    print(f"--- BaSyx Professional Twin Deployer ---")
-    robot_id = input("\nID do Robô: ").strip()
-    if not robot_id: return
-    px = input("   X: "); py = input("   Y: "); pz = input("   Z: ")
-    
-    urdf_path = get_path("file", "Seleciona o URDF")
-    assets_root = get_path("folder", "Seleciona a pasta ur_description")
-    if not urdf_path or not assets_root: return
+def sanitize_filename(name):
+    """Sanitizes a string for use as a filename, replacing spaces with hyphens."""
+    # Replace spaces with hyphens
+    res = re.sub(r'\s+', '-', name)
+    # Remove characters that are problematic for filenames
+    # Keep alphanumeric, hyphens, underscores, and dots
+    res = re.sub(r'[^a-zA-Z0-9\-\_\.]', '', res)
+    # Trim from start/end
+    return res.strip('-_ ')
 
-    manager = AssetManager(assets_root)
-    
-    print(f"\n[1/3] Rastreando Ativos...")
-    tree = ET.parse(urdf_path)
-    for elem in tree.getroot().iter():
-        for attr, val in elem.attrib.items():
-            if any(ext in val.lower() for ext in ['.stl', '.dae', '.obj', '.jpg', '.png']):
-                rel = manager.collect(val, os.path.dirname(urdf_path))
-                if rel: elem.set(attr, rel)
-    
-    urdf_bytes = io.BytesIO()
-    tree.write(urdf_bytes, encoding='utf-8', xml_declaration=True)
+def sanitize_aas_id(name):
+    """Ensures id_short follows AASConstraint AASd-002: [a-zA-Z][a-zA-Z0-9_]*"""
+    # Replace anything not alphanumeric or underscore with underscore
+    res = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+    # Remove multiple underscores
+    res = re.sub(r'_+', '_', res)
+    if not res: return "ELEMENT_ID"
+    # Must start with a letter
+    if not res[0].isalpha(): res = "ID_" + res
+    return res.strip('_')
 
-    # Criar AAS
-    shell = model.AssetAdministrationShell(
-        asset_information=model.AssetInformation(asset_kind=model.AssetKind.INSTANCE, global_asset_id=f"http://acplt.org/Assets/{robot_id}"),
-        id_=f"https://acplt.org/AAS_{robot_id}", id_short=robot_id
-    )
-    sm_geo = model.Submodel(id_=f"https://acplt.org/Submodels/Geo_{robot_id}", id_short="GeometryData")
-    sm_pos = model.Submodel(id_=f"https://acplt.org/Submodels/Pos_{robot_id}", id_short="PositionData")
-    for ax, v in [('X', px), ('Y', py), ('Z', pz)]:
-        sm_pos.submodel_element.add(model.Property(id_short=f"Pos_{ax}", value_type=model.datatypes.Double, value=float(v)))
+class DeployDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configure Digital Twin (BaSyx)")
+        layout = QVBoxLayout(self)
+        self.edit_id = QLineEdit("Robot_AAS"); layout.addWidget(QLabel("AAS ID (Letters, numbers, _, - and spaces):"))
+        layout.addWidget(self.edit_id)
+        row = QHBoxLayout()
+        self.ex = QLineEdit("0.0"); self.ey = QLineEdit("0.0"); self.ez = QLineEdit("0.0")
+        row.addWidget(QLabel("X:")); row.addWidget(self.ex)
+        row.addWidget(QLabel("Y:")); row.addWidget(self.ey)
+        row.addWidget(QLabel("Z:")); row.addWidget(self.ez)
+        layout.addLayout(row)
+        btn = QPushButton("🚀 Send to BaSyx"); btn.clicked.connect(self.validate_and_accept)
+        btn.setStyleSheet("background: #27ae60; color: white; padding: 10px; font-weight: bold;")
+        layout.addWidget(btn)
 
-    file_repo = RobustFileRepo()
-    u_fn = os.path.basename(urdf_path)
-    file_repo.add_file(f"/aasx/robot/{u_fn}", urdf_bytes.getvalue())
-    sm_geo.submodel_element.add(model.File(id_short="Main_URDF", value=f"/aasx/robot/{u_fn}", content_type="application/xml"))
-
-    for l_path, r_path in manager.files_to_upload.items():
-        aas_path = f"/aasx/robot/{r_path}"
-        with open(l_path, 'rb') as f: file_repo.add_file(aas_path, f.read())
+    def validate_and_accept(self):
+        rid = self.edit_id.text().strip()
+        if not rid: return QMessageBox.warning(self, "Validation Error", "AAS ID cannot be empty.")
+        # Relaxed validation for UI: allow letters, numbers, underscores, hyphens and spaces
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_\-\s]*$', rid):
+            return QMessageBox.warning(self, "Validation Error", "AAS ID must start with a letter and contain only letters, digits, underscores, hyphens, or spaces.")
         
-        # TRUQUE: O id_short guarda o caminho trocando / por _SL_
-        path_id = "PATH_" + r_path.replace("/", "_SL_").replace(".", "_DOT_")
-        sm_geo.submodel_element.add(model.File(id_short=path_id[:100], value=aas_path, content_type=mimetypes.guess_type(l_path)[0] or "application/octet-stream"))
+        for name, field in [("X", self.ex), ("Y", self.ey), ("Z", self.ez)]:
+            try:
+                float(field.text().replace(',', '.'))
+            except ValueError:
+                return QMessageBox.warning(self, "Validation Error", f"Coordinate {name} must be a valid number.")
+        
+        self.accept()
 
-    obj_store = model.DictObjectStore()
-    obj_store.add(shell); obj_store.add(sm_geo); obj_store.add(sm_pos)
-    shell.submodel.add(model.ModelReference.from_referable(sm_geo))
-    shell.submodel.add(model.ModelReference.from_referable(sm_pos))
+class DependencyDialog(QDialog):
+    def __init__(self, missing_files, resolver, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Missing Files")
+        self.setMinimumWidth(500)
+        self.resolver, self.missing = resolver, missing_files
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("<b>Files not found:</b>"))
+        self.list_widget = QListWidget()
+        for f in self.missing: self.list_widget.addItem(f"❌ {f}")
+        layout.addWidget(self.list_widget)
+        btn_add = QPushButton("📂 Add Folder"); btn_add.clicked.connect(self.add_folder)
+        self.btn_retry = QPushButton("Try Again"); self.btn_retry.setEnabled(False); self.btn_retry.clicked.connect(self.accept)
+        btn_layout = QHBoxLayout(); btn_layout.addWidget(btn_add); btn_layout.addWidget(self.btn_retry)
+        layout.addLayout(btn_layout)
 
-    # 3. GERAR E ENVIAR
-    aasx_folder = "aasx_packages"
-    os.makedirs(aasx_folder, exist_ok=True)
-    output_fn = os.path.join(aasx_folder, f"{robot_id}_Twin.aasx")
-    
-    print(f"\n[2/3] Gerando pacote AASX com {len(manager.files_to_upload)} ativos...")
-    with aasx.AASXWriter(output_fn) as writer:
-        writer.write_aas(shell.id, obj_store, file_repo, robot_id)
+    def add_folder(self):
+        path = QFileDialog.getExistingDirectory(self, "Folder")
+        if path:
+            self.resolver.add_search_path(path)
+            all_ok = True
+            for i in range(self.list_widget.count()):
+                it = self.list_widget.item(i)
+                orig = it.text().replace("❌ ", "").replace("✅ ", "")
+                if self.resolver.resolve(orig): it.setText(f"✅ {orig}"); it.setForeground(Qt.GlobalColor.green)
+                else: all_ok = False
+            if all_ok: self.btn_retry.setEnabled(True)
 
-    try:
-        with open(output_fn, 'rb') as f:
-            # Enviamos apenas o nome do ficheiro (sem o caminho da pasta) no multipart
-            res = requests.post(UPLOAD_URL, files={'file': (os.path.basename(output_fn), f, 'application/octet-stream')})
+class XacroArgsDialog(QDialog):
+    def __init__(self, args_info, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Xacro Variables")
+        self.setMinimumWidth(600)
+        self.results = {}
+        
+        main_layout = QVBoxLayout(self)
+        self.grid = QGridLayout()
+        self.grid.setSpacing(10)
+        
+        self.inputs = {}
+        # Organize in grid: 2 columns of inputs
+        cols = 2
+        for i, (name, default) in enumerate(args_info.items()):
+            row = i // cols
+            col_offset = (i % cols) * 2
+            
+            is_m = default is None
+            lbl = QLabel(f"<b>{name}</b>" + (" *" if is_m else ""))
+            if is_m: lbl.setStyleSheet("color: #e74c3c;")
+            
+            edit = QLineEdit()
+            if default: edit.setPlaceholderText(str(default))
+            edit.setMinimumWidth(120)
+            
+            self.inputs[name] = (edit, is_m)
+            self.grid.addWidget(lbl, row, col_offset)
+            self.grid.addWidget(edit, row, col_offset + 1)
+
+        main_layout.addLayout(self.grid)
+        
+        btn = QPushButton("Confirm Mappings"); btn.clicked.connect(self.accept_all)
+        btn.setStyleSheet("background: #2980b9; color: white; padding: 10px; font-weight: bold; margin-top: 10px;")
+        main_layout.addWidget(btn)
+
+    def accept_all(self):
+        for n, (e, m) in self.inputs.items():
+            v = e.text().strip()
+            if m and not v: return QMessageBox.warning(self, "Error", f"Variable '{n}' is mandatory!")
+            if v: self.results[n] = v
+        self.accept()
+
+class DependencyManager:
+    @staticmethod
+    def scan_xacro_args(filepath, resolver):
+        """
+        Scans for Xacro arguments and returns ONLY those that are actually used
+        in the robot description $(arg name).
+        """
+        all_defs = {}
+        all_text = ""
+        visited = set()
+        
+        def collect_recursive(fp):
+            nonlocal all_text
+            if fp in visited: return
+            visited.add(fp)
+            print(f"[DEP-MANAGER] Analyzing: {fp}")
+            try:
+                with open(fp, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    all_text += "\n" + content
+                    
+                    # 1. Capture definitions: <xacro:arg name="..." default="..." />
+                    for m in re.finditer(r'<xacro:arg\s+name=["\']([^"\']+)["\'](?:\s+default=["\']([^"\']+)["\'])?', content):
+                        name, default = m.group(1), m.group(2)
+                        
+                        # Resolve path macros in default values for better readability
+                        if default and '$(find ' in default:
+                            def replacer(match):
+                                pkg = match.group(1)
+                                res = resolver.resolve(f"$(find {pkg})") or f"[{pkg}]"
+                                return res
+                            default = re.sub(r'\$\(find ([^)]+)\)', replacer, default)
+                        
+                        all_defs[name] = default
+
+                    # 2. Recurse into includes
+                    for inc in re.findall(r'<xacro:include\s+filename=["\']([^"\']+)["\']', content):
+                        res = resolver.resolve(inc)
+                        if res: collect_recursive(res)
+            except Exception as e:
+                print(f"   [DEP-MANAGER] Error reading {fp}: {e}")
+
+        collect_recursive(filepath)
+        
+        # 3. Filter: Only keep args that are actually referenced in the combined code
+        # Pattern: $(arg name) or some variations with spaces
+        used_names = set(re.findall(r'\$\(arg\s+([^)]+)\)', all_text))
+        
+        filtered_args = {k: v for k, v in all_defs.items() if k in used_names}
+        print(f"[DEP-MANAGER] Found {len(all_defs)} definitions, {len(filtered_args)} are actually used.")
+        return filtered_args
+
+    @staticmethod
+    def scan_meshes(xml_text):
+        meshes = list(set(re.findall(r'<mesh\s+filename=["\']([^"\']+)["\']', xml_text)))
+        print(f"[DEP-MANAGER] Meshes detected in XML: {len(meshes)}")
+        return meshes
+
+    @staticmethod
+    def check_recursive_xacro(filepath, resolver, visited=None):
+        if visited is None: visited = set()
+        if filepath in visited: return []
+        visited.add(filepath)
+        missing = []
+        print(f"[DEP-MANAGER] Recursive Xacro check: {filepath}")
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f: content = f.read()
+            for inc in re.findall(r'<xacro:include\s+filename=["\']([^"\']+)["\']', content):
+                res = resolver.resolve(inc)
+                if not res: 
+                    print(f"   [DEP-MANAGER] MISSING: {inc}")
+                    missing.append(inc)
+                else: missing.extend(DependencyManager.check_recursive_xacro(res, resolver, visited))
+        except Exception as e:
+            print(f"   [DEP-MANAGER] Error verifying {filepath}: {e}")
+        return list(set(missing))
+
+
+# =================================================================
+# 5. MAIN APP
+# =================================================================
+class RobotStudioPro(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("AAS Robot Studio - Pro")
+        self.robot = None
+        self.resolver = None
+        self.mesh_actors = {}
+        self.show_degrees = False
+        self.current_urdf_xml = None
+        self.current_urdf_path = None
+        self.global_matrix = np.eye(4)
+        
+        # Smooth Motion State
+        self.current_joint_state = {}
+        self.target_joint_state = {}
+        self.anim_timer = QTimer()
+        self.anim_timer.timeout.connect(self._smooth_update)
+        self.anim_timer.start(10) # 100Hz for maximum fluidity
+        
+        self._setup_ui()
+        self.showMaximized()
+        print("[APP] RobotStudioPro initialized.")
+
+    def _smooth_update(self):
+        if not self.robot or not self.target_joint_state: return
+        
+        changed = False
+        # Factor 0.4: Responsive drag, smooth Lerp damping
+        lerp_factor = 0.4 
+        
+        for name in list(self.target_joint_state.keys()):
+            target = self.target_joint_state[name]
+            current = self.current_joint_state.get(name, 0.0)
+            diff = target - current
+            
+            if abs(diff) > 0.0001:
+                self.current_joint_state[name] = current + (diff * lerp_factor)
+                changed = True
+            else:
+                self.current_joint_state[name] = target
+        
+        if changed:
+            self.update_robot_visuals()
+            self.plotter.update() # Ultra-fast incremental update
+
+    def update_robot_visuals(self, active=None):
+        if not self.robot: return
+        # FK calculated using the interpolated state
+        fk = self.robot.visual_geometry_fk(cfg=self.current_joint_state)
+        for obj, trans in fk.items():
+            if obj in self.mesh_actors:
+                for a in self.mesh_actors[obj]:
+                    a.user_matrix = self.global_matrix @ trans
+                    if active and active.lower() in str(obj).lower():
+                        a.GetProperty().SetEdgeVisibility(True); a.GetProperty().SetEdgeColor(0,1,1)
+                    else: a.GetProperty().SetEdgeVisibility(False)
+
+    def _setup_ui(self):
+        self.setStyleSheet("""
+            QMainWindow { background-color: #0f0f0f; }
+            QFrame#Sidebar { 
+                background-color: #161616; 
+                border-right: 1px solid #222; 
+            }
+            QPushButton { 
+                background-color: #252525; 
+                color: #e0e0e0; 
+                border: 1px solid #333;
+                border-radius: 6px; 
+                padding: 8px; 
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton:hover { background-color: #303030; border-color: #444; }
+            QPushButton#ActionBtn { background-color: #2980b9; color: white; border: none; font-weight: bold; }
+            QPushButton#ActionBtn:hover { background-color: #3498db; }
+            QPushButton#ImportBtn { background-color: #d35400; color: white; border: none; font-weight: bold; }
+            QPushButton#ImportBtn:hover { background-color: #e67e22; }
+            
+            QLabel { color: #888; font-family: 'Segoe UI'; font-size: 11px; }
+            QLineEdit { 
+                background-color: #1a1a1a; 
+                color: #3498db; 
+                border: 1px solid #333; 
+                padding: 2px; 
+                border-radius: 3px; 
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QSlider::groove:horizontal {
+                border: 1px solid #222;
+                height: 3px;
+                background: #222;
+                border-radius: 1px;
+            }
+            QSlider::handle:horizontal {
+                background: #3498db;
+                border: 1px solid #3498db;
+                width: 10px;
+                height: 10px;
+                margin: -4px 0;
+                border-radius: 5px;
+            }
+            QScrollArea { border: none; background: transparent; }
+        """)
+
+        central = QWidget(); self.setCentralWidget(central)
+        layout = QHBoxLayout(central); layout.setContentsMargins(0,0,0,0); layout.setSpacing(0)
+        
+        side = QFrame(); side.setObjectName("Sidebar"); side.setFixedWidth(400)
+        self.side_layout = QVBoxLayout(side); self.side_layout.setContentsMargins(15,15,15,15); self.side_layout.setSpacing(12)
+        
+        # --- TOP: FILE ACTIONS ---
+        header = QLabel("ROBOT SOURCE"); header.setStyleSheet("color: #555; font-weight: bold; letter-spacing: 1.5px;")
+        self.side_layout.addWidget(header)
+        
+        btn_load = QPushButton("📂  Open Local Folder"); btn_load.clicked.connect(self.load_robot); self.side_layout.addWidget(btn_load)
+        
+        self.btn_import = QPushButton("📥  Import from BaSyx"); self.btn_import.setObjectName("ImportBtn")
+        self.btn_import.clicked.connect(self.import_from_basyx); self.side_layout.addWidget(self.btn_import)
+
+        line = QFrame(); line.setFrameShape(QFrame.Shape.HLine); line.setStyleSheet("color: #222;"); self.side_layout.addWidget(line)
+
+        # --- MIDDLE: JOINT CONTROL (SCROLLABLE) ---
+        row_tools = QHBoxLayout()
+        header_joints = QLabel("ARTICULATIONS"); header_joints.setStyleSheet("color: #555; font-weight: bold; letter-spacing: 1.5px;")
+        row_tools.addWidget(header_joints); row_tools.addStretch()
+        
+        self.unit_toggle = QPushButton("Rad"); self.unit_toggle.setFixedWidth(40); self.unit_toggle.setCheckable(True)
+        self.unit_toggle.clicked.connect(self.toggle_units); row_tools.addWidget(self.unit_toggle)
+        self.side_layout.addLayout(row_tools)
+
+        self.slider_area = QVBoxLayout()
+        self.slider_area.setSpacing(4) # Ultra tight spacing
+        slider_container = QWidget(); slider_container.setLayout(self.slider_area)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(slider_container)
+        self.side_layout.addWidget(scroll)
+
+        # --- BOTTOM: AAS & STATUS ---
+        line2 = QFrame(); line2.setFrameShape(QFrame.Shape.HLine); line2.setStyleSheet("color: #222;"); self.side_layout.addWidget(line2)
+        
+        btn_reset = QPushButton("🏠 Reset Pose"); btn_reset.clicked.connect(self.reset_pose); self.side_layout.addWidget(btn_reset)
+        
+        self.btn_aas = QPushButton("🚀  GENERATE DIGITAL TWIN (AAS)"); self.btn_aas.setObjectName("ActionBtn")
+        self.btn_aas.setFixedHeight(40)
+        self.btn_aas.clicked.connect(self.deploy_aas); self.btn_aas.setEnabled(False); self.side_layout.addWidget(self.btn_aas)
+
+        self.lbl_info = QLabel("Status: Ready"); self.lbl_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.side_layout.addWidget(self.lbl_info)
+        
+        # 3D Plotter
+        self.plotter = BackgroundPlotter(show=False)
+        self.plotter.set_background("#080808", top="#121212") 
+        self.plotter.add_axes(color='white') # White axes labels
+        self.plotter.enable_shadows(); self.plotter.enable_eye_dome_lighting()
+        
+        # Lock Z axis and initial camera setup
+        self.plotter.enable_terrain_style(mouse_wheel_zooms=True)
+        self.plotter.camera.focal_point = (0, 0, 0)
+        self.plotter.camera.position = (3, 3, 2)
+        self.plotter.camera.up = (0, 0, 1)
+        
+        layout.addWidget(side); layout.addWidget(self.plotter.interactor)
+
+    def reset_pose(self):
+        print("[APP] Resetting pose...")
+        if not self.robot: return
+        for sld in self.joint_sliders.values(): sld.setValue(0)
+        self.update_robot()
+
+    def load_robot(self):
+        path = QFileDialog.getExistingDirectory(self, "Folder")
+        if not path: return
+        self.current_robot_root = path
+        self.global_matrix = np.eye(4) # Reset global pos on local load
+        print(f"\n[LOAD] Initializing load from: {path}")
+        self.resolver = XacroResolver(path)
+        candidates = sorted(list(set([f for f in self.resolver.file_map.values() if f.lower().endswith(('.urdf', '.xacro'))])))
+        
+        if not candidates: 
+            return QMessageBox.warning(self, "Error", "No URDF/Xacro found in directory!")
+        
+        target = candidates[0]
+        if len(candidates) > 1:
+            item, ok = QInputDialog.getItem(self, "Choose", "Primary File?", [os.path.basename(c) for c in candidates], 0, False)
+            if ok: target = [c for c in candidates if os.path.basename(c) == item][0]
+            else: return
+        
+        try:
+            mappings = {"ur_type": "ur3e", "name": "ur"} # Defaults
+            
+            if target.lower().endswith('.xacro'):
+                # 1. CLEAN & RESOLVE: Check dependencies BEFORE asking for args
+                print("[LOAD] Verifying dependencies...")
+                while True:
+                    missing = DependencyManager.check_recursive_xacro(target, self.resolver)
+                    if missing:
+                        print(f"   [LOAD] Found {len(missing)} missing includes.")
+                        if DependencyDialog(missing, self.resolver, self).exec() == QDialog.DialogCode.Accepted:
+                            continue # Check again after adding folder
+                        else: return # User cancelled
+                    break
+                
+                # 2. VALIDATE: Check if it's a valid assembly or just a macro library
+                with open(target, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    is_pure_macro = "<xacro:macro" in content and "<link" not in content and "<joint" not in content
+                    # Simple heuristic: if it has macros but no links/joints and doesn't call a macro, it's likely a library
+                    if is_pure_macro and not re.search(r'<xacro:[^m][^a][^c][^r][^o]', content):
+                        print("[LOAD] WARNING: Selected file appears to be a Macro library, not a Robot assembly.")
+                        res = QMessageBox.question(self, "Macro File Detected", 
+                            "This file seems to contain only Macro definitions, not a full Robot.\n\n"
+                            "Are you sure you want to proceed? (It might result in an empty visualization)",
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                        if res == QMessageBox.StandardButton.No: return
+
+                # 3. SCAN: Now that we have all files, scan for ONLY used arguments
+                print("[LOAD] Scanning for used Xacro arguments...")
+                args = DependencyManager.scan_xacro_args(target, self.resolver)
+                if args:
+                    dlg = XacroArgsDialog(args, self)
+                    if dlg.exec() == QDialog.DialogCode.Accepted:
+                        mappings.update(dlg.results)
+                    else: return
+                
+                print("[LOAD] Expanding Xacro...")
+                xml_text = expand_xacro_final(target, mappings, self.resolver)
+            else:
+                with open(target, 'r', encoding='utf-8') as f: xml_text = f.read()
+
+            self.current_urdf_xml, self.current_urdf_path = xml_text, target
+            root = ET.fromstring(xml_text)
+            
+            # URDF Post-processing
+            if 'name' not in root.attrib: root.set('name', os.path.basename(target).split('.')[0])
+            for trans in root.findall(".//transmission"): root.remove(trans)
+            
+            print("[LOAD] Resolving mesh paths in URDF...")
+            for m_tag in root.findall(".//mesh"):
+                fn = m_tag.get("filename")
+                real = self.resolver.resolve(fn)
+                if real: m_tag.set("filename", real)
+            
+            temp = os.path.join(path, "_compiled.urdf")
+            with open(temp, "w", encoding='utf-8') as f: f.write(ET.tostring(root, encoding='unicode'))
+            
+            try:
+                print("[LOAD] Parsing final URDF...")
+                self.robot = URDF.load(temp)
+                self._build_view(); self._create_sliders()
+                self.lbl_info.setText(f"✓ {self.robot.name}"); self.btn_aas.setEnabled(True)
+            except ValueError as ve:
+                if "Link" in str(ve):
+                    QMessageBox.warning(self, "Empty Robot", 
+                        "The resulting URDF contains no Links.\n\n"
+                        "Please verify if you selected the correct entry file (e.g., 'ur.urdf.xacro' instead of 'ur_macro.xacro').")
+                else: raise ve
+        except Exception as e: 
+            print(f"[LOAD] ERROR: {e}")
+            traceback.print_exc()
+            QMessageBox.critical(self, "Load Failed", f"Critical error while loading robot:\n{str(e)}")
+
+    def _b64(self, s):
+        import base64
+        return base64.urlsafe_b64encode(s.encode()).decode().rstrip('=')
+
+    def import_from_basyx(self):
+        print("\n" + "="*50 + "\n[IMPORT] STARTING BASYX IMPORT\n" + "="*50)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            reg_res = requests.get("http://localhost:8082/shell-descriptors", timeout=5).json()
+            shells = reg_res if isinstance(reg_res, list) else reg_res.get("result", [])
+            QApplication.restoreOverrideCursor()
+            if not shells: return QMessageBox.information(self, "BaSyx", "Registry empty.")
+            
+            options = [f"{s['idShort']} ({s['id']})" for s in shells if 'id' in s]
+            choice, ok = QInputDialog.getItem(self, "BaSyx Explorer", "Robot:", options, 0, False)
+            if not ok: return
+            
+            sel_id = choice.split('(')[-1].rstrip(')')
+            sel_short = choice.split(' (')[0].strip()
+            
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            cache_dir = os.path.abspath(os.path.join("aas_cache", sel_short))
+            os.makedirs(cache_dir, exist_ok=True)
+            
+            repo_url = "http://localhost:8081"
+            res_shell = requests.get(f"{repo_url}/shells/{self._b64(sel_id)}").json()
+            sm_refs = res_shell.get("submodels", [])
+            
+            geo_id, pos_id = None, None
+            for r in sm_refs:
+                sid = r["keys"][0]["value"]
+                s_data = requests.get(f"{repo_url}/submodels/{self._b64(sid)}").json()
+                idS = s_data.get("idShort")
+                if idS == "GeometryData": geo_id = sid
+                if idS == "PositionData": pos_id = sid
+            
+            if not geo_id: raise Exception("GeometryData missing!")
+
+            def dl_elems(url, tdir):
+                items = requests.get(f"{url}/submodel-elements").json()
+                if not isinstance(items, list): items = items.get("result", [])
+                for el in items:
+                    idS = el.get("idShort", "")
+                    if el.get("modelType") == "File":
+                        rel = idS.replace("PATH_", "").replace("_SL_", "/").replace("_DOT_", ".")
+                        if rel == "Main_URDF": rel = "robot.urdf"
+                        elif not any(x in rel for x in ['.urdf', '.stl', '.dae', '.obj', '.png', '.jpg']): rel += ".urdf"
+                        dest = os.path.join(tdir, rel)
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
+                        down = requests.get(f"{url}/submodel-elements/{idS}/attachment")
+                        with open(dest, "wb") as f: f.write(down.content)
+                    elif el.get("modelType") == "SubmodelElementCollection":
+                        dl_elems(f"{url}/submodel-elements/{idS}", tdir)
+
+            dl_elems(f"{repo_url}/submodels/{self._b64(geo_id)}", cache_dir)
+            urdf_path = None
+            for r, d, fs in os.walk(cache_dir):
+                for f in fs:
+                    if f.lower().endswith(".urdf") and not f.startswith("_"):
+                        urdf_path = os.path.abspath(os.path.join(r, f))
+                        break
+            
+            if not urdf_path: raise Exception(f"URDF not found in {cache_dir}")
+            self.current_robot_root = cache_dir
+            self.current_urdf_path = urdf_path
+            with open(urdf_path, 'r', encoding='utf-8') as f: self.current_urdf_xml = f.read()
+            self.resolver = XacroResolver(cache_dir)
+            self.robot = URDF.load(urdf_path)
+            self._build_view(); self._create_sliders()
+            
+            pos = [0,0,0]
+            if pos_id:
+                p_items = requests.get(f"{repo_url}/submodels/{self._b64(pos_id)}/submodel-elements").json()
+                if not isinstance(p_items, list): p_items = p_items.get("result", [])
+                for pi in p_items:
+                    k = pi["idShort"].upper()
+                    try:
+                        v = float(pi["value"])
+                        if "X" in k: pos[0] = v
+                        elif "Y" in k: pos[1] = v
+                        elif "Z" in k: pos[2] = v
+                    except: pass
+            
+            self.global_matrix = trimesh.transformations.translation_matrix(pos)
+            self.update_robot() # Apply matrix via update_robot
+            
+            # Update camera for new base
+            base_pos = self.global_matrix[:3, 3]
+            self.plotter.camera.focal_point = base_pos
+            self.plotter.camera.position = base_pos + np.array([3.0, 3.0, 2.0])
+            self.plotter.camera_set = True # Prevent reset on first zoom
+            
+            self.lbl_info.setText(f"✓ {sel_short} (Synced)")
+            QApplication.restoreOverrideCursor()
+            print("[IMPORT] Import completed successfully.")
+            QMessageBox.information(self, "Success", "Imported!")
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            traceback.print_exc(); QMessageBox.critical(self, "Error", str(e))
+
+    def deploy_aas(self):
+        if not self.robot or not self.current_urdf_xml: return
+        dlg = DeployDialog(self)
+        if dlg.exec() != QDialog.DialogCode.Accepted: return
+        
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.btn_aas.setEnabled(False); self.btn_aas.setText("⏳...")
+        try:
+            rid_raw = dlg.edit_id.text().strip()
+            rid_fn = sanitize_filename(rid_raw)
+            rid_aas = sanitize_aas_id(rid_raw)
+            px, py, pz = dlg.ex.text(), dlg.ey.text(), dlg.ez.text()
+            
+            # Use the selected robot folder as the root for all relative paths
+            assets_root = self.current_robot_root
+            manager = AssetManager(assets_root)
+            
+            # Force the URDF to be at the root of the robot folder inside the AAS
+            # This avoids "../" paths for meshes, which Unity blocks for security
+            urdf_filename = os.path.basename(self.current_urdf_path)
+            if urdf_filename.lower().endswith('.xacro'):
+                urdf_filename = re.sub(r'\.xacro$', '', urdf_filename, flags=re.IGNORECASE)
+            if not urdf_filename.lower().endswith('.urdf'):
+                urdf_filename += '.urdf'
+            urdf_rel_path = urdf_filename
+            
+            tree = ET.fromstring(self.current_urdf_xml)
+            for elem in tree.iter():
+                for attr, val in elem.attrib.items():
+                    if any(ext in val.lower() for ext in ['.stl', '.dae', '.obj', '.jpg', '.png']):
+                        # manager.collect returns path relative to assets_root
+                        rel = manager.collect(val, self.resolver)
+                        if rel:
+                            # URDF is at root, so path to mesh is just 'rel'
+                            elem.set(attr, rel)
+            
+            urdf_bytes = io.BytesIO()
+            ET.ElementTree(tree).write(urdf_bytes, encoding='utf-8', xml_declaration=True)
+            
+            shell = model.AssetAdministrationShell(
+                asset_information=model.AssetInformation(asset_kind=model.AssetKind.INSTANCE, global_asset_id=f"http://acplt.org/Assets/{rid_fn}"),
+                id_=f"https://acplt.org/AAS_{rid_fn}", id_short=rid_aas
+            )
+            sm_geo = model.Submodel(id_=f"https://acplt.org/Submodels/Geo_{rid_fn}", id_short="GeometryData")
+            sm_pos = model.Submodel(id_=f"https://acplt.org/Submodels/Pos_{rid_fn}", id_short="PositionData")
+            
+            for ax, v in [('X', px), ('Y', py), ('Z', pz)]:
+                sm_pos.submodel_element.add(model.Property(id_short=f"Pos_{ax}", value_type=model.datatypes.Double, value=float(v.replace(',', '.'))))
+            
+            file_repo = RobustFileRepo()
+            
+            # Save URDF at root: /aasx/robot/robot_name.urdf
+            aas_urdf_path = posixpath.normpath(posixpath.join("/aasx/robot", urdf_rel_path))
+            file_repo.add_file(aas_urdf_path, urdf_bytes.getvalue())
+            urdf_id = sanitize_aas_id("PATH_" + urdf_rel_path.replace("/", "_SL_").replace(".", "_DOT_").replace("-", "_DASH_"))
+            sm_geo.submodel_element.add(model.File(id_short=urdf_id[:100], value=aas_urdf_path, content_type="application/xml"))
+
+            for l_path, r_path in manager.files_to_upload.items():
+                aas_path = posixpath.normpath(posixpath.join("/aasx/robot", r_path))
+                # Skip if it's the URDF we already added (though collect usually only finds meshes)
+                if aas_path == aas_urdf_path: continue
+                
+                with open(l_path, 'rb') as f: file_repo.add_file(aas_path, f.read())
+                pid = sanitize_aas_id("PATH_" + r_path.replace("/", "_SL_").replace(".", "_DOT_").replace("-", "_DASH_"))
+                sm_geo.submodel_element.add(model.File(id_short=pid[:100], value=aas_path, content_type=mimetypes.guess_type(l_path)[0] or "application/octet-stream"))
+
+            obj_store = model.DictObjectStore()
+            obj_store.add(shell); obj_store.add(sm_geo); obj_store.add(sm_pos)
+            shell.submodel.add(model.ModelReference.from_referable(sm_geo))
+            shell.submodel.add(model.ModelReference.from_referable(sm_pos))
+            
+            os.makedirs("aasx_packages", exist_ok=True)
+            out_fn = os.path.join("aasx_packages", f"{rid_fn}_Twin.aasx")
+            with aasx.AASXWriter(out_fn) as writer: writer.write_aas(shell.id, obj_store, file_repo, rid_aas)
+            
+            res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out_fn), open(out_fn, 'rb'), 'application/octet-stream')})
             if res.status_code in [200, 201, 204]:
-                print(f"   ✅ Digital Twin pronto!")
-                requests.post(AAS_REGISTRY_URL, json={
+                requests.post("http://localhost:8082/shell-descriptors", json={
                     "id": shell.id, "idShort": shell.id_short, "assetKind": "Instance",
                     "globalAssetId": shell.asset_information.global_asset_id,
-                    "submodelDescriptors": [{"idShort": sm.id_short, "id": sm.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"{BASE_URL}/submodels/{sm.id}", "endpointProtocol": "HTTP"}}]} for sm in [sm_geo, sm_pos]],
-                    "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"{BASE_URL}/shells/{shell.id}", "endpointProtocol": "HTTP"}}]
+                    "submodelDescriptors": [{"idShort": sm.id_short, "id": sm.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{sm.id}", "endpointProtocol": "HTTP"}}]} for sm in [sm_geo, sm_pos]],
+                    "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]
                 })
-    except Exception as e: print(f"   ❌ Erro: {e}")
+                QApplication.restoreOverrideCursor()
+                print("[DEPLOY] AAS created and registered successfully.")
+                QMessageBox.information(self, "Success", "AAS Created!")
+            else:
+                raise Exception(f"Upload failed ({res.status_code})")
+        except Exception as e: 
+            QApplication.restoreOverrideCursor()
+            traceback.print_exc(); QMessageBox.critical(self, "Error", str(e))
+        finally:
+            while QApplication.overrideCursor() is not None: QApplication.restoreOverrideCursor()
+            self.btn_aas.setEnabled(True); self.btn_aas.setText("🤖 Create AAS Digital Twin")
+
+    def _build_view(self):
+        print("[VIEW] Building 3D visualization...")
+        self.plotter.clear(); self.mesh_actors = {}; self.plotter.add_axes(color='white')
+        fk = self.robot.visual_geometry_fk(); all_pts = []
+        for obj, transform in fk.items():
+            geom = obj.geometry if hasattr(obj, 'geometry') else obj
+            col = [0.7,0.7,0.7]
+            if hasattr(obj, 'material') and obj.material and obj.material.color is not None:
+                col = np.array(obj.material.color[:3]).astype(float)
+                if col.max() > 1.01: col /= 255.0
+            
+            for mesh in geom.meshes:
+                all_pts.append(trimesh.transformations.transform_points(mesh.vertices, transform))
+                pv_mesh = pv.PolyData(mesh.vertices, np.column_stack([np.full(len(mesh.faces), 3), mesh.faces]))
+                actor = None
+                if hasattr(mesh, 'visual') and mesh.visual:
+                    try:
+                        mat = getattr(mesh.visual, 'material', None)
+                        if mat:
+                            img = getattr(mat, 'image', getattr(mat, 'baseColorTexture', getattr(mat, 'base_color_texture', None)))
+                            if img:
+                                pv_mesh.texture_map_coords = mesh.visual.uv
+                                actor = self.plotter.add_mesh(pv_mesh, texture=pv.numpy_to_texture(np.array(img)), smooth_shading=True)
+                            if not actor:
+                                pbr = getattr(mat, 'baseColorFactor', getattr(mat, 'base_color_factor', None))
+                                if pbr is not None:
+                                    c2 = np.array(pbr[:3]).astype(float)
+                                    if c2.max() > 1.01: c2 /= 255.0
+                                    actor = self.plotter.add_mesh(pv_mesh, color=c2, smooth_shading=True, specular=0.5)
+                        if not actor and hasattr(mesh.visual, 'vertex_colors'):
+                            c3 = mesh.visual.vertex_colors[:, :3].astype(float)
+                            if c3.max() > 1.01: c3 /= 255.0
+                            pv_mesh.point_data['colors'] = c3
+                            actor = self.plotter.add_mesh(pv_mesh, scalars='colors', rgb=True, preference='point', smooth_shading=True)
+                    except Exception as e: pass
+                
+                if not actor: actor = self.plotter.add_mesh(pv_mesh, color=col, smooth_shading=True, specular=0.5, ambient=0.2)
+                actor.user_matrix = self.global_matrix @ transform
+                if obj not in self.mesh_actors: self.mesh_actors[obj] = []
+                self.mesh_actors[obj].append(actor)
+        
+        if all_pts:
+            # Pivot at real robot base (world)
+            base_pos = self.global_matrix[:3, 3]
+            self.plotter.camera.focal_point = base_pos
+            self.plotter.camera.position = base_pos + np.array([3.0, 3.0, 2.0])
+            self.plotter.camera.up = (0, 0, 1)
+            self.plotter.camera.reset_clipping_range()
+            self.plotter.camera_set = True # Lock auto-resets
+            self.plotter.render()
+
+    def _clear_layout(self, layout):
+        if not layout: return
+        while layout.count():
+            it = layout.takeAt(0)
+            widget = it.widget()
+            if widget:
+                widget.setParent(None); widget.deleteLater()
+            else:
+                sub_layout = it.layout()
+                if sub_layout: self._clear_layout(sub_layout)
+
+    def _create_sliders(self):
+        self._clear_layout(self.slider_area)
+        self.joint_sliders, self.joint_inputs = {}, {}
+        for j in self.robot.actuated_joints:
+            low = j.limit.lower if j.limit and j.limit.lower is not None else -math.pi
+            high = j.limit.upper if j.limit and j.limit.upper is not None else math.pi
+            
+            # Compact Row: Label | Slider | Input
+            row = QHBoxLayout()
+            row.setSpacing(10)
+            
+            lbl = QLabel(f"<b>{j.name}</b>")
+            lbl.setFixedWidth(110)
+            
+            sld = QSlider(Qt.Orientation.Horizontal)
+            sld.setRange(int(low * 100), int(high * 100)); sld.setValue(0)
+            
+            val_input = QLineEdit("0.00"); val_input.setFixedWidth(55); val_input.setAlignment(Qt.AlignmentFlag.AlignRight)
+            
+            self.joint_sliders[j.name], self.joint_inputs[j.name] = sld, val_input
+            sld.valueChanged.connect(lambda v, name=j.name: self.sync_slider_to_input(name))
+            val_input.editingFinished.connect(lambda name=j.name: self.sync_input_to_slider(name))
+            
+            row.addWidget(lbl); row.addWidget(sld); row.addWidget(val_input)
+            self.slider_area.addLayout(row)
+
+    def sync_slider_to_input(self, name):
+        val = self.joint_sliders[name].value() / 100.0
+        self.joint_inputs[name].setText(f"{math.degrees(val):.1f}" if self.show_degrees else f"{val:.2f}")
+        self.target_joint_state[name] = val 
+
+    def sync_input_to_slider(self, name):
+        try:
+            txt = self.joint_inputs[name].text().replace(',', '.')
+            val = float(txt)
+            rad = math.radians(val) if self.show_degrees else val
+            sld = self.joint_sliders[name]; iv = int(rad * 100)
+            sld.setValue(max(sld.minimum(), min(sld.maximum(), iv)))
+        except: self.sync_slider_to_input(name)
+
+    def toggle_units(self):
+        self.show_degrees = not self.show_degrees
+        self.unit_toggle.setText("Deg" if self.show_degrees else "Rad")
+        for n in self.joint_sliders: self.sync_slider_to_input(n)
+
+    def update_robot(self, active=None):
+        self.update_robot_visuals(active)
 
 if __name__ == "__main__":
-    deploy_via_environment_api()
+    app = QApplication(sys.argv)
+    window = RobotStudioPro(); window.show()
+    sys.exit(app.exec())

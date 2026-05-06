@@ -1,0 +1,88 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--header-height);
+  padding: 0 var(--space-4);
+  background-color: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-primary);
+  user-select: none;
+}
+
+.brandIcon {
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+}
+
+.brandTitle {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.separator {
+  width: 1px;
+  height: 16px;
+  background-color: var(--color-border-default);
+  margin: 0 var(--space-1);
+}
+
+.robotName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+}
+
+/* 로딩 펄스 애니메이션 */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.loadingDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-accent);
+  animation: pulse 1.2s ease-in-out infinite;
+  margin-left: var(--space-1);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.divider {
+  width: 1px;
+  height: 16px;
+  background-color: var(--color-border-default);
+}
+
+.githubLink {
+  display: flex;
+  align-items: center;
+  color: var(--color-text-tertiary);
+  transition: color 150ms ease-out;
+}
+
+.githubLink:hover {
+  color: var(--color-text-primary);
+}
