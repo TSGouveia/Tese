@@ -619,10 +619,10 @@ public class BaSyxManager : MonoBehaviour
     string Base64Url(string i) => Convert.ToBase64String(Encoding.UTF8.GetBytes(i)).Replace("+", "-").Replace("/", "_").TrimEnd('=');
     string FindUrdfFile(string dir) 
     { 
-        // 1. Procurar por ficheiros que terminem em .urdf ou .xacro
+        // 1. Procurar por ficheiros que terminem em .urdf ou .urdf.xacro
         var fs = Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories)
                 .Where(f => f.EndsWith(".urdf", StringComparison.OrdinalIgnoreCase) || 
-                            f.EndsWith(".xacro", StringComparison.OrdinalIgnoreCase))
+                            f.EndsWith(".urdf.xacro", StringComparison.OrdinalIgnoreCase))
                 .ToArray();
 
         if (fs.Length == 0) return null;
