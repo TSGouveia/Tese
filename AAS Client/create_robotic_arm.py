@@ -600,11 +600,11 @@ class RobotStudioPro(QMainWindow):
     def load_robot(self):
         path = QFileDialog.getExistingDirectory(self, "Folder")
         if not path: return
-        self.current_robot_root = path
+        self.current_robot_root = path  
         self.global_matrix = np.eye(4) # Reset global pos on local load
         print(f"\n[LOAD] Initializing load from: {path}")
         self.resolver = XacroResolver(path)
-        candidates = sorted(list(set([f for f in self.resolver.file_map.values() if f.lower().endswith(('.urdf', '.xacro'))])))
+        candidates = sorted(list(set([f for f in self.resolver.file_map.values() if f.lower().endswith('.urdf') or f.lower().endswith('.urdf.xacro')])))
         
         if not candidates: 
             return QMessageBox.warning(self, "Error", "No URDF/Xacro found in directory!")
