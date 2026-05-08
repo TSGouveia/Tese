@@ -246,11 +246,11 @@ def sanitize_aas_id(name):
     return res.strip('_')
 
 class DeployDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, default_id="Robot_AAS"):
         super().__init__(parent)
         self.setWindowTitle("Configure Digital Twin (BaSyx)")
         layout = QVBoxLayout(self)
-        self.edit_id = QLineEdit("Robot_AAS"); layout.addWidget(QLabel("AAS ID (Letters, numbers, _, - and spaces):"))
+        self.edit_id = QLineEdit(default_id); layout.addWidget(QLabel("AAS ID (Letters, numbers and _ only):"))
         layout.addWidget(self.edit_id)
         row = QHBoxLayout()
         self.ex = QLineEdit("0.0"); self.ey = QLineEdit("0.0"); self.ez = QLineEdit("0.0")
@@ -265,9 +265,15 @@ class DeployDialog(QDialog):
     def validate_and_accept(self):
         rid = self.edit_id.text().strip()
         if not rid: return QMessageBox.warning(self, "Validation Error", "AAS ID cannot be empty.")
-        # Relaxed validation for UI: allow letters, numbers, underscores, hyphens and spaces
-        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_\-\s]*$', rid):
-            return QMessageBox.warning(self, "Validation Error", "AAS ID must start with a letter and contain only letters, digits, underscores, hyphens, or spaces.")
+        
+        # Strict validation: Start with letter, only letters, numbers and underscores. No spaces or hyphens.
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', rid):
+            return QMessageBox.warning(self, "Validation Error", 
+                "Invalid AAS ID!\n\n"
+                "The ID must:\n"
+                "- Start with a letter\n"
+                "- Contain only letters, numbers, and underscores (_)\n"
+                "- NOT contain spaces, hyphens, or special characters.")
         
         for name, field in [("X", self.ex), ("Y", self.ey), ("Z", self.ez)]:
             try:
@@ -791,15 +797,15 @@ class RobotStudioPro(QMainWindow):
 
     def deploy_aas(self):
         if not self.robot or not self.current_urdf_xml: return
-        dlg = DeployDialog(self)
+        dlg = DeployDialog(self, default_id=self.robot.name)
         if dlg.exec() != QDialog.DialogCode.Accepted: return
         
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self.btn_aas.setEnabled(False); self.btn_aas.setText("⏳...")
         try:
             rid_raw = dlg.edit_id.text().strip()
-            rid_fn = sanitize_filename(rid_raw)
-            rid_aas = sanitize_aas_id(rid_raw)
+            rid_fn = rid_raw
+            rid_aas = rid_raw
             px, py, pz = dlg.ex.text(), dlg.ey.text(), dlg.ez.text()
             
             # Use the selected robot folder as the root for all relative paths
