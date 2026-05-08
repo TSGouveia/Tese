@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://urdf-viewer-pi.vercel.app/sitemap.xml
