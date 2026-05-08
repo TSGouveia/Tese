@@ -18,7 +18,12 @@ public class BaSyxManager : MonoBehaviour
 
     [Header("Settings")]
     public float globalScale = 1.0f;
+    public float discoveryInterval = 10f;
+    public float positionSyncInterval = 0.5f;
     public string baseCachePath;
+
+    private Dictionary<string, GameObject> instantiatedRobots = new Dictionary<string, GameObject>();
+    private HashSet<string> pendingRobotIds = new HashSet<string>();
 
     public class MaterialData
     {
@@ -39,8 +44,17 @@ public class BaSyxManager : MonoBehaviour
         if (Directory.Exists(baseCachePath)) Directory.Delete(baseCachePath, true);
         Directory.CreateDirectory(baseCachePath);
 
-        Debug.Log("[BaSyx] 🔍 Searching for robots in Registry...");
-        StartCoroutine(SyncRobotsRoutine());
+        StartCoroutine(DiscoveryLoop());
+    }
+
+    IEnumerator DiscoveryLoop()
+    {
+        while (true)
+        {
+            Debug.Log("[BaSyx] 🔍 Searching for robots in Registry...");
+            yield return StartCoroutine(SyncRobotsRoutine());
+            yield return new WaitForSeconds(discoveryInterval);
+        }
     }
 
     IEnumerator SyncRobotsRoutine()
@@ -56,10 +70,24 @@ public class BaSyxManager : MonoBehaviour
         }
 
         var shells = DeserializeList<AasDescriptor>(regReq.downloadHandler.text);
+        HashSet<string> currentRegistryIds = new HashSet<string>(shells.Select(s => s.id));
+
+        // 1. Handle Removals
+        var idsToRemove = instantiatedRobots.Keys.Where(id => !currentRegistryIds.Contains(id)).ToList();
+        foreach (var id in idsToRemove)
+        {
+            Debug.Log($"[BaSyx] 🗑️ Removing robot: {id}");
+            if (instantiatedRobots[id] != null) Destroy(instantiatedRobots[id]);
+            instantiatedRobots.Remove(id);
+        }
         
+        // 2. Handle Additions
         foreach (var shell in shells)
         {
-            // Debug.Log($"[BaSyx] 🤖 Processing: {shell.idShort}");
+            if (instantiatedRobots.ContainsKey(shell.id) || pendingRobotIds.Contains(shell.id)) continue;
+            
+            pendingRobotIds.Add(shell.id);
+            // Debug.Log($"[BaSyx] 🤖 Processing new robot: {shell.idShort}");
             StartCoroutine(ProcessRobot(shell));
         }
     }
@@ -139,6 +167,7 @@ public class BaSyxManager : MonoBehaviour
         if (geoSubmodelId == null) 
         { 
             Debug.LogWarning($"[BaSyx] ⚠️ GeometryData not found for {robotName}. Check if submodel idShort is 'GeometryData'."); 
+            pendingRobotIds.Remove(shell.id);
             yield break; 
         }
 
@@ -157,9 +186,10 @@ public class BaSyxManager : MonoBehaviour
             if (robotObj != null)
             {
                 PrepareRobot(robotObj, urdfFile);
+                instantiatedRobots[shell.id] = robotObj;
                 
-                // 5. Synchronize initial position
-                if (posSubmodelId != null) yield return StartCoroutine(SyncInitialPosition(posSubmodelId, robotObj));
+                // 5. Synchronize position continuously
+                if (posSubmodelId != null) StartCoroutine(SyncPositionLoop(posSubmodelId, robotObj));
             }
             else
             {
@@ -170,6 +200,7 @@ public class BaSyxManager : MonoBehaviour
         {
             Debug.LogWarning($"[BaSyx] ⚠️ No URDF file found in {robotPath} for {robotName}. Assets downloaded: {Directory.GetFiles(robotPath, "*.*", SearchOption.AllDirectories).Length}");
         }
+        pendingRobotIds.Remove(shell.id);
     }
 
     string PreprocessUrdf(string path)
@@ -454,34 +485,37 @@ public class BaSyxManager : MonoBehaviour
         Debug.Log($"[BaSyx] ✅ {robot.name} prepared.");
     }
 
-    IEnumerator SyncInitialPosition(string submodelId, GameObject robot)
+    IEnumerator SyncPositionLoop(string submodelId, GameObject robot)
     {
-        string elementsUrl = $"{aasServerUrl}/submodels/{Base64Url(submodelId)}/submodel-elements";
-        UnityWebRequest req = UnityWebRequest.Get(elementsUrl);
-        yield return req.SendWebRequest();
-
-        if (req.result == UnityWebRequest.Result.Success)
+        while (robot != null)
         {
-            var elements = DeserializeList<SubmodelElement>(req.downloadHandler.text);
-            Vector3 pos = Vector3.zero;
-            foreach (var el in elements)
-            {
-                if (el == null || string.IsNullOrEmpty(el.idShort) || el.value == null) continue;
+            string elementsUrl = $"{aasServerUrl}/submodels/{Base64Url(submodelId)}/submodel-elements";
+            UnityWebRequest req = UnityWebRequest.Get(elementsUrl);
+            yield return req.SendWebRequest();
 
-                string k = el.idShort.ToUpper();
-                try
+            if (req.result == UnityWebRequest.Result.Success)
+            {
+                var elements = DeserializeList<SubmodelElement>(req.downloadHandler.text);
+                Vector3 pos = robot.transform.position;
+                foreach (var el in elements)
                 {
-                    if (k.Contains("X")) pos.x = SafeFloat(el.value);
-                    if (k.Contains("Y")) pos.y = SafeFloat(el.value);
-                    if (k.Contains("Z")) pos.z = SafeFloat(el.value);
+                    if (el == null || string.IsNullOrEmpty(el.idShort) || el.value == null) continue;
+
+                    string k = el.idShort.ToUpper();
+                    try
+                    {
+                        if (k.Contains("X")) pos.x = SafeFloat(el.value);
+                        if (k.Contains("Y")) pos.y = SafeFloat(el.value);
+                        if (k.Contains("Z")) pos.z = SafeFloat(el.value);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning($"[BaSyx] ⚠️ Failed to sync coordinate {el.idShort}: {e.Message}");
+                    }
                 }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[BaSyx] ⚠️ Failed to sync coordinate {el.idShort}: {e.Message} (Value type: {el.value.GetType().Name})");
-                }
+                robot.transform.position = pos;
             }
-            robot.transform.position = pos;
-            // Debug.Log($"[BaSyx] 📍 Initial position synced: {pos}");
+            yield return new WaitForSeconds(positionSyncInterval);
         }
     }
 
