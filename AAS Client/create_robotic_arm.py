@@ -1,56 +1,107 @@
-import collections
-import collections.abc
-import math
-import fractions
 import sys
 import os
 import io
 import re
+import math
 import traceback
+import collections
+import collections.abc
+import fractions
+
+# =================================================================
+# 1. COMPATIBILITY PATCHES (Immediate)
+# =================================================================
+def apply_compatibility_patches():
+    """Applies patches for Python 3.10+ and older library versions."""
+    for name in ['Mapping', 'MutableMapping', 'Set', 'MutableSet', 'Iterable', 'MutableSequence', 'Sequence']:
+        if not hasattr(collections, name):
+            obj = getattr(collections.abc, name)
+            setattr(collections, name, obj)
+            if 'collections' in sys.modules:
+                setattr(sys.modules['collections'], name, obj)
+
+    if not hasattr(fractions, 'gcd'): fractions.gcd = math.gcd
+
+    try:
+        import numpy as np
+        np_patches = {'float': float, 'float_': np.float64, 'int': int, 'int_': np.int64, 'bool': bool}
+        for old_attr, replacement in np_patches.items():
+            if not hasattr(np, old_attr): setattr(np, old_attr, replacement)
+    except ImportError: pass
+
+    try:
+        import networkx.utils as nx_utils
+        import networkx as nx
+        nx.utils = nx_utils
+        import networkx.algorithms.bipartite
+        import networkx.generators.intersection
+    except: pass
+
+apply_compatibility_patches()
+
+# GLOBAL APP REFERENCE
+_app = None
+_splash = None
+
+if __name__ == "__main__":
+    # 1. SHOW SPLASH SCREEN AS FAST AS POSSIBLE
+    from PyQt6.QtWidgets import QApplication, QSplashScreen
+    from PyQt6.QtGui import QPixmap, QColor, QFont, QPainter
+    from PyQt6.QtCore import Qt
+
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    _app = QApplication(sys.argv)
+    
+    base_w, base_h = 400, 200
+    ratio = _app.primaryScreen().devicePixelRatio()
+    pixmap = QPixmap(int(base_w * ratio), int(base_h * ratio))
+    pixmap.setDevicePixelRatio(ratio)
+    pixmap.fill(QColor("#161616"))
+    
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+    painter.setPen(QColor("#3498db"))
+    painter.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
+    painter.drawText(0, 0, base_w, base_h, Qt.AlignmentFlag.AlignCenter, "AAS Robot Studio")
+    painter.setPen(QColor("#888"))
+    painter.setFont(QFont("Segoe UI", 10))
+    painter.drawText(0, 160, base_w, 30, Qt.AlignmentFlag.AlignCenter, "Loading libraries and resources...")
+    painter.end()
+    
+    _splash = QSplashScreen(pixmap)
+    _splash.show()
+    _app.processEvents()
+
+# 2. HEAVY IMPORTS (Loaded while splash is shown)
 import numpy as np
+import requests
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
-import requests
 import mimetypes
 import hashlib
 import posixpath
-import basyx.aas
-from basyx.aas import model
-from basyx.aas.adapter import aasx
+import base64
 
-# =================================================================
-# 1. COMPATIBILITY PATCHES (Python 3.10+ & NetworkX)
-# =================================================================
-for name in ['Mapping', 'MutableMapping', 'Set', 'MutableSet', 'Iterable', 'MutableSequence', 'Sequence']:
-    if not hasattr(collections, name):
-        obj = getattr(collections.abc, name)
-        setattr(collections, name, obj)
-        if 'collections' in sys.modules:
-            setattr(sys.modules['collections'], name, obj)
-
-if not hasattr(fractions, 'gcd'): fractions.gcd = math.gcd
-
-np_patches = {'float': float, 'float_': np.float64, 'int': int, 'int_': np.int64, 'bool': bool}
-for old_attr, replacement in np_patches.items():
-    if not hasattr(np, old_attr): setattr(np, old_attr, replacement)
-
-try:
-    import networkx.utils as nx_utils
-    import networkx as nx
-    nx.utils = nx_utils
-    import networkx.algorithms.bipartite
-    import networkx.generators.intersection
-except: pass
-
+# Import these at top level so Nuitka can detect them for compilation,
+# but after splash.show() so the user sees the loading screen immediately.
 import trimesh
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
-                             QWidget, QPushButton, QLabel, QFileDialog, QSlider,
-                             QFrame, QMessageBox, QInputDialog, QLineEdit, QDialog,
-                             QListWidget, QListWidgetItem, QScrollArea, QGridLayout)
-from PyQt6.QtCore import Qt, QTimer
 import pyvista as pv
 from pyvistaqt import BackgroundPlotter
 from urdfpy import URDF
+import xacro
+
+import basyx.aas.model as model
+import basyx.aas.adapter.aasx as aasx
+
+from PyQt6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout,
+                             QWidget, QPushButton, QLabel, QFileDialog, QSlider,
+                             QFrame, QMessageBox, QInputDialog, QLineEdit, QDialog,
+                             QListWidget, QListWidgetItem, QScrollArea, QGridLayout)
+from PyQt6.QtCore import Qt, QTimer, QSize
+# QPixmap, QColor, QFont, QPainter already imported above if __main__
+
+# Compatibility patches already applied at top level.
 
 
 # =================================================================
@@ -132,35 +183,41 @@ class XacroResolver:
 # =================================================================
 # 3. ENGINE (PATCHED XACRO)
 # =================================================================
-import xacro
-_original_abs_filename_spec = xacro.abs_filename_spec
-_original_parse = xacro.parse
+_original_abs_filename_spec = None
+_original_parse = None
 _active_resolver = None
 
-def patched_abs_filename_spec(filename_spec):
-    if _active_resolver:
-        resolved = _active_resolver.resolve(filename_spec)
-        if resolved: return resolved
-    return _original_abs_filename_spec(filename_spec)
+def _ensure_xacro_patched():
+    global _original_abs_filename_spec, _original_parse
+    if _original_abs_filename_spec is not None: return
+    
+    _original_abs_filename_spec = xacro.abs_filename_spec
+    _original_parse = xacro.parse
 
-def patched_parse(inp, filename=None):
-    if inp is None and filename and _active_resolver:
-        resolved = _active_resolver.resolve(filename)
-        if resolved:
-            print(f"[XACRO-PATCH] Reading resolved file: {resolved}")
-            with open(resolved, 'r', encoding='utf-8') as f: content = f.read()
-            return minidom.parseString(content)
-    return _original_parse(inp, filename)
+    def patched_abs_filename_spec(filename_spec):
+        if _active_resolver:
+            resolved = _active_resolver.resolve(filename_spec)
+            if resolved: return resolved
+        return _original_abs_filename_spec(filename_spec)
 
-xacro.abs_filename_spec = patched_abs_filename_spec
-xacro.parse = patched_parse
+    def patched_parse(inp, filename=None):
+        if inp is None and filename and _active_resolver:
+            resolved = _active_resolver.resolve(filename)
+            if resolved:
+                print(f"[XACRO-PATCH] Reading resolved file: {resolved}")
+                with open(resolved, 'r', encoding='utf-8') as f: content = f.read()
+                return minidom.parseString(content)
+        return _original_parse(inp, filename)
 
-try:
-    import xacro.substitution_args
-    xacro.substitution_args._eval_find = lambda pkg: ""
-except: pass
+    xacro.abs_filename_spec = patched_abs_filename_spec
+    xacro.parse = patched_parse
+
+    try:
+        xacro.substitution_args._eval_find = lambda pkg: ""
+    except: pass
 
 def expand_xacro_final(filepath, mappings, resolver):
+    _ensure_xacro_patched()
     print(f"[XACRO] Expanding {filepath} with mappings {mappings}")
     global _active_resolver
     _active_resolver = resolver
@@ -215,7 +272,8 @@ class AssetManager:
         return rel_path
 
 class RobustFileRepo(dict):
-    def get_content_type(self, fn): return mimetypes.guess_type(fn)[0] or "application/octet-stream"
+    def get_content_type(self, fn): 
+        return mimetypes.guess_type(fn)[0] or "application/octet-stream"
     def add_file(self, n, c): self[n] = c
     def write_file(self, fn, t): 
         if fn in self: t.write(self[fn])
@@ -696,7 +754,6 @@ class RobotStudioPro(QMainWindow):
             QMessageBox.critical(self, "Load Failed", f"Critical error while loading robot:\n{str(e)}")
 
     def _b64(self, s):
-        import base64
         return base64.urlsafe_b64encode(s.encode()).decode().rstrip('=')
 
     def import_from_basyx(self):
@@ -1001,6 +1058,13 @@ class RobotStudioPro(QMainWindow):
         self.update_robot_visuals(active)
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = RobotStudioPro(); window.show()
-    sys.exit(app.exec())
+    # 3. LOAD MAIN WINDOW (After all imports and definitions are complete)
+    apply_compatibility_patches()
+    
+    window = RobotStudioPro()
+    window.show()
+    
+    # 4. CLOSE SPLASH
+    if _splash: _splash.finish(window)
+    
+    sys.exit(_app.exec())
