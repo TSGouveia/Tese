@@ -314,42 +314,113 @@ def sanitize_aas_id(name):
     if not res[0].isalpha(): res = "ID_" + res
     return res.strip('_')
 
+
 class DeployDialog(QDialog):
     def __init__(self, parent=None, default_id="Robot_AAS"):
         super().__init__(parent)
         self.setWindowTitle("Configure Digital Twin (BaSyx)")
+        self.setMinimumWidth(450)
         layout = QVBoxLayout(self)
-        self.edit_id = QLineEdit(default_id); layout.addWidget(QLabel("AAS ID (Letters, numbers and _ only):"))
+
+        # --- Configurações Base do AAS ---
+        self.edit_id = QLineEdit(default_id)
+        layout.addWidget(QLabel("AAS ID (Letters, numbers and _ only):"))
         layout.addWidget(self.edit_id)
+
         row = QHBoxLayout()
-        self.ex = QLineEdit("0.0"); self.ey = QLineEdit("0.0"); self.ez = QLineEdit("0.0")
-        row.addWidget(QLabel("X:")); row.addWidget(self.ex)
-        row.addWidget(QLabel("Y:")); row.addWidget(self.ey)
-        row.addWidget(QLabel("Z:")); row.addWidget(self.ez)
+        self.ex = QLineEdit("0.0");
+        self.ey = QLineEdit("0.0");
+        self.ez = QLineEdit("0.0")
+        row.addWidget(QLabel("X:"));
+        row.addWidget(self.ex)
+        row.addWidget(QLabel("Y:"));
+        row.addWidget(self.ey)
+        row.addWidget(QLabel("Z:"));
+        row.addWidget(self.ez)
         layout.addLayout(row)
-        btn = QPushButton("🚀 Send to BaSyx"); btn.clicked.connect(self.validate_and_accept)
+
+        # --- Configuração Genérica de Telemetria ---
+        self.conn_group = QGroupBox("Live Connection (Telemetry / Sensoring)")
+        c_layout = QGridLayout()
+
+        # Protocolo
+        self.combo_proto = QComboBox()
+        self.combo_proto.addItems(["Offline / No Connection", "TCP/IP Socket", "HTTP / REST", "WebSocket", "MQTT"])
+        c_layout.addWidget(QLabel("Protocolo:"), 0, 0)
+        c_layout.addWidget(self.combo_proto, 0, 1)
+
+        # Host / IP
+        self.edit_host = QLineEdit("192.168.1.1")
+        c_layout.addWidget(QLabel("Host / IP:"), 1, 0)
+        c_layout.addWidget(self.edit_host, 1, 1)
+
+        # Porta
+        self.edit_port = QLineEdit()
+        self.edit_port.setPlaceholderText("Ex: 30004, 80, 443...")
+        c_layout.addWidget(QLabel("Porta:"), 2, 0)
+        c_layout.addWidget(self.edit_port, 2, 1)
+
+        # Endpoint (Para HTTP/WS/MQTT)
+        self.edit_endpoint = QLineEdit()
+        self.edit_endpoint.setPlaceholderText("Ex: /rw/motionsystem/... ou topic/robot")
+        c_layout.addWidget(QLabel("Endpoint/Topic:"), 3, 0)
+        c_layout.addWidget(self.edit_endpoint, 3, 1)
+
+        # Unidades Articulares
+        self.combo_units = QComboBox()
+        self.combo_units.addItems(["rad", "deg", "mm"])
+        c_layout.addWidget(QLabel("Unidade Juntas:"), 4, 0)
+        c_layout.addWidget(self.combo_units, 4, 1)
+
+        # Autenticação
+        self.combo_auth = QComboBox()
+        self.combo_auth.addItems(["None", "Basic Auth", "Digest Auth", "Bearer Token"])
+        self.combo_auth.currentTextChanged.connect(self._toggle_auth)
+        c_layout.addWidget(QLabel("Autenticação:"), 5, 0)
+        c_layout.addWidget(self.combo_auth, 5, 1)
+
+        self.edit_user = QLineEdit()
+        self.edit_user.setEnabled(False)
+        c_layout.addWidget(QLabel("Username:"), 6, 0)
+        c_layout.addWidget(self.edit_user, 6, 1)
+
+        self.edit_pass = QLineEdit()
+        self.edit_pass.setEchoMode(QLineEdit.EchoMode.Password)
+        self.edit_pass.setEnabled(False)
+        c_layout.addWidget(QLabel("Pass / Token:"), 7, 0)
+        c_layout.addWidget(self.edit_pass, 7, 1)
+
+        self.conn_group.setLayout(c_layout)
+        layout.addWidget(self.conn_group)
+
+        btn = QPushButton("🚀 Send to BaSyx");
+        btn.clicked.connect(self.validate_and_accept)
         btn.setStyleSheet("background: #27ae60; color: white; padding: 10px; font-weight: bold;")
         layout.addWidget(btn)
 
+    def _toggle_auth(self, auth_type):
+        """Ativa/desativa campos baseados no tipo de autenticação"""
+        needs_auth = auth_type != "None"
+        self.edit_user.setEnabled(needs_auth and auth_type != "Bearer Token")
+        self.edit_pass.setEnabled(needs_auth)
+
     def validate_and_accept(self):
         rid = self.edit_id.text().strip()
-        if not rid: return QMessageBox.warning(self, "Validation Error", "AAS ID cannot be empty.")
-        
-        # Strict validation: Start with letter, only letters, numbers and underscores. No spaces or hyphens.
         if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', rid):
-            return QMessageBox.warning(self, "Validation Error", 
-                "Invalid AAS ID!\n\n"
-                "The ID must:\n"
-                "- Start with a letter\n"
-                "- Contain only letters, numbers, and underscores (_)\n"
-                "- NOT contain spaces, hyphens, or special characters.")
-        
+            return QMessageBox.warning(self, "Error", "Invalid AAS ID!")
         for name, field in [("X", self.ex), ("Y", self.ey), ("Z", self.ez)]:
             try:
                 float(field.text().replace(',', '.'))
             except ValueError:
-                return QMessageBox.warning(self, "Validation Error", f"Coordinate {name} must be a valid number.")
-        
+                return QMessageBox.warning(self, "Error", f"{name} must be a number.")
+
+        # Validar porta apenas se estiver preenchida
+        if self.edit_port.text().strip():
+            try:
+                int(self.edit_port.text().strip())
+            except ValueError:
+                return QMessageBox.warning(self, "Error", "Porta tem de ser um número inteiro.")
+
         self.accept()
 
 class DependencyDialog(QDialog):
@@ -552,8 +623,17 @@ class RobotStudioPro(QMainWindow):
         fk = self.robot.visual_geometry_fk(cfg=self.current_joint_state)
         for obj, trans in fk.items():
             if obj in self.mesh_actors:
+                # Apply mesh scale if present in URDF geometry
+                scale_matrix = np.eye(4)
+                # obj is usually a Visual object, find its geometry
+                geom = obj.geometry if hasattr(obj, 'geometry') else None
+                if geom and hasattr(geom, 'scale') and geom.scale is not None:
+                    s = geom.scale
+                    scale_matrix = np.diag([s[0], s[1], s[2], 1.0])
+                
+                final_trans = self.global_matrix @ trans @ scale_matrix
                 for a in self.mesh_actors[obj]:
-                    a.user_matrix = self.global_matrix @ trans
+                    a.user_matrix = final_trans
                     if active and active.lower() in str(obj).lower():
                         a.GetProperty().SetEdgeVisibility(True); a.GetProperty().SetEdgeColor(0,1,1)
                     else: a.GetProperty().SetEdgeVisibility(False)
@@ -733,7 +813,7 @@ class RobotStudioPro(QMainWindow):
                 with open(target, 'r', encoding='utf-8') as f: xml_text = f.read()
 
             self.current_urdf_xml, self.current_urdf_path = xml_text, target
-            root = ET.fromstring(xml_text)
+            root = ET.fromstring(xml_text.strip())
             
             # URDF Post-processing
             if 'name' not in root.attrib: root.set('name', os.path.basename(target).split('.')[0])
@@ -972,17 +1052,87 @@ class RobotStudioPro(QMainWindow):
     def _build_view(self):
         print("[VIEW] Building 3D visualization...")
         self.plotter.clear(); self.mesh_actors = {}; self.plotter.add_axes(color='white')
-        fk = self.robot.visual_geometry_fk(); all_pts = []
+        
+        # Prevent crash if robot has no visuals or failed to load meshes
+        try:
+            fk = self.robot.visual_geometry_fk()
+        except Exception as e:
+            print(f"[VIEW] Error calculating FK: {e}")
+            return
+
+        all_pts = []
         for obj, transform in fk.items():
+            # obj is typically a Visual object
+            name = getattr(obj, 'name', 'unnamed')
             geom = obj.geometry if hasattr(obj, 'geometry') else obj
+            if geom is None:
+                print(f"   [VIEW] Skipping {name}: geometry is None")
+                continue
+            
+            g_type = type(geom).__name__
+            meshes = None
+            
+            # urdfpy might have failed to load meshes (NoneType error in its getter)
+            try:
+                meshes = geom.meshes
+            except Exception as e:
+                print(f"   [VIEW] Warning: urdfpy failed to provide meshes for {g_type} ({name}): {e}")
+
+            # Fallback for urdfpy primitive issues
+            if (meshes is None or len(meshes) == 0):
+                if g_type == 'Cylinder':
+                    print(f"   [VIEW] Falling back to manual Cylinder creation for {name}...")
+                    try: meshes = [trimesh.creation.cylinder(radius=geom.radius, height=geom.length)]
+                    except Exception as e: print(f"      [VIEW] Cylinder fallback failed: {e}")
+                elif g_type == 'Box':
+                    print(f"   [VIEW] Falling back to manual Box creation for {name}...")
+                    try: meshes = [trimesh.creation.box(extents=geom.size)]
+                    except Exception as e: print(f"      [VIEW] Box fallback failed: {e}")
+                elif g_type == 'Sphere':
+                    print(f"   [VIEW] Falling back to manual Sphere creation for {name}...")
+                    try: meshes = [trimesh.creation.sphere(radius=geom.radius)]
+                    except Exception as e: print(f"      [VIEW] Sphere fallback failed: {e}")
+                elif g_type == 'Mesh':
+                    print(f"   [VIEW] Falling back to manual Mesh load for {name}: {getattr(geom, 'filename', 'unknown')}...")
+                    try:
+                        loaded = trimesh.load(geom.filename)
+                        if isinstance(loaded, trimesh.Scene):
+                            m = loaded.dump(concatenate=True)
+                        else:
+                            m = loaded
+                        
+                        if hasattr(geom, 'scale') and geom.scale is not None:
+                            m.apply_scale(geom.scale)
+                        meshes = [m]
+                    except Exception as e: print(f"      [VIEW] Mesh fallback failed: {e}")
+
+            if meshes is None or len(meshes) == 0:
+                print(f"   [VIEW] Warning: Could not obtain meshes for {g_type} ({name}).")
+                continue
+
+            print(f"   [VIEW] Processing {g_type} ({name}) with {len(meshes)} meshes")
+            
             col = [0.7,0.7,0.7]
             if hasattr(obj, 'material') and obj.material and obj.material.color is not None:
                 col = np.array(obj.material.color[:3]).astype(float)
                 if col.max() > 1.01: col /= 255.0
             
-            for mesh in geom.meshes:
-                all_pts.append(trimesh.transformations.transform_points(mesh.vertices, transform))
-                pv_mesh = pv.PolyData(mesh.vertices, np.column_stack([np.full(len(mesh.faces), 3), mesh.faces]))
+            for i, mesh in enumerate(meshes):
+                if mesh is None: continue
+                
+                # PyVista needs faces to be a flat array: [3, v1, v2, v3, 3, v4, v5, v6, ...]
+                # trimesh.faces is (N, 3). Ensure int32 for VTK compatibility.
+                faces = np.column_stack([np.full(len(mesh.faces), 3), mesh.faces]).astype(np.int32).flatten()
+                
+                # Apply mesh scale if present in URDF geometry
+                scale_matrix = np.eye(4)
+                if hasattr(geom, 'scale') and geom.scale is not None:
+                    s = geom.scale
+                    scale_matrix = np.diag([s[0], s[1], s[2], 1.0])
+                
+                all_pts.append(trimesh.transformations.transform_points(mesh.vertices, transform @ scale_matrix))
+                pv_mesh = pv.PolyData(mesh.vertices, faces)
+                
                 actor = None
                 if hasattr(mesh, 'visual') and mesh.visual:
                     try:
@@ -1006,7 +1156,7 @@ class RobotStudioPro(QMainWindow):
                     except Exception as e: pass
                 
                 if not actor: actor = self.plotter.add_mesh(pv_mesh, color=col, smooth_shading=True, specular=0.5, ambient=0.2)
-                actor.user_matrix = self.global_matrix @ transform
+                actor.user_matrix = self.global_matrix @ transform @ scale_matrix
                 if obj not in self.mesh_actors: self.mesh_actors[obj] = []
                 self.mesh_actors[obj].append(actor)
         
@@ -1014,7 +1164,8 @@ class RobotStudioPro(QMainWindow):
             # Pivot at real robot base (world)
             base_pos = self.global_matrix[:3, 3]
             self.plotter.camera.focal_point = base_pos
-            self.plotter.camera.position = base_pos + np.array([3.0, 3.0, 2.0])
+            # Offset camera to avoid parallel view vector and up vector
+            self.plotter.camera.position = base_pos + np.array([3.0, 3.1, 2.0]) 
             self.plotter.camera.up = (0, 0, 1)
             self.plotter.camera.reset_clipping_range()
             self.plotter.camera_set = True # Lock auto-resets
@@ -1046,28 +1197,28 @@ class RobotStudioPro(QMainWindow):
             lbl.setFixedWidth(110)
             
             sld = QSlider(Qt.Orientation.Horizontal)
-            sld.setRange(int(low * 100), int(high * 100)); sld.setValue(0)
-            
-            val_input = QLineEdit("0.00"); val_input.setFixedWidth(55); val_input.setAlignment(Qt.AlignmentFlag.AlignRight)
-            
+            sld.setRange(int(low * 10000), int(high * 10000)); sld.setValue(0)
+
+            val_input = QLineEdit("0.000000"); val_input.setFixedWidth(85); val_input.setAlignment(Qt.AlignmentFlag.AlignRight)
+
             self.joint_sliders[j.name], self.joint_inputs[j.name] = sld, val_input
             sld.valueChanged.connect(lambda v, name=j.name: self.sync_slider_to_input(name))
             val_input.editingFinished.connect(lambda name=j.name: self.sync_input_to_slider(name))
-            
+
             row.addWidget(lbl); row.addWidget(sld); row.addWidget(val_input)
             self.slider_area.addLayout(row)
 
     def sync_slider_to_input(self, name):
-        val = self.joint_sliders[name].value() / 100.0
-        self.joint_inputs[name].setText(f"{math.degrees(val):.1f}" if self.show_degrees else f"{val:.2f}")
-        self.target_joint_state[name] = val 
+        val = self.joint_sliders[name].value() / 10000.0
+        self.joint_inputs[name].setText(f"{math.degrees(val):.3f}" if self.show_degrees else f"{val:.6f}")
+        self.target_joint_state[name] = val
 
     def sync_input_to_slider(self, name):
         try:
             txt = self.joint_inputs[name].text().replace(',', '.')
             val = float(txt)
             rad = math.radians(val) if self.show_degrees else val
-            sld = self.joint_sliders[name]; iv = int(rad * 100)
+            sld = self.joint_sliders[name]; iv = int(rad * 10000)
             sld.setValue(max(sld.minimum(), min(sld.maximum(), iv)))
         except: self.sync_slider_to_input(name)
 
