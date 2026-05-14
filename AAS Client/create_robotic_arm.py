@@ -135,7 +135,7 @@ class XacroResolver:
 
     def resolve(self, path):
         if not path: return None
-        print(f"[RESOLVER] Trying to resolve: {path}")
+        p_orig = path
         p_lower = path.lower().replace('\\', '/')
         
         # 1. Direct hit (absolute or relative to CWD)
@@ -143,6 +143,16 @@ class XacroResolver:
             return self.file_map[p_lower]
         
         # 2. Normalize (remove package:// and $(find ...))
+        # If it's JUST a $(find pkg), we want to find the package directory
+        if re.match(r'^\$\(find [^)]+\)$', path):
+            pkg_name = re.search(r'\$\(find ([^)]+)\)', path).group(1).lower()
+            # Try to find a directory with this name
+            for r, ds, fs in os.walk(self.root_path):
+                for d in ds:
+                    if d.lower() == pkg_name:
+                        return os.path.abspath(os.path.join(r, d)).replace('\\', '/')
+            return None
+
         normalized = re.sub(r'\$\(find [^)]+\)', '', path.replace('package://', ''))
         normalized = '/'.join([s for s in normalized.replace('\\', '/').split('/') if s and s != '.'])
         norm_lower = normalized.lower()
@@ -174,10 +184,8 @@ class XacroResolver:
                         break
         
         if best_match:
-            print(f"   [RESOLVER] Resolved to: {best_match} (score {max_score})")
             return best_match
             
-        print(f"   [RESOLVER] WARNING: Could not resolve '{path}'")
         return None
 
 
@@ -740,6 +748,9 @@ class RobotStudioPro(QMainWindow):
             temp = os.path.join(path, "_compiled.urdf")
             with open(temp, "w", encoding='utf-8') as f: f.write(ET.tostring(root, encoding='unicode'))
             
+            # Store the resolved tree for AAS deployment
+            self.current_urdf_tree = root
+            
             try:
                 print("[LOAD] Parsing final URDF...")
                 self.robot = URDF.load(temp)
@@ -856,7 +867,9 @@ class RobotStudioPro(QMainWindow):
             traceback.print_exc(); QMessageBox.critical(self, "Error", str(e))
 
     def deploy_aas(self):
-        if not self.robot or not self.current_urdf_xml: return
+        if not self.robot or not hasattr(self, 'current_urdf_tree'): 
+            return QMessageBox.warning(self, "Error", "Please load a robot first.")
+            
         dlg = DeployDialog(self, default_id=self.robot.name)
         if dlg.exec() != QDialog.DialogCode.Accepted: return
         
@@ -872,8 +885,20 @@ class RobotStudioPro(QMainWindow):
             assets_root = self.current_robot_root
             manager = AssetManager(assets_root)
             
-            # Force the URDF to be at the root of the robot folder inside the AAS
-            # This avoids "../" paths for meshes, which Unity blocks for security
+            # Use the resolved tree (which has absolute paths on this machine)
+            import copy
+            tree_copy = copy.deepcopy(self.current_urdf_tree)
+            
+            print(f"[DEPLOY] Starting asset collection from resolved URDF tree...")
+            for elem in tree_copy.iter():
+                for attr, val in elem.attrib.items():
+                    # Check if the attribute looks like a path with one of our extensions
+                    if any(ext in val.lower() for ext in manager.exts):
+                        rel = manager.collect(val, self.resolver)
+                        if rel:
+                            print(f"   [DEPLOY] Path updated: {attr}='{os.path.basename(val)}' -> '{rel}'")
+                            elem.set(attr, rel)
+
             urdf_filename = os.path.basename(self.current_urdf_path)
             if urdf_filename.lower().endswith('.xacro'):
                 urdf_filename = re.sub(r'\.xacro$', '', urdf_filename, flags=re.IGNORECASE)
@@ -881,18 +906,8 @@ class RobotStudioPro(QMainWindow):
                 urdf_filename += '.urdf'
             urdf_rel_path = urdf_filename
             
-            tree = ET.fromstring(self.current_urdf_xml)
-            for elem in tree.iter():
-                for attr, val in elem.attrib.items():
-                    if any(ext in val.lower() for ext in ['.stl', '.dae', '.obj', '.jpg', '.png']):
-                        # manager.collect returns path relative to assets_root
-                        rel = manager.collect(val, self.resolver)
-                        if rel:
-                            # URDF is at root, so path to mesh is just 'rel'
-                            elem.set(attr, rel)
-            
             urdf_bytes = io.BytesIO()
-            ET.ElementTree(tree).write(urdf_bytes, encoding='utf-8', xml_declaration=True)
+            ET.ElementTree(tree_copy).write(urdf_bytes, encoding='utf-8', xml_declaration=True)
             
             shell = model.AssetAdministrationShell(
                 asset_information=model.AssetInformation(asset_kind=model.AssetKind.INSTANCE, global_asset_id=f"http://acplt.org/Assets/{rid_fn}"),
@@ -912,14 +927,18 @@ class RobotStudioPro(QMainWindow):
             urdf_id = sanitize_aas_id("PATH_" + urdf_rel_path.replace("/", "_SL_").replace(".", "_DOT_").replace("-", "_DASH_"))
             sm_geo.submodel_element.add(model.File(id_short=urdf_id[:100], value=aas_urdf_path, content_type="application/xml"))
 
+            print(f"[DEPLOY] Uploading {len(manager.files_to_upload)} collected assets...")
             for l_path, r_path in manager.files_to_upload.items():
                 aas_path = posixpath.normpath(posixpath.join("/aasx/robot", r_path))
-                # Skip if it's the URDF we already added (though collect usually only finds meshes)
                 if aas_path == aas_urdf_path: continue
                 
-                with open(l_path, 'rb') as f: file_repo.add_file(aas_path, f.read())
-                pid = sanitize_aas_id("PATH_" + r_path.replace("/", "_SL_").replace(".", "_DOT_").replace("-", "_DASH_"))
-                sm_geo.submodel_element.add(model.File(id_short=pid[:100], value=aas_path, content_type=mimetypes.guess_type(l_path)[0] or "application/octet-stream"))
+                try:
+                    with open(l_path, 'rb') as f: file_repo.add_file(aas_path, f.read())
+                    pid = sanitize_aas_id("PATH_" + r_path.replace("/", "_SL_").replace(".", "_DOT_").replace("-", "_DASH_"))
+                    sm_geo.submodel_element.add(model.File(id_short=pid[:100], value=aas_path, content_type=mimetypes.guess_type(l_path)[0] or "application/octet-stream"))
+                    print(f"   [DEPLOY] Included: {r_path}")
+                except Exception as e:
+                    print(f"   [DEPLOY] ERROR reading {l_path}: {e}")
 
             obj_store = model.DictObjectStore()
             obj_store.add(shell); obj_store.add(sm_geo); obj_store.add(sm_pos)
@@ -940,7 +959,7 @@ class RobotStudioPro(QMainWindow):
                 })
                 QApplication.restoreOverrideCursor()
                 print("[DEPLOY] AAS created and registered successfully.")
-                QMessageBox.information(self, "Success", "AAS Created!")
+                QMessageBox.information(self, "Success", f"AAS Created!\n\nIncluded {len(manager.files_to_upload)} meshes/textures.")
             else:
                 raise Exception(f"Upload failed ({res.status_code})")
         except Exception as e: 
