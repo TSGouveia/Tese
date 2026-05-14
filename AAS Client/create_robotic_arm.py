@@ -90,6 +90,7 @@ import pyvista as pv
 from pyvistaqt import BackgroundPlotter
 from urdfpy import URDF
 import xacro
+import xacro.substitution_args
 
 import basyx.aas.model as model
 import basyx.aas.adapter.aasx as aasx
@@ -214,7 +215,9 @@ def _ensure_xacro_patched():
 
     try:
         xacro.substitution_args._eval_find = lambda pkg: ""
-    except: pass
+        print("[XACRO-PATCH] Successfully patched xacro.substitution_args._eval_find")
+    except Exception as e:
+        print(f"[XACRO-PATCH] Warning: Failed to patch substitution_args: {e}")
 
 def expand_xacro_final(filepath, mappings, resolver):
     _ensure_xacro_patched()

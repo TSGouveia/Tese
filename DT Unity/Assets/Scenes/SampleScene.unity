@@ -475,12 +475,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BaSyxManager
   registryUrl: http://localhost:8082/shell-descriptors
-  repositoryUrl: http://localhost:8081
-  importOnStartup: 1
-  clearDataOnStartup: 1
-  positionUpdateInterval: 0.1
+  aasServerUrl: http://localhost:8081
   globalScale: 1
-  physicsMode: 1
+  discoveryInterval: 2
+  positionSyncInterval: 0.5
+  baseCachePath: 
 --- !u!4 &1678076619
 Transform:
   m_ObjectHideFlags: 0
