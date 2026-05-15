@@ -352,128 +352,24 @@ class DeployDialog(QDialog):
         pos_group.setLayout(pos_layout)
         layout.addWidget(pos_group)
 
-        # --- Configuração Genérica de Telemetria ---
-        self.conn_group = QGroupBox("Live Connection (Telemetry / Sensoring)")
-        c_layout = QGridLayout()
-
-        # Protocolo
-        self.combo_proto = QComboBox()
-        self.combo_proto.addItems(["Offline / No Connection", "TCP/IP Socket", "HTTP / REST", "WebSocket", "MQTT"])
-        self.combo_proto.currentTextChanged.connect(self._update_visibility)
-        c_layout.addWidget(QLabel("Protocol:"), 0, 0)
-        c_layout.addWidget(self.combo_proto, 0, 1)
-
-        # Host / IP
-        self.lbl_host = QLabel("Host / IP:")
-        self.edit_host = QLineEdit("192.168.1.1")
-        c_layout.addWidget(self.lbl_host, 1, 0)
-        c_layout.addWidget(self.edit_host, 1, 1)
-
-        # Porta
-        self.lbl_port = QLabel("Port:")
-        self.edit_port = QLineEdit()
-        self.edit_port.setPlaceholderText("Ex: 30004, 80...")
-        c_layout.addWidget(self.lbl_port, 2, 0)
-        c_layout.addWidget(self.edit_port, 2, 1)
-
-        # Endpoint (Para HTTP/WS/MQTT)
-        self.lbl_endpoint = QLabel("Endpoint/Topic:")
-        self.edit_endpoint = QLineEdit()
-        self.edit_endpoint.setPlaceholderText("Ex: /rw/motionsystem/... ou topic/robot")
-        c_layout.addWidget(self.lbl_endpoint, 3, 0)
-        c_layout.addWidget(self.edit_endpoint, 3, 1)
-
-        # HTTP Method
-        self.lbl_method = QLabel("HTTP Method:")
-        self.combo_method = QComboBox()
-        self.combo_method.addItems(["GET", "POST", "PUT"])
-        c_layout.addWidget(self.lbl_method, 4, 0)
-        c_layout.addWidget(self.combo_method, 4, 1)
+        # --- Configuração de Telemetria (Simplificada) ---
+        tel_group = QGroupBox("Telemetry Configuration")
+        t_layout = QGridLayout()
 
         # Unidades Articulares
         self.lbl_units = QLabel("Joint Units:")
         self.combo_units = QComboBox()
         self.combo_units.addItems(["rad", "deg", "mm"])
-        c_layout.addWidget(self.lbl_units, 5, 0)
-        c_layout.addWidget(self.combo_units, 5, 1)
+        t_layout.addWidget(self.lbl_units, 0, 0)
+        t_layout.addWidget(self.combo_units, 0, 1)
 
-        # Autenticação
-        self.lbl_auth = QLabel("Authentication:")
-        self.combo_auth = QComboBox()
-        self.combo_auth.addItems(["None", "Basic Auth", "Digest Auth", "Bearer Token"])
-        self.combo_auth.currentTextChanged.connect(self._toggle_auth)
-        c_layout.addWidget(self.lbl_auth, 6, 0)
-        c_layout.addWidget(self.combo_auth, 6, 1)
-
-        self.lbl_user = QLabel("Username:")
-        self.edit_user = QLineEdit(); self.edit_user.setEnabled(False)
-        c_layout.addWidget(self.lbl_user, 7, 0)
-        c_layout.addWidget(self.edit_user, 7, 1)
-
-        self.lbl_pass = QLabel("Pass / Token:")
-        self.edit_pass = QLineEdit(); self.edit_pass.setEchoMode(QLineEdit.EchoMode.Password); self.edit_pass.setEnabled(False)
-        c_layout.addWidget(self.lbl_pass, 8, 0)
-        c_layout.addWidget(self.edit_pass, 8, 1)
-
-        self.conn_group.setLayout(c_layout)
-        layout.addWidget(self.conn_group)
-
-        # Initialize visibility
-        self._update_visibility(self.combo_proto.currentText())
+        tel_group.setLayout(t_layout)
+        layout.addWidget(tel_group)
 
         btn = QPushButton("🚀 Create AAS Digital Twin")
         btn.clicked.connect(self.validate_and_accept)
         btn.setStyleSheet("background: #27ae60; color: white; padding: 10px; font-weight: bold; margin-top: 10px;")
         layout.addWidget(btn)
-
-    def _update_visibility(self, proto):
-        is_offline = proto == "Offline / No Connection"
-        is_http = proto == "HTTP / REST"
-        is_topic_based = proto in ["WebSocket", "MQTT", "HTTP / REST"]
-
-        # Basic Host/Port
-        self.lbl_host.setVisible(not is_offline)
-        self.edit_host.setVisible(not is_offline)
-        self.lbl_port.setVisible(not is_offline)
-        self.edit_port.setVisible(not is_offline)
-
-        # Advanced fields
-        self.lbl_endpoint.setVisible(is_topic_based)
-        self.edit_endpoint.setVisible(is_topic_based)
-        self.lbl_method.setVisible(is_http)
-        self.combo_method.setVisible(is_http)
-        
-        # Units and Auth Selector
-        self.lbl_units.setVisible(not is_offline)
-        self.combo_units.setVisible(not is_offline)
-        self.lbl_auth.setVisible(not is_offline)
-        self.combo_auth.setVisible(not is_offline)
-        
-        # Delegate credential visibility to _toggle_auth
-        self._toggle_auth(self.combo_auth.currentText())
-
-    def _toggle_auth(self, auth_type):
-        # If the entire auth section is hidden (Offline mode), keep fields hidden
-        if not self.combo_auth.isVisible():
-            for w in [self.lbl_user, self.edit_user, self.lbl_pass, self.edit_pass]: w.setVisible(False)
-            return
-
-        is_none = auth_type == "None"
-        is_token = auth_type == "Bearer Token"
-        
-        # Visibility
-        self.lbl_user.setVisible(not is_none and not is_token)
-        self.edit_user.setVisible(not is_none and not is_token)
-        self.lbl_pass.setVisible(not is_none)
-        self.edit_pass.setVisible(not is_none)
-        
-        # Specific label for Token
-        if is_token: self.lbl_pass.setText("Token:")
-        else: self.lbl_pass.setText("Password:")
-
-        # Enable/Disable as extra safety
-        self.edit_user.setEnabled(not is_none and not is_token)
-        self.edit_pass.setEnabled(not is_none)
 
     def validate_and_accept(self):
         rid = self.edit_id.text().strip()
@@ -484,10 +380,6 @@ class DeployDialog(QDialog):
                 float(field.text().replace(',', '.'))
         except ValueError:
             return QMessageBox.warning(self, "Error", "Position must be numeric.")
-
-        if self.edit_port.isVisible() and self.edit_port.text().strip():
-            try: int(self.edit_port.text().strip())
-            except ValueError: return QMessageBox.warning(self, "Error", "Port must be an integer.")
 
         self.accept()
 
@@ -1036,15 +928,8 @@ class RobotStudioPro(QMainWindow):
             rid_aas = rid_raw
             px, py, pz = dlg.ex.text(), dlg.ey.text(), dlg.ez.text()
             
-            # Get Telemetry params
-            proto = dlg.combo_proto.currentText()
-            host = dlg.edit_host.text().strip()
-            port = dlg.edit_port.text().strip()
-            endpoint = dlg.edit_endpoint.text().strip()
+            # Get Telemetry params (Simplified)
             units = dlg.combo_units.currentText()
-            auth_type = dlg.combo_auth.currentText()
-            user = dlg.edit_user.text()
-            pwd = dlg.edit_pass.text()
 
             # Use the selected robot folder as the root for all relative paths
             assets_root = self.current_robot_root
@@ -1083,29 +968,9 @@ class RobotStudioPro(QMainWindow):
             for ax, v in [('X', px), ('Y', py), ('Z', pz)]:
                 sm_pos.submodel_element.add(model.Property(id_short=f"Pos_{ax}", value_type=model.datatypes.Double, value=float(v.replace(',', '.'))))
             
-            # 2. Telemetry Config (Generic - Only add what's relevant/visible)
-            sm_tel.submodel_element.add(model.Property(id_short="Protocol", value_type=model.datatypes.String, value=proto))
-            
-            if dlg.edit_host.isVisible():
-                sm_tel.submodel_element.add(model.Property(id_short="Host", value_type=model.datatypes.String, value=host))
-            if dlg.edit_port.isVisible():
-                sm_tel.submodel_element.add(model.Property(id_short="Port", value_type=model.datatypes.String, value=port))
-            if dlg.edit_endpoint.isVisible():
-                sm_tel.submodel_element.add(model.Property(id_short="Endpoint", value_type=model.datatypes.String, value=endpoint))
-            if dlg.lbl_method.isVisible():
-                sm_tel.submodel_element.add(model.Property(id_short="HTTP_Method", value_type=model.datatypes.String, value=dlg.combo_method.currentText()))
-            
+            # 2. Telemetry Config (Simplified - Just Units and LiveJoints)
             sm_tel.submodel_element.add(model.Property(id_short="JointUnits", value_type=model.datatypes.String, value=units))
             
-            if dlg.combo_auth.isVisible() and auth_type != "None":
-                sec = model.SubmodelElementCollection(id_short="Authentication")
-                sec.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=auth_type))
-                if dlg.edit_user.isVisible() and user: 
-                    sec.value.add(model.Property(id_short="Username", value_type=model.datatypes.String, value=user))
-                if dlg.edit_pass.isVisible() and pwd: 
-                    sec.value.add(model.Property(id_short="Password", value_type=model.datatypes.String, value=pwd))
-                sm_tel.submodel_element.add(sec)
-
             # 3. Dynamic Joint Properties (Placeholders for Live Sync)
             joints_coll = model.SubmodelElementCollection(id_short="LiveJoints")
             for j in self.robot.actuated_joints:
@@ -1146,7 +1011,7 @@ class RobotStudioPro(QMainWindow):
                     "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]
                 })
                 QApplication.restoreOverrideCursor()
-                QMessageBox.information(self, "Success", f"AAS Created with Telemetry Configuration!")
+                QMessageBox.information(self, "Success", f"AAS Created")
             else: raise Exception(f"Upload failed ({res.status_code})")
         except Exception as e: 
             QApplication.restoreOverrideCursor()

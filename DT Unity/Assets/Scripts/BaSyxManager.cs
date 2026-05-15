@@ -51,7 +51,6 @@ public class BaSyxManager : MonoBehaviour
     {
         while (true)
         {
-            Debug.Log("[BaSyx] 🔍 Searching for robots in Registry...");
             yield return StartCoroutine(SyncRobotsRoutine());
             yield return new WaitForSeconds(discoveryInterval);
         }
@@ -187,6 +186,24 @@ public class BaSyxManager : MonoBehaviour
             GameObject robotObj = ImportUrdf(processedUrdf, robotName);
             if (robotObj != null)
             {
+                // 1. CAPTURAR JUNTAS ANTES DE LIMPAR A FÍSICA
+                var jointInitList = new List<AASRobotSync.JointInitData>();
+                foreach (var uj in robotObj.GetComponentsInChildren<UrdfJoint>(true))
+                {
+                    string cleanName = uj.jointName.Replace("(Clone)", "").Trim();
+                    
+                    // Em Unity ArticulationBody, o eixo de movimento é sempre o X local do anchor.
+                    // O URDF Importer configura o anchorRotation para alinhar o eixo do URDF com este X.
+                    var ab = uj.GetComponent<ArticulationBody>();
+                    Vector3 axis = (ab != null) ? ab.anchorRotation * Vector3.right : Vector3.up;
+
+                    jointInitList.Add(new AASRobotSync.JointInitData {
+                        name = cleanName,
+                        transform = uj.transform,
+                        axis = axis
+                    });
+                }
+
                 PrepareRobot(robotObj, urdfFile);
                 instantiatedRobots[shell.id] = robotObj;
                 
@@ -197,6 +214,7 @@ public class BaSyxManager : MonoBehaviour
                 if (telSubmodelId != null)
                 {
                     var sync = robotObj.AddComponent<AASRobotSync>();
+                    sync.SetJointMap(jointInitList);
                     sync.Init(telSubmodelId, aasServerUrl);
                 }
             }
@@ -352,8 +370,7 @@ public class BaSyxManager : MonoBehaviour
                 robot.transform.SetParent(container.transform, false);
                 robot.name = name;
                 
-                // Parar a física no momento em que nasce
-                StripPhysics(robot);
+                // NÃO limpar a física aqui, para permitir a captura no ProcessRobot
             }
             return robot;
         }
@@ -362,29 +379,29 @@ public class BaSyxManager : MonoBehaviour
 
     void StripPhysics(GameObject root)
     {
-        // 1. Primeiro remover scripts que dependem dos componentes de física
-        foreach (var s in root.GetComponentsInChildren<MonoBehaviour>(true))
+        Debug.Log($"[BaSyx] 🪚 Aggressively stripping physics from {root.name}...");
+
+        // 1. APAGAR TODOS OS SCRIPTS PRIMEIRO (Quebra as dependências)
+        // Isso remove UrdfJoint, UrdfInertial, UrdfLink, etc.
+        var allScripts = root.GetComponentsInChildren<MonoBehaviour>(true);
+        foreach (var s in allScripts)
         {
-            if (s == null || s == this) continue;
+            if (s == null || s == this || s is AASRobotSync) continue;
+            // Se o nome do script contém "Urdf" ou "Articulation", eliminamos
             string typeName = s.GetType().Name;
-            if (typeName.Contains("Urdf") || typeName.Contains("Articulation")) 
+            if (typeName.Contains("Urdf") || typeName.Contains("Articulation") || typeName.Contains("Controller"))
+            {
                 DestroyImmediate(s);
+            }
         }
 
-        // 2. Agora remover os componentes de física propriamente ditos
-        // Ordem: ArticulationBody -> Rigidbody -> Colliders -> Joints -> Inertials
+        // 2. AGORA APAGAR OS COMPONENTES DE FÍSICA (Sem dependências de scripts)
         foreach (var b in root.GetComponentsInChildren<ArticulationBody>(true)) DestroyImmediate(b);
         foreach (var rb in root.GetComponentsInChildren<Rigidbody>(true)) DestroyImmediate(rb);
         foreach (var c in root.GetComponentsInChildren<Collider>(true)) DestroyImmediate(c);
         foreach (var j in root.GetComponentsInChildren<UnityEngine.Joint>(true)) DestroyImmediate(j);
-        
-        // Remover Inertials que podem ter sobrado (se não forem scripts)
-        // No Unity Robotics Importer, Inertial é geralmente um script UrdfInertial, já removido acima.
 
-        // Garantir que as peças ficam estáticas
-        foreach (var t in root.GetComponentsInChildren<Transform>(true)) {
-            // (Opcional) Podes forçar o scale aqui se necessário
-        }
+        Debug.Log("[BaSyx] ✅ Physics stripped. Robot is now a static visual model.");
     }
 
     void PrepareRobot(GameObject robot, string urdfPath)
