@@ -98,7 +98,8 @@ import basyx.aas.adapter.aasx as aasx
 from PyQt6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout,
                              QWidget, QPushButton, QLabel, QFileDialog, QSlider,
                              QFrame, QMessageBox, QInputDialog, QLineEdit, QDialog,
-                             QListWidget, QListWidgetItem, QScrollArea, QGridLayout)
+                             QListWidget, QListWidgetItem, QScrollArea, QGridLayout,
+                             QGroupBox, QComboBox)
 from PyQt6.QtCore import Qt, QTimer, QSize
 # QPixmap, QColor, QFont, QPainter already imported above if __main__
 
@@ -115,6 +116,16 @@ class XacroResolver:
         self.basename_map = {} # basename.lower() -> [full_paths]
         print(f"[RESOLVER] Mapping: {self.root_path}")
         self._index_directory(self.root_path)
+        
+        # Also index siblings of root_path to find other packages in the same workspace
+        parent = os.path.dirname(self.root_path)
+        if parent and os.path.isdir(parent):
+            print(f"[RESOLVER] Indexing sibling packages in: {parent}")
+            for d in os.listdir(parent):
+                d_path = os.path.join(parent, d)
+                if os.path.isdir(d_path) and d_path.replace('\\', '/') != self.root_path:
+                    self._index_directory(d_path)
+                    
         print(f"[RESOLVER] {len(self.file_map)} entries mapped.")
 
     def _index_directory(self, path):
@@ -320,24 +331,26 @@ class DeployDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Configure Digital Twin (BaSyx)")
         self.setMinimumWidth(450)
+        
         layout = QVBoxLayout(self)
 
         # --- Configurações Base do AAS ---
+        layout.addWidget(QLabel("<b>Asset Administration Shell Configuration</b>"))
+        
         self.edit_id = QLineEdit(default_id)
         layout.addWidget(QLabel("AAS ID (Letters, numbers and _ only):"))
         layout.addWidget(self.edit_id)
 
-        row = QHBoxLayout()
-        self.ex = QLineEdit("0.0");
-        self.ey = QLineEdit("0.0");
-        self.ez = QLineEdit("0.0")
-        row.addWidget(QLabel("X:"));
-        row.addWidget(self.ex)
-        row.addWidget(QLabel("Y:"));
-        row.addWidget(self.ey)
-        row.addWidget(QLabel("Z:"));
-        row.addWidget(self.ez)
-        layout.addLayout(row)
+        pos_group = QGroupBox("World Position (m)")
+        pos_layout = QHBoxLayout()
+        self.ex = QLineEdit("0.0"); self.ex.setPlaceholderText("X")
+        self.ey = QLineEdit("0.0"); self.ey.setPlaceholderText("Y")
+        self.ez = QLineEdit("0.0"); self.ez.setPlaceholderText("Z")
+        pos_layout.addWidget(QLabel("X:")); pos_layout.addWidget(self.ex)
+        pos_layout.addWidget(QLabel("Y:")); pos_layout.addWidget(self.ey)
+        pos_layout.addWidget(QLabel("Z:")); pos_layout.addWidget(self.ez)
+        pos_group.setLayout(pos_layout)
+        layout.addWidget(pos_group)
 
         # --- Configuração Genérica de Telemetria ---
         self.conn_group = QGroupBox("Live Connection (Telemetry / Sensoring)")
@@ -346,80 +359,135 @@ class DeployDialog(QDialog):
         # Protocolo
         self.combo_proto = QComboBox()
         self.combo_proto.addItems(["Offline / No Connection", "TCP/IP Socket", "HTTP / REST", "WebSocket", "MQTT"])
-        c_layout.addWidget(QLabel("Protocolo:"), 0, 0)
+        self.combo_proto.currentTextChanged.connect(self._update_visibility)
+        c_layout.addWidget(QLabel("Protocol:"), 0, 0)
         c_layout.addWidget(self.combo_proto, 0, 1)
 
         # Host / IP
+        self.lbl_host = QLabel("Host / IP:")
         self.edit_host = QLineEdit("192.168.1.1")
-        c_layout.addWidget(QLabel("Host / IP:"), 1, 0)
+        c_layout.addWidget(self.lbl_host, 1, 0)
         c_layout.addWidget(self.edit_host, 1, 1)
 
         # Porta
+        self.lbl_port = QLabel("Port:")
         self.edit_port = QLineEdit()
-        self.edit_port.setPlaceholderText("Ex: 30004, 80, 443...")
-        c_layout.addWidget(QLabel("Porta:"), 2, 0)
+        self.edit_port.setPlaceholderText("Ex: 30004, 80...")
+        c_layout.addWidget(self.lbl_port, 2, 0)
         c_layout.addWidget(self.edit_port, 2, 1)
 
         # Endpoint (Para HTTP/WS/MQTT)
+        self.lbl_endpoint = QLabel("Endpoint/Topic:")
         self.edit_endpoint = QLineEdit()
         self.edit_endpoint.setPlaceholderText("Ex: /rw/motionsystem/... ou topic/robot")
-        c_layout.addWidget(QLabel("Endpoint/Topic:"), 3, 0)
+        c_layout.addWidget(self.lbl_endpoint, 3, 0)
         c_layout.addWidget(self.edit_endpoint, 3, 1)
 
+        # HTTP Method
+        self.lbl_method = QLabel("HTTP Method:")
+        self.combo_method = QComboBox()
+        self.combo_method.addItems(["GET", "POST", "PUT"])
+        c_layout.addWidget(self.lbl_method, 4, 0)
+        c_layout.addWidget(self.combo_method, 4, 1)
+
         # Unidades Articulares
+        self.lbl_units = QLabel("Joint Units:")
         self.combo_units = QComboBox()
         self.combo_units.addItems(["rad", "deg", "mm"])
-        c_layout.addWidget(QLabel("Unidade Juntas:"), 4, 0)
-        c_layout.addWidget(self.combo_units, 4, 1)
+        c_layout.addWidget(self.lbl_units, 5, 0)
+        c_layout.addWidget(self.combo_units, 5, 1)
 
         # Autenticação
+        self.lbl_auth = QLabel("Authentication:")
         self.combo_auth = QComboBox()
         self.combo_auth.addItems(["None", "Basic Auth", "Digest Auth", "Bearer Token"])
         self.combo_auth.currentTextChanged.connect(self._toggle_auth)
-        c_layout.addWidget(QLabel("Autenticação:"), 5, 0)
-        c_layout.addWidget(self.combo_auth, 5, 1)
+        c_layout.addWidget(self.lbl_auth, 6, 0)
+        c_layout.addWidget(self.combo_auth, 6, 1)
 
-        self.edit_user = QLineEdit()
-        self.edit_user.setEnabled(False)
-        c_layout.addWidget(QLabel("Username:"), 6, 0)
-        c_layout.addWidget(self.edit_user, 6, 1)
+        self.lbl_user = QLabel("Username:")
+        self.edit_user = QLineEdit(); self.edit_user.setEnabled(False)
+        c_layout.addWidget(self.lbl_user, 7, 0)
+        c_layout.addWidget(self.edit_user, 7, 1)
 
-        self.edit_pass = QLineEdit()
-        self.edit_pass.setEchoMode(QLineEdit.EchoMode.Password)
-        self.edit_pass.setEnabled(False)
-        c_layout.addWidget(QLabel("Pass / Token:"), 7, 0)
-        c_layout.addWidget(self.edit_pass, 7, 1)
+        self.lbl_pass = QLabel("Pass / Token:")
+        self.edit_pass = QLineEdit(); self.edit_pass.setEchoMode(QLineEdit.EchoMode.Password); self.edit_pass.setEnabled(False)
+        c_layout.addWidget(self.lbl_pass, 8, 0)
+        c_layout.addWidget(self.edit_pass, 8, 1)
 
         self.conn_group.setLayout(c_layout)
         layout.addWidget(self.conn_group)
 
-        btn = QPushButton("🚀 Send to BaSyx");
+        # Initialize visibility
+        self._update_visibility(self.combo_proto.currentText())
+
+        btn = QPushButton("🚀 Create AAS Digital Twin")
         btn.clicked.connect(self.validate_and_accept)
-        btn.setStyleSheet("background: #27ae60; color: white; padding: 10px; font-weight: bold;")
+        btn.setStyleSheet("background: #27ae60; color: white; padding: 10px; font-weight: bold; margin-top: 10px;")
         layout.addWidget(btn)
 
+    def _update_visibility(self, proto):
+        is_offline = proto == "Offline / No Connection"
+        is_http = proto == "HTTP / REST"
+        is_topic_based = proto in ["WebSocket", "MQTT", "HTTP / REST"]
+
+        # Basic Host/Port
+        self.lbl_host.setVisible(not is_offline)
+        self.edit_host.setVisible(not is_offline)
+        self.lbl_port.setVisible(not is_offline)
+        self.edit_port.setVisible(not is_offline)
+
+        # Advanced fields
+        self.lbl_endpoint.setVisible(is_topic_based)
+        self.edit_endpoint.setVisible(is_topic_based)
+        self.lbl_method.setVisible(is_http)
+        self.combo_method.setVisible(is_http)
+        
+        # Units and Auth Selector
+        self.lbl_units.setVisible(not is_offline)
+        self.combo_units.setVisible(not is_offline)
+        self.lbl_auth.setVisible(not is_offline)
+        self.combo_auth.setVisible(not is_offline)
+        
+        # Delegate credential visibility to _toggle_auth
+        self._toggle_auth(self.combo_auth.currentText())
+
     def _toggle_auth(self, auth_type):
-        """Ativa/desativa campos baseados no tipo de autenticação"""
-        needs_auth = auth_type != "None"
-        self.edit_user.setEnabled(needs_auth and auth_type != "Bearer Token")
-        self.edit_pass.setEnabled(needs_auth)
+        # If the entire auth section is hidden (Offline mode), keep fields hidden
+        if not self.combo_auth.isVisible():
+            for w in [self.lbl_user, self.edit_user, self.lbl_pass, self.edit_pass]: w.setVisible(False)
+            return
+
+        is_none = auth_type == "None"
+        is_token = auth_type == "Bearer Token"
+        
+        # Visibility
+        self.lbl_user.setVisible(not is_none and not is_token)
+        self.edit_user.setVisible(not is_none and not is_token)
+        self.lbl_pass.setVisible(not is_none)
+        self.edit_pass.setVisible(not is_none)
+        
+        # Specific label for Token
+        if is_token: self.lbl_pass.setText("Token:")
+        else: self.lbl_pass.setText("Password:")
+
+        # Enable/Disable as extra safety
+        self.edit_user.setEnabled(not is_none and not is_token)
+        self.edit_pass.setEnabled(not is_none)
 
     def validate_and_accept(self):
         rid = self.edit_id.text().strip()
         if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', rid):
             return QMessageBox.warning(self, "Error", "Invalid AAS ID!")
-        for name, field in [("X", self.ex), ("Y", self.ey), ("Z", self.ez)]:
-            try:
+        try:
+            for field in [self.ex, self.ey, self.ez]:
                 float(field.text().replace(',', '.'))
-            except ValueError:
-                return QMessageBox.warning(self, "Error", f"{name} must be a number.")
+        except ValueError:
+            return QMessageBox.warning(self, "Error", "Position must be numeric.")
 
-        # Validar porta apenas se estiver preenchida
-        if self.edit_port.text().strip():
-            try:
-                int(self.edit_port.text().strip())
-            except ValueError:
-                return QMessageBox.warning(self, "Error", "Porta tem de ser um número inteiro.")
+        if self.edit_port.isVisible() and self.edit_port.text().strip():
+            try: int(self.edit_port.text().strip())
+            except ValueError: return QMessageBox.warning(self, "Error", "Port must be an integer.")
 
         self.accept()
 
@@ -755,14 +823,21 @@ class RobotStudioPro(QMainWindow):
     def load_robot(self):
         path = QFileDialog.getExistingDirectory(self, "Folder")
         if not path: return
-        self.current_robot_root = path  
+        self.current_robot_root = os.path.abspath(path).replace('\\', '/')
         self.global_matrix = np.eye(4) # Reset global pos on local load
-        print(f"\n[LOAD] Initializing load from: {path}")
-        self.resolver = XacroResolver(path)
-        candidates = sorted(list(set([f for f in self.resolver.file_map.values() if f.lower().endswith('.urdf') or f.lower().endswith('.urdf.xacro')])))
+        print(f"\n[LOAD] Initializing load from: {self.current_robot_root}")
+        self.resolver = XacroResolver(self.current_robot_root)
+        
+        # Only show candidates from the selected folder, not from siblings!
+        candidates = []
+        for full_path in self.resolver.file_map.values():
+            if full_path.startswith(self.current_robot_root):
+                if full_path.lower().endswith('.urdf') or full_path.lower().endswith('.urdf.xacro'):
+                    candidates.append(full_path)
+        candidates = sorted(list(set(candidates)))
         
         if not candidates: 
-            return QMessageBox.warning(self, "Error", "No URDF/Xacro found in directory!")
+            return QMessageBox.warning(self, "Error", "No URDF/Xacro found in the selected directory!")
         
         target = candidates[0]
         if len(candidates) > 1:
@@ -961,6 +1036,16 @@ class RobotStudioPro(QMainWindow):
             rid_aas = rid_raw
             px, py, pz = dlg.ex.text(), dlg.ey.text(), dlg.ez.text()
             
+            # Get Telemetry params
+            proto = dlg.combo_proto.currentText()
+            host = dlg.edit_host.text().strip()
+            port = dlg.edit_port.text().strip()
+            endpoint = dlg.edit_endpoint.text().strip()
+            units = dlg.combo_units.currentText()
+            auth_type = dlg.combo_auth.currentText()
+            user = dlg.edit_user.text()
+            pwd = dlg.edit_pass.text()
+
             # Use the selected robot folder as the root for all relative paths
             assets_root = self.current_robot_root
             manager = AssetManager(assets_root)
@@ -972,12 +1057,9 @@ class RobotStudioPro(QMainWindow):
             print(f"[DEPLOY] Starting asset collection from resolved URDF tree...")
             for elem in tree_copy.iter():
                 for attr, val in elem.attrib.items():
-                    # Check if the attribute looks like a path with one of our extensions
                     if any(ext in val.lower() for ext in manager.exts):
                         rel = manager.collect(val, self.resolver)
-                        if rel:
-                            print(f"   [DEPLOY] Path updated: {attr}='{os.path.basename(val)}' -> '{rel}'")
-                            elem.set(attr, rel)
+                        if rel: elem.set(attr, rel)
 
             urdf_filename = os.path.basename(self.current_urdf_path)
             if urdf_filename.lower().endswith('.xacro'):
@@ -995,35 +1077,61 @@ class RobotStudioPro(QMainWindow):
             )
             sm_geo = model.Submodel(id_=f"https://acplt.org/Submodels/Geo_{rid_fn}", id_short="GeometryData")
             sm_pos = model.Submodel(id_=f"https://acplt.org/Submodels/Pos_{rid_fn}", id_short="PositionData")
+            sm_tel = model.Submodel(id_=f"https://acplt.org/Submodels/Tel_{rid_fn}", id_short="TelemetryData")
             
+            # 1. Position
             for ax, v in [('X', px), ('Y', py), ('Z', pz)]:
                 sm_pos.submodel_element.add(model.Property(id_short=f"Pos_{ax}", value_type=model.datatypes.Double, value=float(v.replace(',', '.'))))
             
-            file_repo = RobustFileRepo()
+            # 2. Telemetry Config (Generic - Only add what's relevant/visible)
+            sm_tel.submodel_element.add(model.Property(id_short="Protocol", value_type=model.datatypes.String, value=proto))
             
-            # Save URDF at root: /aasx/robot/robot_name.urdf
+            if dlg.edit_host.isVisible():
+                sm_tel.submodel_element.add(model.Property(id_short="Host", value_type=model.datatypes.String, value=host))
+            if dlg.edit_port.isVisible():
+                sm_tel.submodel_element.add(model.Property(id_short="Port", value_type=model.datatypes.String, value=port))
+            if dlg.edit_endpoint.isVisible():
+                sm_tel.submodel_element.add(model.Property(id_short="Endpoint", value_type=model.datatypes.String, value=endpoint))
+            if dlg.lbl_method.isVisible():
+                sm_tel.submodel_element.add(model.Property(id_short="HTTP_Method", value_type=model.datatypes.String, value=dlg.combo_method.currentText()))
+            
+            sm_tel.submodel_element.add(model.Property(id_short="JointUnits", value_type=model.datatypes.String, value=units))
+            
+            if dlg.combo_auth.isVisible() and auth_type != "None":
+                sec = model.SubmodelElementCollection(id_short="Authentication")
+                sec.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=auth_type))
+                if dlg.edit_user.isVisible() and user: 
+                    sec.value.add(model.Property(id_short="Username", value_type=model.datatypes.String, value=user))
+                if dlg.edit_pass.isVisible() and pwd: 
+                    sec.value.add(model.Property(id_short="Password", value_type=model.datatypes.String, value=pwd))
+                sm_tel.submodel_element.add(sec)
+
+            # 3. Dynamic Joint Properties (Placeholders for Live Sync)
+            joints_coll = model.SubmodelElementCollection(id_short="LiveJoints")
+            for j in self.robot.actuated_joints:
+                joints_coll.value.add(model.Property(id_short=sanitize_aas_id(j.name), value_type=model.datatypes.Double, value=0.0))
+            sm_tel.submodel_element.add(joints_coll)
+            
+            file_repo = RobustFileRepo()
             aas_urdf_path = posixpath.normpath(posixpath.join("/aasx/robot", urdf_rel_path))
             file_repo.add_file(aas_urdf_path, urdf_bytes.getvalue())
             urdf_id = sanitize_aas_id("PATH_" + urdf_rel_path.replace("/", "_SL_").replace(".", "_DOT_").replace("-", "_DASH_"))
             sm_geo.submodel_element.add(model.File(id_short=urdf_id[:100], value=aas_urdf_path, content_type="application/xml"))
 
-            print(f"[DEPLOY] Uploading {len(manager.files_to_upload)} collected assets...")
             for l_path, r_path in manager.files_to_upload.items():
                 aas_path = posixpath.normpath(posixpath.join("/aasx/robot", r_path))
                 if aas_path == aas_urdf_path: continue
-                
                 try:
                     with open(l_path, 'rb') as f: file_repo.add_file(aas_path, f.read())
                     pid = sanitize_aas_id("PATH_" + r_path.replace("/", "_SL_").replace(".", "_DOT_").replace("-", "_DASH_"))
                     sm_geo.submodel_element.add(model.File(id_short=pid[:100], value=aas_path, content_type=mimetypes.guess_type(l_path)[0] or "application/octet-stream"))
-                    print(f"   [DEPLOY] Included: {r_path}")
-                except Exception as e:
-                    print(f"   [DEPLOY] ERROR reading {l_path}: {e}")
+                except Exception as e: pass
 
             obj_store = model.DictObjectStore()
-            obj_store.add(shell); obj_store.add(sm_geo); obj_store.add(sm_pos)
+            obj_store.add(shell); obj_store.add(sm_geo); obj_store.add(sm_pos); obj_store.add(sm_tel)
             shell.submodel.add(model.ModelReference.from_referable(sm_geo))
             shell.submodel.add(model.ModelReference.from_referable(sm_pos))
+            shell.submodel.add(model.ModelReference.from_referable(sm_tel))
             
             os.makedirs("aasx_packages", exist_ok=True)
             out_fn = os.path.join("aasx_packages", f"{rid_fn}_Twin.aasx")
@@ -1034,14 +1142,12 @@ class RobotStudioPro(QMainWindow):
                 requests.post("http://localhost:8082/shell-descriptors", json={
                     "id": shell.id, "idShort": shell.id_short, "assetKind": "Instance",
                     "globalAssetId": shell.asset_information.global_asset_id,
-                    "submodelDescriptors": [{"idShort": sm.id_short, "id": sm.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{sm.id}", "endpointProtocol": "HTTP"}}]} for sm in [sm_geo, sm_pos]],
+                    "submodelDescriptors": [{"idShort": sm.id_short, "id": sm.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{sm.id}", "endpointProtocol": "HTTP"}}]} for sm in [sm_geo, sm_pos, sm_tel]],
                     "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]
                 })
                 QApplication.restoreOverrideCursor()
-                print("[DEPLOY] AAS created and registered successfully.")
-                QMessageBox.information(self, "Success", f"AAS Created!\n\nIncluded {len(manager.files_to_upload)} meshes/textures.")
-            else:
-                raise Exception(f"Upload failed ({res.status_code})")
+                QMessageBox.information(self, "Success", f"AAS Created with Telemetry Configuration!")
+            else: raise Exception(f"Upload failed ({res.status_code})")
         except Exception as e: 
             QApplication.restoreOverrideCursor()
             traceback.print_exc(); QMessageBox.critical(self, "Error", str(e))
@@ -1120,6 +1226,18 @@ class RobotStudioPro(QMainWindow):
             for i, mesh in enumerate(meshes):
                 if mesh is None: continue
                 
+                # Failsafe: detect absurdly large meshes (e.g. in mm but missing scale)
+                # Heuristic: if any dimension of the bounding box > 10m and scale is identity
+                is_identity_scale = True
+                if hasattr(geom, 'scale') and geom.scale is not None:
+                    if not np.allclose(geom.scale, [1.0, 1.0, 1.0]):
+                        is_identity_scale = False
+                
+                extents = mesh.extents
+                if is_identity_scale and np.any(extents > 10.0):
+                    print(f"   [VIEW] Failsafe: Absurd mesh size detected for {name} ({extents}). Auto-scaling 0.001.")
+                    mesh.apply_scale(0.001)
+
                 # PyVista needs faces to be a flat array: [3, v1, v2, v3, 3, v4, v5, v6, ...]
                 # trimesh.faces is (N, 3). Ensure int32 for VTK compatibility.
                 faces = np.column_stack([np.full(len(mesh.faces), 3), mesh.faces]).astype(np.int32).flatten()
@@ -1197,7 +1315,8 @@ class RobotStudioPro(QMainWindow):
             lbl.setFixedWidth(110)
             
             sld = QSlider(Qt.Orientation.Horizontal)
-            sld.setRange(int(low * 10000), int(high * 10000)); sld.setValue(0)
+            # High resolution: 1,000,000 steps per radian
+            sld.setRange(int(low * 1000000), int(high * 1000000)); sld.setValue(0)
 
             val_input = QLineEdit("0.000000"); val_input.setFixedWidth(85); val_input.setAlignment(Qt.AlignmentFlag.AlignRight)
 
@@ -1209,7 +1328,8 @@ class RobotStudioPro(QMainWindow):
             self.slider_area.addLayout(row)
 
     def sync_slider_to_input(self, name):
-        val = self.joint_sliders[name].value() / 10000.0
+        val = self.joint_sliders[name].value() / 1000000.0
+        # Display with 3 decimal places for degrees, 6 for radians
         self.joint_inputs[name].setText(f"{math.degrees(val):.3f}" if self.show_degrees else f"{val:.6f}")
         self.target_joint_state[name] = val
 
@@ -1218,8 +1338,13 @@ class RobotStudioPro(QMainWindow):
             txt = self.joint_inputs[name].text().replace(',', '.')
             val = float(txt)
             rad = math.radians(val) if self.show_degrees else val
-            sld = self.joint_sliders[name]; iv = int(rad * 10000)
+            # Store full precision internally for the motion engine
+            self.target_joint_state[name] = rad
+            
+            sld = self.joint_sliders[name]; iv = int(rad * 1000000)
+            sld.blockSignals(True)
             sld.setValue(max(sld.minimum(), min(sld.maximum(), iv)))
+            sld.blockSignals(False)
         except: self.sync_slider_to_input(name)
 
     def toggle_units(self):

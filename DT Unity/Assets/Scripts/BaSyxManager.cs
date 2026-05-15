@@ -114,6 +114,7 @@ public class BaSyxManager : MonoBehaviour
 
         string geoSubmodelId = null;
         string posSubmodelId = null;
+        string telSubmodelId = null;
 
         // 2. Resolve from descriptors
         if (shell.submodelDescriptors != null)
@@ -123,11 +124,12 @@ public class BaSyxManager : MonoBehaviour
                 if (sm == null) continue;
                 if (sm.idShort == "GeometryData") geoSubmodelId = sm.id;
                 if (sm.idShort == "PositionData") posSubmodelId = sm.id;
+                if (sm.idShort == "TelemetryData") telSubmodelId = sm.id;
             }
         }
 
         // 3. Fallback: Check Repository directly if Registry is incomplete
-        if (geoSubmodelId == null && !string.IsNullOrEmpty(shell.id))
+        if ((geoSubmodelId == null || telSubmodelId == null) && !string.IsNullOrEmpty(shell.id))
         {
             Debug.Log($"[BaSyx] 🚀 Registry incomplete. Searching Repository for {robotName}...");
             string repoShellUrl = $"{aasServerUrl}/shells/{Base64Url(shell.id)}";
@@ -156,9 +158,9 @@ public class BaSyxManager : MonoBehaviour
                             {
                                 if (smDesc.idShort == "GeometryData") geoSubmodelId = smDesc.id;
                                 if (smDesc.idShort == "PositionData") posSubmodelId = smDesc.id;
+                                if (smDesc.idShort == "TelemetryData") telSubmodelId = smDesc.id;
                             }
                         }
-                        if (geoSubmodelId != null && posSubmodelId != null) break;
                     }
                 }
             }
@@ -190,6 +192,13 @@ public class BaSyxManager : MonoBehaviour
                 
                 // 5. Synchronize position continuously
                 if (posSubmodelId != null) StartCoroutine(SyncPositionLoop(posSubmodelId, robotObj));
+                
+                // 6. Synchronize Joints (New Telemetry Logic)
+                if (telSubmodelId != null)
+                {
+                    var sync = robotObj.AddComponent<AASRobotSync>();
+                    sync.Init(telSubmodelId, aasServerUrl);
+                }
             }
             else
             {
