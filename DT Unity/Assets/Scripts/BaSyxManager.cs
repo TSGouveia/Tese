@@ -18,8 +18,8 @@ public class BaSyxManager : MonoBehaviour
 
     [Header("Settings")]
     public float globalScale = 1.0f;
-    public float discoveryInterval = 10f;
-    public float positionSyncInterval = 0.5f;
+    public float discoveryInterval = 2f;
+    public float positionSyncInterval = 0.1f;
     public string baseCachePath;
 
     private Dictionary<string, GameObject> instantiatedRobots = new Dictionary<string, GameObject>();
@@ -181,30 +181,34 @@ public class BaSyxManager : MonoBehaviour
         string urdfFile = FindUrdfFile(robotPath);
         if (urdfFile != null)
         {
-            string processedUrdf = PreprocessUrdf(urdfFile);
-            Debug.Log($"[BaSyx] 🔨 Found URDF for {robotName}: {urdfFile}. Importing...");
-            GameObject robotObj = ImportUrdf(processedUrdf, robotName);
+            Debug.Log($"[BaSyx] 🔨 Found URDF for {robotName}: {urdfFile}. Importing using custom AASUrdfImporter...");
+            
+            // USE CUSTOM IMPORTER (Python Logic)
+            var importResult = AASUrdfImporter.Import(urdfFile, robotName);
+            GameObject robotObj = importResult?.root;
+
             if (robotObj != null)
             {
-                // 1. CAPTURAR JUNTAS ANTES DE LIMPAR A FÍSICA
-                var jointInitList = new List<AASRobotSync.JointInitData>();
-                foreach (var uj in robotObj.GetComponentsInChildren<UrdfJoint>(true))
-                {
-                    string cleanName = uj.jointName.Replace("(Clone)", "").Trim();
-                    
-                    // Em Unity ArticulationBody, o eixo de movimento é sempre o X local do anchor.
-                    // O URDF Importer configura o anchorRotation para alinhar o eixo do URDF com este X.
-                    var ab = uj.GetComponent<ArticulationBody>();
-                    Vector3 axis = (ab != null) ? ab.anchorRotation * Vector3.right : Vector3.up;
+                // Ensure materials and shaders are correctly applied (fixes purple robots)
+                PrepareRobot(robotObj, urdfFile);
 
+                // Garantir que entra no contentor
+                GameObject container = GameObject.Find("AAS_Robots_Container");
+                if (container == null) container = new GameObject("AAS_Robots_Container");
+                robotObj.transform.SetParent(container.transform, false);
+                robotObj.transform.localScale = Vector3.one * globalScale;
+
+                // 1. CAPTURAR JUNTAS DO NOSSO IMPORTER
+                var jointInitList = new List<AASRobotSync.JointInitData>();
+                foreach (var jData in importResult.joints)
+                {
                     jointInitList.Add(new AASRobotSync.JointInitData {
-                        name = cleanName,
-                        transform = uj.transform,
-                        axis = axis
+                        name = jData.name,
+                        transform = jData.anchor.transform,
+                        axis = jData.axis
                     });
                 }
 
-                PrepareRobot(robotObj, urdfFile);
                 instantiatedRobots[shell.id] = robotObj;
                 
                 // 5. Synchronize position continuously
@@ -217,10 +221,12 @@ public class BaSyxManager : MonoBehaviour
                     sync.SetJointMap(jointInitList);
                     sync.Init(telSubmodelId, aasServerUrl);
                 }
+                
+                Debug.Log($"[BaSyx] ✅ {robotName} prepared using custom importer.");
             }
             else
             {
-                Debug.LogError($"[BaSyx] ❌ ImportUrdf returned null for {robotName}");
+                Debug.LogError($"[BaSyx] ❌ AASUrdfImporter returned null for {robotName}");
             }
         }
         else
@@ -419,7 +425,13 @@ public class BaSyxManager : MonoBehaviour
         bool isURP = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null;
         string shaderName = isURP ? "Universal Render Pipeline/Lit" : "Standard";
         Shader targetShader = Shader.Find(shaderName);
-        if (targetShader == null) Debug.LogWarning($"[BaSyx] ⚠️ Shader '{shaderName}' not found!");
+        
+        if (targetShader == null) 
+        {
+            Debug.LogWarning($"[BaSyx] ⚠️ Shader '{shaderName}' not found! Trying fallbacks...");
+            targetShader = Shader.Find("Standard");
+            if (targetShader == null) targetShader = Shader.Find("Hidden/InternalErrorShader");
+        }
 
         foreach (var renderer in robot.GetComponentsInChildren<Renderer>())
         {
