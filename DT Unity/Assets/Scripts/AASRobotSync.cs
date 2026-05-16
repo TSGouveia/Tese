@@ -18,7 +18,7 @@ public class AASRobotSync : MonoBehaviour
     public string units = "rad"; // "rad", "deg"
 
     [Header("Smoothing")]
-    public float lerpSpeed = 15f;
+    public float lerpSpeed = 1f;
 
     [Serializable]
     public class JointData {
@@ -41,7 +41,7 @@ public class AASRobotSync : MonoBehaviour
 
     private Dictionary<string, JointData> jointMap = new Dictionary<string, JointData>();
     private HashSet<string> loggedJoints = new HashSet<string>();
-    private float updateRate = 0.05f; // 20Hz default
+    private float updateRate = 0.02f; // 50Hz for faster sync
     private float lastUpdateTime = 0;
 
     public void SetJointMap(List<JointInitData> joints)
@@ -175,9 +175,10 @@ public class AASRobotSync : MonoBehaviour
             // Suavização do movimento
             data.currentAngle = Mathf.LerpAngle(data.currentAngle, data.targetAngle, Time.deltaTime * lerpSpeed);
             
-            // Aplicação da rotação baseada na pose inicial URDF
-            data.transform.localRotation = data.initialRotation * Quaternion.AngleAxis(data.currentAngle, data.axis);
-        }
+            // AplicaÃ§Ã£o da rotaÃ§Ã£o baseada na pose inicial URDF
+            // Invert the angle to match Unity's left-handed system relative to ROS right-handed system
+            data.transform.localRotation = data.initialRotation * Quaternion.AngleAxis(-data.currentAngle, data.axis);
+            }
     }
 
     float SafeFloat(object v)
