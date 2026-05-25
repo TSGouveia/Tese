@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: #eee; padding: 20px; }
+        .rami-cube { display: flex; gap: 20px; justify-content: center; margin-bottom: 40px; }
+        .layer { border: 2px solid #3498db; padding: 15px; border-radius: 8px; width: 250px; background: #2c3e50; }
+        .layer h3 { margin-top: 0; color: #3498db; border-bottom: 1px solid #555; padding-bottom: 5px; }
+        .mapping { font-size: 0.9em; line-height: 1.4; }
+        .mapping b { color: #f1c40f; }
+        .arrow { font-size: 2em; align-self: center; }
+    </style>
+</head>
+<body>
+    <h2>RAMI 4.0 -> AAS Mapping</h2>
+    <div class="rami-cube">
+        <div class="layer">
+            <h3>Asset Layer</h3>
+            <div class="mapping">
+                O mundo físico.<br>
+                <b>AAS Asset:</b> Conveyor, Punch, Sensor X.
+            </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="layer">
+            <h3>Integration Layer</h3>
+            <div class="mapping">
+                Ligar o físico ao digital.<br>
+                <b>SM:</b> <i>Asset Interfaces Description</i><br>
+                (MQTT, I/O mapping)
+            </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="layer">
+            <h3>Communication Layer</h3>
+            <div class="mapping">
+                Como os dados viajam.<br>
+                <b>SM:</b> <i>Wireless/Wired Communication</i>
+            </div>
+        </div>
+    </div>
+    <div class="rami-cube">
+        <div class="layer">
+            <h3>Information Layer</h3>
+            <div class="mapping">
+                O que os dados significam.<br>
+                <b>SM:</b> <i>Technical Data, Nameplate</i>
+            </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="layer">
+            <h3>Functional Layer</h3>
+            <div class="mapping">
+                O que o ativo faz.<br>
+                <b>SM:</b> <i>Capability, Process Variables</i>
+            </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="layer">
+            <h3>Business Layer</h3>
+            <div class="mapping">
+                O valor para o negócio.<br>
+                <b>SM:</b> <i>Carbon Footprint, Maintenance</i>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

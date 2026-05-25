@@ -1,0 +1,98 @@
+{
+    "modelType": "Submodel",
+    "kind": "Instance",
+    "id": "https://acplt.org/Submodels/Geo_ur",
+    "idShort": "GeometryData",
+    "submodelElements": [
+        {
+            "modelType": "File",
+            "contentType": "application/xml",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_ur_DOT_urdf-ur.urdf",
+            "idShort": "PATH_ur_DOT_urdf"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_visual_SL_base_DOT_dae-base.dae",
+            "idShort": "PATH_meshes_SL_ur5_SL_visual_SL_base_DOT_dae"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_collision_SL_base_DOT_stl-base.stl",
+            "idShort": "PATH_meshes_SL_ur5_SL_collision_SL_base_DOT_stl"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_visual_SL_shoulder_DOT_dae-shoulder.dae",
+            "idShort": "PATH_meshes_SL_ur5_SL_visual_SL_shoulder_DOT_dae"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_collision_SL_shoulder_DOT_stl-shoulder.stl",
+            "idShort": "PATH_meshes_SL_ur5_SL_collision_SL_shoulder_DOT_stl"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_visual_SL_upperarm_DOT_dae-upperarm.dae",
+            "idShort": "PATH_meshes_SL_ur5_SL_visual_SL_upperarm_DOT_dae"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_collision_SL_upperarm_DOT_stl-upperarm.stl",
+            "idShort": "PATH_meshes_SL_ur5_SL_collision_SL_upperarm_DOT_stl"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_visual_SL_forearm_DOT_dae-forearm.dae",
+            "idShort": "PATH_meshes_SL_ur5_SL_visual_SL_forearm_DOT_dae"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_collision_SL_forearm_DOT_stl-forearm.stl",
+            "idShort": "PATH_meshes_SL_ur5_SL_collision_SL_forearm_DOT_stl"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_visual_SL_wrist1_DOT_dae-wrist1.dae",
+            "idShort": "PATH_meshes_SL_ur5_SL_visual_SL_wrist1_DOT_dae"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_collision_SL_wrist1_DOT_stl-wrist1.stl",
+            "idShort": "PATH_meshes_SL_ur5_SL_collision_SL_wrist1_DOT_stl"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_visual_SL_wrist2_DOT_dae-wrist2.dae",
+            "idShort": "PATH_meshes_SL_ur5_SL_visual_SL_wrist2_DOT_dae"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_collision_SL_wrist2_DOT_stl-wrist2.stl",
+            "idShort": "PATH_meshes_SL_ur5_SL_collision_SL_wrist2_DOT_stl"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_visual_SL_wrist3_DOT_dae-wrist3.dae",
+            "idShort": "PATH_meshes_SL_ur5_SL_visual_SL_wrist3_DOT_dae"
+        },
+        {
+            "modelType": "File",
+            "contentType": "application/octet-stream",
+            "value": "aHR0cHM6Ly9hY3BsdC5vcmcvU3VibW9kZWxzL0dlb191cg-PATH_meshes_SL_ur5_SL_collision_SL_wrist3_DOT_stl-wrist3.stl",
+            "idShort": "PATH_meshes_SL_ur5_SL_collision_SL_wrist3_DOT_stl"
+        }
+    ]
+}

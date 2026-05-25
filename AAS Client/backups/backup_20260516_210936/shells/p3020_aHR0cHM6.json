@@ -1,0 +1,38 @@
+{
+    "modelType": "AssetAdministrationShell",
+    "assetInformation": {
+        "assetKind": "Instance",
+        "globalAssetId": "http://acplt.org/Assets/p3020"
+    },
+    "submodels": [
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Tel_p3020"
+                }
+            ],
+            "type": "ModelReference"
+        },
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Geo_p3020"
+                }
+            ],
+            "type": "ModelReference"
+        },
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Pos_p3020"
+                }
+            ],
+            "type": "ModelReference"
+        }
+    ],
+    "id": "https://acplt.org/AAS_p3020",
+    "idShort": "p3020"
+}

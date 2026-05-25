@@ -1,0 +1,38 @@
+{
+    "modelType": "AssetAdministrationShell",
+    "assetInformation": {
+        "assetKind": "Instance",
+        "globalAssetId": "http://acplt.org/Assets/r2d2"
+    },
+    "submodels": [
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Tel_r2d2"
+                }
+            ],
+            "type": "ModelReference"
+        },
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Pos_r2d2"
+                }
+            ],
+            "type": "ModelReference"
+        },
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Geo_r2d2"
+                }
+            ],
+            "type": "ModelReference"
+        }
+    ],
+    "id": "https://acplt.org/AAS_r2d2",
+    "idShort": "r2d2"
+}

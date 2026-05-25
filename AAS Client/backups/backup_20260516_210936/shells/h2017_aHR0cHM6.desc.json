@@ -1,0 +1,15 @@
+{
+    "assetKind": "Instance",
+    "endpoints": [
+        {
+            "interface": "AAS-3.0",
+            "protocolInformation": {
+                "href": "http://localhost:8081/shells/aHR0cHM6Ly9hY3BsdC5vcmcvQUFTX2gyMDE3",
+                "endpointProtocol": "http"
+            }
+        }
+    ],
+    "globalAssetId": "http://acplt.org/Assets/h2017",
+    "idShort": "h2017",
+    "id": "https://acplt.org/AAS_h2017"
+}

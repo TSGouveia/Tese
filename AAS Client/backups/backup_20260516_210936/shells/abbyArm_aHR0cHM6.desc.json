@@ -1,0 +1,15 @@
+{
+    "assetKind": "Instance",
+    "endpoints": [
+        {
+            "interface": "AAS-3.0",
+            "protocolInformation": {
+                "href": "http://localhost:8081/shells/aHR0cHM6Ly9hY3BsdC5vcmcvQUFTX2FiYnlBcm0",
+                "endpointProtocol": "http"
+            }
+        }
+    ],
+    "globalAssetId": "http://acplt.org/Assets/abbyArm",
+    "idShort": "abbyArm",
+    "id": "https://acplt.org/AAS_abbyArm"
+}
