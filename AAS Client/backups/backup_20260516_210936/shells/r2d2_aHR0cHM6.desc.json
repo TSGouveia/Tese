@@ -1,0 +1,15 @@
+{
+    "assetKind": "Instance",
+    "endpoints": [
+        {
+            "interface": "AAS-3.0",
+            "protocolInformation": {
+                "href": "http://localhost:8081/shells/aHR0cHM6Ly9hY3BsdC5vcmcvQUFTX3IyZDI",
+                "endpointProtocol": "http"
+            }
+        }
+    ],
+    "globalAssetId": "http://acplt.org/Assets/r2d2",
+    "idShort": "r2d2",
+    "id": "https://acplt.org/AAS_r2d2"
+}

@@ -1,0 +1,38 @@
+{
+    "modelType": "AssetAdministrationShell",
+    "assetInformation": {
+        "assetKind": "Instance",
+        "globalAssetId": "http://acplt.org/Assets/abbyArm"
+    },
+    "submodels": [
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Pos_abbyArm"
+                }
+            ],
+            "type": "ModelReference"
+        },
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Tel_abbyArm"
+                }
+            ],
+            "type": "ModelReference"
+        },
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Geo_abbyArm"
+                }
+            ],
+            "type": "ModelReference"
+        }
+    ],
+    "id": "https://acplt.org/AAS_abbyArm",
+    "idShort": "abbyArm"
+}

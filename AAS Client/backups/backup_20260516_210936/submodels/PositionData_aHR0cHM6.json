@@ -1,0 +1,26 @@
+{
+    "modelType": "Submodel",
+    "kind": "Instance",
+    "id": "https://acplt.org/Submodels/Pos_ur",
+    "idShort": "PositionData",
+    "submodelElements": [
+        {
+            "modelType": "Property",
+            "value": "-2.0",
+            "valueType": "xs:double",
+            "idShort": "Pos_X"
+        },
+        {
+            "modelType": "Property",
+            "value": "0.0",
+            "valueType": "xs:double",
+            "idShort": "Pos_Y"
+        },
+        {
+            "modelType": "Property",
+            "value": "0.0",
+            "valueType": "xs:double",
+            "idShort": "Pos_Z"
+        }
+    ]
+}

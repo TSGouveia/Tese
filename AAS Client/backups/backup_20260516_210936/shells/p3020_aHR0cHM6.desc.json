@@ -1,0 +1,15 @@
+{
+    "assetKind": "Instance",
+    "endpoints": [
+        {
+            "interface": "AAS-3.0",
+            "protocolInformation": {
+                "href": "http://localhost:8081/shells/aHR0cHM6Ly9hY3BsdC5vcmcvQUFTX3AzMDIw",
+                "endpointProtocol": "http"
+            }
+        }
+    ],
+    "globalAssetId": "http://acplt.org/Assets/p3020",
+    "idShort": "p3020",
+    "id": "https://acplt.org/AAS_p3020"
+}

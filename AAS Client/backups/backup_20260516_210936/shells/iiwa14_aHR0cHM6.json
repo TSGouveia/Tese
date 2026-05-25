@@ -1,0 +1,38 @@
+{
+    "modelType": "AssetAdministrationShell",
+    "assetInformation": {
+        "assetKind": "Instance",
+        "globalAssetId": "http://acplt.org/Assets/iiwa14"
+    },
+    "submodels": [
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Tel_iiwa14"
+                }
+            ],
+            "type": "ModelReference"
+        },
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Pos_iiwa14"
+                }
+            ],
+            "type": "ModelReference"
+        },
+        {
+            "keys": [
+                {
+                    "type": "Submodel",
+                    "value": "https://acplt.org/Submodels/Geo_iiwa14"
+                }
+            ],
+            "type": "ModelReference"
+        }
+    ],
+    "id": "https://acplt.org/AAS_iiwa14",
+    "idShort": "iiwa14"
+}

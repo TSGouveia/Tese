@@ -76,7 +76,11 @@ public class BaSyxManager : MonoBehaviour
         foreach (var id in idsToRemove)
         {
             Debug.Log($"[BaSyx] 🗑️ Removing robot: {id}");
-            if (instantiatedRobots[id] != null) Destroy(instantiatedRobots[id]);
+            if (instantiatedRobots[id] != null)
+            {
+                if (RobotCameraManager.Instance != null) RobotCameraManager.Instance.RemoveTarget(instantiatedRobots[id].transform);
+                Destroy(instantiatedRobots[id]);
+            }
             instantiatedRobots.Remove(id);
         }
         
@@ -86,7 +90,6 @@ public class BaSyxManager : MonoBehaviour
             if (instantiatedRobots.ContainsKey(shell.id) || pendingRobotIds.Contains(shell.id)) continue;
             
             pendingRobotIds.Add(shell.id);
-            // Debug.Log($"[BaSyx] 🤖 Processing new robot: {shell.idShort}");
             StartCoroutine(ProcessRobot(shell));
         }
     }
@@ -97,7 +100,6 @@ public class BaSyxManager : MonoBehaviour
         string robotPath = Path.Combine(baseCachePath, robotName);
         Directory.CreateDirectory(robotPath);
 
-        // 1. Try to fetch full descriptor from Registry
         if ((shell.submodelDescriptors == null || shell.submodelDescriptors.Count == 0) && !string.IsNullOrEmpty(shell.id))
         {
             string detailUrl = $"{registryUrl}/{Base64Url(shell.id)}";
@@ -115,7 +117,6 @@ public class BaSyxManager : MonoBehaviour
         string posSubmodelId = null;
         string telSubmodelId = null;
 
-        // 2. Resolve from descriptors
         if (shell.submodelDescriptors != null)
         {
             foreach (var sm in shell.submodelDescriptors)
@@ -127,10 +128,8 @@ public class BaSyxManager : MonoBehaviour
             }
         }
 
-        // 3. Fallback: Check Repository directly if Registry is incomplete
         if ((geoSubmodelId == null || telSubmodelId == null) && !string.IsNullOrEmpty(shell.id))
         {
-            Debug.Log($"[BaSyx] 🚀 Registry incomplete. Searching Repository for {robotName}...");
             string repoShellUrl = $"{aasServerUrl}/shells/{Base64Url(shell.id)}";
             UnityWebRequest repoReq = UnityWebRequest.Get(repoShellUrl);
             yield return repoReq.SendWebRequest();
@@ -144,8 +143,6 @@ public class BaSyxManager : MonoBehaviour
                     {
                         if (smRef.keys == null || smRef.keys.Count == 0) continue;
                         string smId = smRef.keys[0].value;
-
-                        // Fetch submodel metadata to check idShort
                         string smMetaUrl = $"{aasServerUrl}/submodels/{Base64Url(smId)}";
                         UnityWebRequest smReq = UnityWebRequest.Get(smMetaUrl);
                         yield return smReq.SendWebRequest();
@@ -165,40 +162,25 @@ public class BaSyxManager : MonoBehaviour
             }
         }
 
-        if (geoSubmodelId == null) 
-        { 
-            Debug.LogWarning($"[BaSyx] ⚠️ GeometryData not found for {robotName}. Check if submodel idShort is 'GeometryData'."); 
-            pendingRobotIds.Remove(shell.id);
-            yield break; 
-        }
+        if (geoSubmodelId == null) { pendingRobotIds.Remove(shell.id); yield break; }
 
-        // 4. Download URDF and Meshes
         Debug.Log($"[BaSyx] 📥 Downloading assets for {robotName}...");
         yield return StartCoroutine(DownloadRecursive(geoSubmodelId, robotPath));
-        Debug.Log($"[BaSyx] 📥 Assets for {robotName} downloaded.");
 
-        // 5. Pre-process URDF to handle Material Overrides (UR3e color fix)
         string urdfFile = FindUrdfFile(robotPath);
         if (urdfFile != null)
         {
-            Debug.Log($"[BaSyx] 🔨 Found URDF for {robotName}: {urdfFile}. Importing using custom AASUrdfImporter...");
-            
-            // USE CUSTOM IMPORTER (Python Logic)
             var importResult = AASUrdfImporter.Import(urdfFile, robotName);
             GameObject robotObj = importResult?.root;
 
             if (robotObj != null)
             {
-                // Ensure materials and shaders are correctly applied (fixes purple robots)
                 PrepareRobot(robotObj, urdfFile);
-
-                // Garantir que entra no contentor
                 GameObject container = GameObject.Find("AAS_Robots_Container");
                 if (container == null) container = new GameObject("AAS_Robots_Container");
                 robotObj.transform.SetParent(container.transform, false);
                 robotObj.transform.localScale = Vector3.one * globalScale;
 
-                // 1. CAPTURAR JUNTAS DO NOSSO IMPORTER
                 var jointInitList = new List<AASRobotSync.JointInitData>();
                 foreach (var jData in importResult.joints)
                 {
@@ -211,10 +193,10 @@ public class BaSyxManager : MonoBehaviour
 
                 instantiatedRobots[shell.id] = robotObj;
                 
-                // 5. Synchronize position continuously
-                if (posSubmodelId != null) StartCoroutine(SyncPositionLoop(posSubmodelId, robotObj));
+                // --- CAMERA DELEGATION ---
+                if (RobotCameraManager.Instance != null) RobotCameraManager.Instance.AddTarget(robotObj.transform);
                 
-                // 6. Synchronize Joints (New Telemetry Logic)
+                if (posSubmodelId != null) StartCoroutine(SyncPositionLoop(posSubmodelId, robotObj));
                 if (telSubmodelId != null)
                 {
                     var sync = robotObj.AddComponent<AASRobotSync>();
@@ -222,61 +204,10 @@ public class BaSyxManager : MonoBehaviour
                     sync.Init(telSubmodelId, aasServerUrl);
                 }
                 
-                Debug.Log($"[BaSyx] ✅ {robotName} prepared using custom importer.");
+                Debug.Log($"[BaSyx] ✅ {robotName} prepared.");
             }
-            else
-            {
-                Debug.LogError($"[BaSyx] ❌ AASUrdfImporter returned null for {robotName}");
-            }
-        }
-        else
-        {
-            Debug.LogWarning($"[BaSyx] ⚠️ No URDF file found in {robotPath} for {robotName}. Assets downloaded: {Directory.GetFiles(robotPath, "*.*", SearchOption.AllDirectories).Length}");
         }
         pendingRobotIds.Remove(shell.id);
-    }
-
-    string PreprocessUrdf(string path)
-    {
-        try
-        {
-            XDocument doc = XDocument.Load(path);
-            bool changed = false;
-
-            foreach (var visual in doc.Descendants("visual"))
-            {
-                var mesh = visual.Element("geometry")?.Element("mesh");
-                var mat = visual.Element("material");
-
-                if (mesh != null && mat != null)
-                {
-                    string filename = mesh.Attribute("filename")?.Value?.ToLower() ?? "";
-                    // Only intervene if it's a DAE/OBJ (which can have internal materials)
-                    if (filename.EndsWith(".dae") || filename.EndsWith(".obj"))
-                    {
-                        string matName = mat.Attribute("name")?.Value ?? "";
-                        Color matColor = ParseRGBA(mat.Element("color")?.Attribute("rgba")?.Value);
-                        
-                        // If material is generic gray, remove it so importer uses mesh's internal materials
-                        if (matName.Contains("Grey") || matName.Contains("Gray") || IsGray(matColor))
-                        {
-                            // Debug.Log($"[BaSyx] 🛠️ Removing URDF material override for {filename} to prioritize mesh colors.");
-                            mat.Remove();
-                            changed = true;
-                        }
-                    }
-                }
-            }
-
-            if (changed)
-            {
-                string newPath = path.Replace(".urdf", "_processed.urdf").Replace(".xacro", "_processed.urdf");
-                doc.Save(newPath);
-                return newPath;
-            }
-        }
-        catch (Exception e) { Debug.LogWarning($"[BaSyx] ⚠️ URDF Preprocess error: {e.Message}"); }
-        return path;
     }
 
     IEnumerator DownloadRecursive(string submodelId, string targetDir)
@@ -285,47 +216,27 @@ public class BaSyxManager : MonoBehaviour
         UnityWebRequest req = UnityWebRequest.Get(elementsUrl);
         yield return req.SendWebRequest();
 
-        if (req.result != UnityWebRequest.Result.Success)
-        {
-            Debug.LogError($"[BaSyx] ❌ Failed to get elements for {submodelId}: {req.error}");
-            yield break;
-        }
+        if (req.result != UnityWebRequest.Result.Success) yield break;
 
         var elements = DeserializeList<SubmodelElement>(req.downloadHandler.text);
-        if (elements == null || elements.Count == 0)
-        {
-            Debug.LogWarning($"[BaSyx] ⚠️ No elements found in submodel {submodelId}");
-            yield break;
-        }
+        if (elements == null) yield break;
 
-        int fileCount = 0;
         foreach (var el in elements)
         {
             if (el == null || string.IsNullOrEmpty(el.idShort)) continue;
-
             if (el.modelType == "File")
             {
-                fileCount++;
-                // 1. Reconstruir a HIERARQUIA a partir do idShort (é o único sítio com as pastas _SL_)
                 string relPath = el.idShort;
                 if (relPath.Contains("-PATH_")) relPath = "PATH_" + relPath.Split(new[] { "-PATH_" }, StringSplitOptions.None).Last();
                 relPath = relPath.Replace("PATH_", "").Replace("_SL_", "/").Replace("_DOT_", ".").Replace("_DASH_", "-");
 
-                // 2. Tentar obter o caminho real a partir do 'value' (caso o BaSyx o tenha preservado)
                 string val = el.value?.ToString();
-                if (!string.IsNullOrEmpty(val) && val.Contains("/"))
-                {
-                    relPath = val;
-                }
+                if (!string.IsNullOrEmpty(val) && val.Contains("/")) relPath = val;
                 
-                // Fallback para o URDF principal se necessário
                 if (el.idShort.Contains("Main_URDF") && !relPath.EndsWith(".urdf")) relPath = "robot.urdf";
                 else if (!relPath.Contains(".")) relPath += ".urdf";
 
-                // 3. Limpar o caminho para ser relativo e seguro
                 string cleanPath = relPath;
-                
-                // Remover prefixos comuns de AAS/AASX
                 string[] prefixesToRemove = { "/aasx/robot/", "/aasx/", "aasx/", "robot/" };
                 foreach (var prefix in prefixesToRemove)
                 {
@@ -336,123 +247,63 @@ public class BaSyxManager : MonoBehaviour
                     }
                 }
 
-                // Limpar "../", "..\" e "/" iniciais
                 cleanPath = cleanPath.Replace("\\", "/").TrimStart('/');
                 while (cleanPath.StartsWith("../")) cleanPath = cleanPath.Substring(3);
-                while (cleanPath.Contains("../")) cleanPath = cleanPath.Replace("../", "");
                 
                 string dest = Path.Combine(targetDir, cleanPath);
                 string dir = Path.GetDirectoryName(dest);
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
-                // 3. Download do anexo usando o idShort original
                 string downloadUrl = $"{aasServerUrl}/submodels/{Base64Url(submodelId)}/submodel-elements/{el.idShort}/attachment";
                 UnityWebRequest dl = UnityWebRequest.Get(downloadUrl);
                 yield return dl.SendWebRequest();
 
-                if (dl.result == UnityWebRequest.Result.Success)
-                {
-                    File.WriteAllBytes(dest, dl.downloadHandler.data);
-                    // Debug.Log($"   [+] Saved: {cleanPath} in {targetDir}");
-                }
+                if (dl.result == UnityWebRequest.Result.Success) File.WriteAllBytes(dest, dl.downloadHandler.data);
             }
         }
-    }
-
-    GameObject ImportUrdf(string path, string name)
-    {
-        try
-        {
-            // Debug.Log($"[BaSyx] 🔨 Importing URDF: {path}");
-            var settings = new ImportSettings { chosenAxis = ImportSettings.axisType.yAxis, convexMethod = ImportSettings.convexDecomposer.unity };
-            
-            GameObject robot = UrdfRobotExtensions.CreateRuntime(Path.GetFullPath(path), settings);
-            
-            if (robot != null)
-            {
-                // Garantir que entra no contentor ANTES de qualquer outra coisa
-                GameObject container = GameObject.Find("AAS_Robots_Container");
-                if (container == null) container = new GameObject("AAS_Robots_Container");
-                robot.transform.SetParent(container.transform, false);
-                robot.name = name;
-                
-                // NÃO limpar a física aqui, para permitir a captura no ProcessRobot
-            }
-            return robot;
-        }
-        catch (Exception e) { Debug.LogError($"[BaSyx] ❌ Import Error: {e.Message}"); return null; }
     }
 
     void StripPhysics(GameObject root)
     {
-        Debug.Log($"[BaSyx] 🪚 Aggressively stripping physics from {root.name}...");
-
-        // 1. APAGAR TODOS OS SCRIPTS PRIMEIRO (Quebra as dependências)
-        // Isso remove UrdfJoint, UrdfInertial, UrdfLink, etc.
         var allScripts = root.GetComponentsInChildren<MonoBehaviour>(true);
         foreach (var s in allScripts)
         {
             if (s == null || s == this || s is AASRobotSync) continue;
-            // Se o nome do script contém "Urdf" ou "Articulation", eliminamos
             string typeName = s.GetType().Name;
-            if (typeName.Contains("Urdf") || typeName.Contains("Articulation") || typeName.Contains("Controller"))
-            {
-                DestroyImmediate(s);
-            }
+            if (typeName.Contains("Urdf") || typeName.Contains("Articulation") || typeName.Contains("Controller")) DestroyImmediate(s);
         }
-
-        // 2. AGORA APAGAR OS COMPONENTES DE FÍSICA (Sem dependências de scripts)
         foreach (var b in root.GetComponentsInChildren<ArticulationBody>(true)) DestroyImmediate(b);
         foreach (var rb in root.GetComponentsInChildren<Rigidbody>(true)) DestroyImmediate(rb);
         foreach (var c in root.GetComponentsInChildren<Collider>(true)) DestroyImmediate(c);
         foreach (var j in root.GetComponentsInChildren<UnityEngine.Joint>(true)) DestroyImmediate(j);
-
-        Debug.Log("[BaSyx] ✅ Physics stripped. Robot is now a static visual model.");
     }
 
     void PrepareRobot(GameObject robot, string urdfPath)
     {
         if (robot == null) return;
-        robot.transform.localScale = Vector3.one * globalScale;
-
-        // Limpar tudo o que é física e scripts do importer
         StripPhysics(robot);
-
-        // Extrair materiais
         Dictionary<string, MaterialData> urdfMaterials = ParseUrdfMaterials(urdfPath);
 
-        // 3. Material and Shader Validation (Unity 6 / URP)
         bool isURP = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null;
         string shaderName = isURP ? "Universal Render Pipeline/Lit" : "Standard";
         Shader targetShader = Shader.Find(shaderName);
-        
-        if (targetShader == null) 
-        {
-            Debug.LogWarning($"[BaSyx] ⚠️ Shader '{shaderName}' not found! Trying fallbacks...");
-            targetShader = Shader.Find("Standard");
-            if (targetShader == null) targetShader = Shader.Find("Hidden/InternalErrorShader");
-        }
+        if (targetShader == null) targetShader = Shader.Find("Standard");
 
         foreach (var renderer in robot.GetComponentsInChildren<Renderer>())
         {
-            // Try to find material based on link name by traversing hierarchy
             MaterialData linkMat = null;
             Transform current = renderer.transform;
-            
             while (current != null && current != robot.transform)
             {
                 string cleanName = current.name.Replace("(Clone)", "").Trim();
-                // Attempt exact or partial match (many importers change names slightly)
                 linkMat = urdfMaterials.FirstOrDefault(x => 
                     string.Equals(x.Key, cleanName, StringComparison.OrdinalIgnoreCase) || 
                     cleanName.StartsWith(x.Key, StringComparison.OrdinalIgnoreCase) ||
                     x.Key.StartsWith(cleanName, StringComparison.OrdinalIgnoreCase)).Value;
-
                 if (linkMat != null) break;
                 current = current.parent;
             }
 
-            // Check if mesh has vertex colors
             MeshFilter mf = renderer.GetComponent<MeshFilter>();
             bool hasVertexColors = mf != null && mf.sharedMesh != null && mf.sharedMesh.colors != null && mf.sharedMesh.colors.Length > 0;
 
@@ -462,45 +313,17 @@ public class BaSyxManager : MonoBehaviour
                 Material mat = mats[i];
                 Texture originalTex = mat.mainTexture;
                 Color originalColor = isURP ? mat.GetColor("_BaseColor") : mat.color;
-
                 if (targetShader != null) mat.shader = targetShader;
 
-                // Detect if URDF material is a generic gray placeholder
                 bool isPlaceholder = linkMat == null || !linkMat.hasColor || IsGray(linkMat.color);
-                
-                // If URDF has no color or is generic gray, try to keep mesh color
-                // Only override if mesh color is invalid (e.g. error magenta) or URDF has a "real" non-gray color
                 Color finalColor = originalColor;
+                bool isErrorShader = (originalColor.r > 0.8f && originalColor.g < 0.2f && originalColor.b > 0.8f);
 
-                bool isErrorShader = (originalColor.r > 0.8f && originalColor.g < 0.2f && originalColor.b > 0.8f); // Magenta
-
-                // Priority Logic:
-                // 1. If we have a texture, prioritize it (color = white to avoid tinting)
-                // 2. If URDF material is NOT gray, use it
-                // 3. Otherwise, use original mesh color (if not gray) or fallback to URDF gray
+                if (originalTex != null) finalColor = Color.white;
+                else if (linkMat != null && linkMat.hasColor && (!isPlaceholder || isErrorShader)) finalColor = linkMat.color;
+                else if (isPlaceholder && !IsGray(originalColor) && !isErrorShader) finalColor = originalColor;
                 
-                if (originalTex != null)
-                {
-                    finalColor = Color.white;
-                    // Debug.Log($"[BaSyx] 🎨 Using TEXTURE for {renderer.name}");
-                }
-                else if (linkMat != null && linkMat.hasColor && (!isPlaceholder || isErrorShader))
-                {
-                    finalColor = linkMat.color;
-                    // Debug.Log($"[BaSyx] 🎨 Using URDF COLOR {finalColor} for {renderer.name}");
-                }
-                else if (isPlaceholder && !IsGray(originalColor) && !isErrorShader)
-                {
-                    // Mesh had a color and URDF says gray -> Keep mesh color
-                    finalColor = originalColor;
-                    // Debug.Log($"[BaSyx] 🎨 Using MESH COLOR {finalColor} for {renderer.name}");
-                }
-                
-                // Fallback to default gray if color is empty or broken
-                if (finalColor.a < 0.01f || (isErrorShader && isPlaceholder)) 
-                    finalColor = Color.gray;
-
-                // Force white if vertex colors exist to avoid tinting
+                if (finalColor.a < 0.01f || (isErrorShader && isPlaceholder)) finalColor = Color.gray;
                 if (hasVertexColors) finalColor = Color.white;
 
                 if (isURP)
@@ -520,7 +343,6 @@ public class BaSyxManager : MonoBehaviour
             }
             renderer.materials = mats;
         }
-        Debug.Log($"[BaSyx] ✅ {robot.name} prepared.");
     }
 
     IEnumerator SyncPositionLoop(string submodelId, GameObject robot)
@@ -534,24 +356,25 @@ public class BaSyxManager : MonoBehaviour
             if (req.result == UnityWebRequest.Result.Success)
             {
                 var elements = DeserializeList<SubmodelElement>(req.downloadHandler.text);
-                Vector3 pos = robot.transform.position;
+                Vector3 urdfPos = Vector3.zero;
+                bool xSet = false, ySet = false, zSet = false;
                 foreach (var el in elements)
                 {
                     if (el == null || string.IsNullOrEmpty(el.idShort) || el.value == null) continue;
-
                     string k = el.idShort.ToUpper();
-                    try
-                    {
-                        if (k.Contains("X")) pos.x = SafeFloat(el.value);
-                        if (k.Contains("Y")) pos.y = SafeFloat(el.value);
-                        if (k.Contains("Z")) pos.z = SafeFloat(el.value);
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogWarning($"[BaSyx] ⚠️ Failed to sync coordinate {el.idShort}: {e.Message}");
-                    }
+                    float val = SafeFloat(el.value);
+                    if (k.Contains("X")) { urdfPos.x = val; xSet = true; }
+                    if (k.Contains("Y")) { urdfPos.y = val; ySet = true; }
+                    if (k.Contains("Z")) { urdfPos.z = val; zSet = true; }
                 }
-                robot.transform.position = pos;
+                if (xSet || ySet || zSet)
+                {
+                    // RH Z-up (AAS) to LH Y-up (Unity)
+                    // Unity X = -URDF Y
+                    // Unity Y =  URDF Z
+                    // Unity Z =  URDF X
+                    robot.transform.position = new Vector3(-urdfPos.y, urdfPos.z, urdfPos.x);
+                }
             }
             yield return new WaitForSeconds(positionSyncInterval);
         }
@@ -563,29 +386,13 @@ public class BaSyxManager : MonoBehaviour
         if (v is float f) return f;
         if (v is double d) return (float)d;
         if (v is int i) return (float)i;
-        if (v is long l) return (float)l;
         if (v is string s && float.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out float res)) return res;
-        
-        try { return Convert.ToSingle(v, System.Globalization.CultureInfo.InvariantCulture); }
-        catch { return 0f; }
-    }
-
-    Texture2D LoadTexture(string path)
-    {
-        try
-        {
-            byte[] data = File.ReadAllBytes(path);
-            Texture2D tex = new Texture2D(2, 2);
-            if (tex.LoadImage(data)) return tex;
-        }
-        catch (Exception e) { Debug.LogWarning($"[BaSyx] ⚠️ Error loading texture {path}: {e.Message}"); }
-        return null;
+        return 0f;
     }
 
     bool IsGray(Color c)
     {
         float avg = (c.r + c.g + c.b) / 3f;
-        // Stricter check: must be very close to gray to be considered "placeholder"
         return Mathf.Abs(c.r - avg) < 0.02f && Mathf.Abs(c.g - avg) < 0.02f && Mathf.Abs(c.b - avg) < 0.02f;
     }
 
@@ -609,100 +416,58 @@ public class BaSyxManager : MonoBehaviour
         {
             XDocument doc = XDocument.Load(path);
             var globals = new Dictionary<string, MaterialData>();
-
-            // 1. Collect global materials
             foreach (var m in doc.Descendants("material"))
             {
                 string n = m.Attribute("name")?.Value;
-                if (string.IsNullOrEmpty(n)) continue;
-                if (globals.ContainsKey(n)) continue;
-
+                if (string.IsNullOrEmpty(n) || globals.ContainsKey(n)) continue;
                 var data = new MaterialData();
                 var c = m.Element("color");
                 if (c != null) { data.color = ParseRGBA(c.Attribute("rgba")?.Value); data.hasColor = true; }
-                
-                var t = m.Element("texture");
-                if (t != null) { data.texturePath = t.Attribute("filename")?.Value; data.hasTexture = true; }
-
-                if (data.hasColor || data.hasTexture) globals[n] = data;
+                if (data.hasColor) globals[n] = data;
             }
-
-            // 2. Associate materials with links
             foreach (var l in doc.Descendants("link"))
             {
                 string ln = l.Attribute("name")?.Value;
                 if (string.IsNullOrEmpty(ln)) continue;
-
                 foreach (var v in l.Elements("visual"))
                 {
                     var m = v.Element("material");
                     if (m == null) continue;
-
                     string mn = m.Attribute("name")?.Value;
                     var data = new MaterialData();
-
-                    // Check for local color/texture definition
                     var c = m.Element("color");
                     if (c != null) { data.color = ParseRGBA(c.Attribute("rgba")?.Value); data.hasColor = true; }
-                    
-                    var t = m.Element("texture");
-                    if (t != null) { data.texturePath = t.Attribute("filename")?.Value; data.hasTexture = true; }
-
-                    // If no local definition, try global by name
-                    if (!data.hasColor && !data.hasTexture && !string.IsNullOrEmpty(mn) && globals.ContainsKey(mn))
-                    {
-                        data = globals[mn];
-                    }
-
-                    if (data.hasColor || data.hasTexture) materials[ln] = data;
+                    if (!data.hasColor && !string.IsNullOrEmpty(mn) && globals.ContainsKey(mn)) data = globals[mn];
+                    if (data.hasColor) materials[ln] = data;
                 }
             }
         }
-        catch (Exception e) { Debug.LogWarning($"[BaSyx] ⚠️ Error processing URDF for materials: {e.Message}"); }
+        catch { }
         return materials;
     }
 
     [Serializable] public class AasDescriptor { public string idShort; public string id; public List<SubmodelDescriptor> submodelDescriptors; }
     [Serializable] public class SubmodelDescriptor { public string idShort; public string id; }
     [Serializable] public class SubmodelElement { public string idShort; public string modelType; public object value; }
-
     [Serializable] public class AasRepositoryModel { public List<SubmodelReference> submodels; }
     [Serializable] public class SubmodelReference { public List<SubmodelKey> keys; }
     [Serializable] public class SubmodelKey { public string value; }
-
-    [Serializable]
-    public class PagedResponse<T>
-    {
-        public List<T> result;
-    }
+    [Serializable] public class PagedResponse<T> { public List<T> result; }
 
     private List<T> DeserializeList<T>(string json)
     {
         if (string.IsNullOrEmpty(json)) return new List<T>();
-        string trimmed = json.Trim();
-        if (trimmed.StartsWith("{"))
-        {
-            var paged = JsonConvert.DeserializeObject<PagedResponse<T>>(json);
-            return paged?.result ?? new List<T>();
-        }
+        if (json.Trim().StartsWith("{")) return JsonConvert.DeserializeObject<PagedResponse<T>>(json)?.result ?? new List<T>();
         return JsonConvert.DeserializeObject<List<T>>(json) ?? new List<T>();
     }
 
     string Base64Url(string i) => Convert.ToBase64String(Encoding.UTF8.GetBytes(i)).Replace("+", "-").Replace("/", "_").TrimEnd('=');
     string FindUrdfFile(string dir) 
     { 
-        // 1. Procurar por ficheiros que terminem em .urdf ou .urdf.xacro
         var fs = Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories)
-                .Where(f => f.EndsWith(".urdf", StringComparison.OrdinalIgnoreCase) || 
-                            f.EndsWith(".urdf.xacro", StringComparison.OrdinalIgnoreCase))
+                .Where(f => f.EndsWith(".urdf", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".urdf.xacro", StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-
         if (fs.Length == 0) return null;
-
-        // 2. Se houver vários, dar prioridade ao que parece ser o principal
-        // Prioridade: Ficheiros com "robot" no nome > .urdf > .xacro
-        return fs.OrderByDescending(f => f.Contains("robot"))
-                 .ThenByDescending(f => f.EndsWith(".urdf", StringComparison.OrdinalIgnoreCase))
-                 .First();
+        return fs.OrderByDescending(f => f.Contains("robot")).ThenByDescending(f => f.EndsWith(".urdf", StringComparison.OrdinalIgnoreCase)).First();
     }
 }

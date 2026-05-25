@@ -1,0 +1,56 @@
+{
+    "modelType": "Submodel",
+    "kind": "Instance",
+    "id": "https://acplt.org/Submodels/Tel_ur",
+    "idShort": "TelemetryData",
+    "submodelElements": [
+        {
+            "modelType": "Property",
+            "value": "rad",
+            "valueType": "xs:string",
+            "idShort": "JointUnits"
+        },
+        {
+            "modelType": "SubmodelElementCollection",
+            "idShort": "LiveJoints",
+            "value": [
+                {
+                    "modelType": "Property",
+                    "value": "-0.6470448708488048",
+                    "valueType": "xs:double",
+                    "idShort": "shoulder_pan_joint"
+                },
+                {
+                    "modelType": "Property",
+                    "value": "0.0809557061604139",
+                    "valueType": "xs:double",
+                    "idShort": "shoulder_lift_joint"
+                },
+                {
+                    "modelType": "Property",
+                    "value": "0.7891355028726053",
+                    "valueType": "xs:double",
+                    "idShort": "elbow_joint"
+                },
+                {
+                    "modelType": "Property",
+                    "value": "1.3041074064187632",
+                    "valueType": "xs:double",
+                    "idShort": "wrist_1_joint"
+                },
+                {
+                    "modelType": "Property",
+                    "value": "1.49978833453777",
+                    "valueType": "xs:double",
+                    "idShort": "wrist_2_joint"
+                },
+                {
+                    "modelType": "Property",
+                    "value": "1.32826877141514",
+                    "valueType": "xs:double",
+                    "idShort": "wrist_3_joint"
+                }
+            ]
+        }
+    ]
+}
