@@ -116,6 +116,9 @@ public class BaSyxManager : MonoBehaviour
         string geoSubmodelId = null;
         string posSubmodelId = null;
         string telSubmodelId = null;
+        string visSubmodelId = null;
+        string pinSubmodelId = null;
+        string behSubmodelId = null;
 
         if (shell.submodelDescriptors != null)
         {
@@ -125,10 +128,13 @@ public class BaSyxManager : MonoBehaviour
                 if (sm.idShort == "GeometryData") geoSubmodelId = sm.id;
                 if (sm.idShort == "PositionData") posSubmodelId = sm.id;
                 if (sm.idShort == "TelemetryData") telSubmodelId = sm.id;
+                if (sm.idShort == "VisualStructure") visSubmodelId = sm.id;
+                if (sm.idShort == "VirtualPins") pinSubmodelId = sm.id;
+                if (sm.idShort == "BehaviorMapping") behSubmodelId = sm.id;
             }
         }
 
-        if ((geoSubmodelId == null || telSubmodelId == null) && !string.IsNullOrEmpty(shell.id))
+        if ((geoSubmodelId == null || telSubmodelId == null) && visSubmodelId == null && !string.IsNullOrEmpty(shell.id))
         {
             string repoShellUrl = $"{aasServerUrl}/shells/{Base64Url(shell.id)}";
             UnityWebRequest repoReq = UnityWebRequest.Get(repoShellUrl);
@@ -155,6 +161,9 @@ public class BaSyxManager : MonoBehaviour
                                 if (smDesc.idShort == "GeometryData") geoSubmodelId = smDesc.id;
                                 if (smDesc.idShort == "PositionData") posSubmodelId = smDesc.id;
                                 if (smDesc.idShort == "TelemetryData") telSubmodelId = smDesc.id;
+                                if (smDesc.idShort == "VisualStructure") visSubmodelId = smDesc.id;
+                                if (smDesc.idShort == "VirtualPins") pinSubmodelId = smDesc.id;
+                                if (smDesc.idShort == "BehaviorMapping") behSubmodelId = smDesc.id;
                             }
                         }
                     }
@@ -162,49 +171,110 @@ public class BaSyxManager : MonoBehaviour
             }
         }
 
-        if (geoSubmodelId == null) { pendingRobotIds.Remove(shell.id); yield break; }
+        if (geoSubmodelId == null && visSubmodelId == null) { pendingRobotIds.Remove(shell.id); yield break; }
 
-        Debug.Log($"[BaSyx] 📥 Downloading assets for {robotName}...");
-        yield return StartCoroutine(DownloadRecursive(geoSubmodelId, robotPath));
-
-        string urdfFile = FindUrdfFile(robotPath);
-        if (urdfFile != null)
+        // 1. PRIORITIZE URDF (GeometryData)
+        if (geoSubmodelId != null)
         {
-            var importResult = AASUrdfImporter.Import(urdfFile, robotName);
-            GameObject robotObj = importResult?.root;
+            Debug.Log($"[BaSyx] 📥 Downloading assets for {robotName} (URDF)...");
+            yield return StartCoroutine(DownloadRecursive(geoSubmodelId, robotPath));
 
-            if (robotObj != null)
+            string urdfFile = FindUrdfFile(robotPath);
+            if (urdfFile != null)
             {
-                PrepareRobot(robotObj, urdfFile);
-                GameObject container = GameObject.Find("AAS_Robots_Container");
-                if (container == null) container = new GameObject("AAS_Robots_Container");
-                robotObj.transform.SetParent(container.transform, false);
-                robotObj.transform.localScale = Vector3.one * globalScale;
+                var importResult = AASUrdfImporter.Import(urdfFile, robotName);
+                GameObject robotObj = importResult?.root;
 
-                var jointInitList = new List<AASRobotSync.JointInitData>();
-                foreach (var jData in importResult.joints)
+                if (robotObj != null)
                 {
-                    jointInitList.Add(new AASRobotSync.JointInitData {
-                        name = jData.name,
-                        transform = jData.anchor.transform,
-                        axis = jData.axis
-                    });
-                }
+                    PrepareRobot(robotObj, urdfFile);
+                    GameObject container = GameObject.Find("AAS_Robots_Container");
+                    if (container == null) container = new GameObject("AAS_Robots_Container");
+                    robotObj.transform.SetParent(container.transform, false);
+                    robotObj.transform.localScale = Vector3.one * globalScale;
 
-                instantiatedRobots[shell.id] = robotObj;
-                
-                // --- CAMERA DELEGATION ---
-                if (RobotCameraManager.Instance != null) RobotCameraManager.Instance.AddTarget(robotObj.transform);
-                
-                if (posSubmodelId != null) StartCoroutine(SyncPositionLoop(posSubmodelId, robotObj));
-                if (telSubmodelId != null)
-                {
-                    var sync = robotObj.AddComponent<AASRobotSync>();
-                    sync.SetJointMap(jointInitList);
-                    sync.Init(telSubmodelId, aasServerUrl);
+                    var jointInitList = new List<AASRobotSync.JointInitData>();
+                    foreach (var jData in importResult.joints)
+                    {
+                        jointInitList.Add(new AASRobotSync.JointInitData {
+                            name = jData.name,
+                            transform = jData.anchor.transform,
+                            axis = jData.axis
+                        });
+                    }
+
+                    instantiatedRobots[shell.id] = robotObj;
+                    
+                    if (RobotCameraManager.Instance != null) RobotCameraManager.Instance.AddTarget(robotObj.transform);
+                    if (posSubmodelId != null) StartCoroutine(SyncPositionLoop(posSubmodelId, robotObj));
+                    
+                    // Joint Telemetry Sync
+                    if (telSubmodelId != null)
+                    {
+                        var sync = robotObj.AddComponent<AASRobotSync>();
+                        sync.SetJointMap(jointInitList);
+                        sync.Init(telSubmodelId, aasServerUrl);
+                    }
+
+                    // Virtual IO Sync (for Kits)
+                    if (pinSubmodelId != null && behSubmodelId != null)
+                    {
+                        var components = new Dictionary<string, GameObject>();
+                        foreach (Transform t in robotObj.GetComponentsInChildren<Transform>()) components[t.name] = t.gameObject;
+
+                        var actuatorCtrl = robotObj.AddComponent<AASActuatorController>();
+                        actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, components);
+
+                        var sensorCtrl = robotObj.AddComponent<AASSensorController>();
+                        sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, components);
+                    }
+
+                    Debug.Log($"[BaSyx] ✅ Robot/Kit {robotName} prepared via URDF.");
+                    pendingRobotIds.Remove(shell.id);
+                    yield break;
                 }
+            }
+        }
+
+        // 2. FALLBACK to Kit (VisualStructure)
+        if (visSubmodelId != null)
+        {
+            Debug.Log($"[BaSyx] 📥 Downloading assets for Kit {robotName} (VisualStructure)...");
+            yield return StartCoroutine(DownloadRecursive(visSubmodelId, robotPath));
+            
+            string elementsUrl = $"{aasServerUrl}/submodels/{Base64Url(visSubmodelId)}/submodel-elements?level=deep";
+            UnityWebRequest req = UnityWebRequest.Get(elementsUrl);
+            yield return req.SendWebRequest();
+            
+            if (req.result == UnityWebRequest.Result.Success)
+            {
+                // Async GLB Import
+                var task = AASKitImporter.ImportWithMetadataAsync(req.downloadHandler.text, robotPath, robotName);
+                yield return new WaitUntil(() => task.IsCompleted);
+                var importData = task.Result;
                 
-                Debug.Log($"[BaSyx] ✅ {robotName} prepared.");
+                GameObject kitObj = importData?.root;
+                if (kitObj != null)
+                {
+                    GameObject container = GameObject.Find("AAS_Robots_Container");
+                    if (container == null) container = new GameObject("AAS_Robots_Container");
+                    kitObj.transform.SetParent(container.transform, false);
+                    kitObj.transform.localScale = Vector3.one * globalScale;
+
+                    instantiatedRobots[shell.id] = kitObj;
+                    if (RobotCameraManager.Instance != null) RobotCameraManager.Instance.AddTarget(kitObj.transform);
+                    
+                    if (pinSubmodelId != null && behSubmodelId != null)
+                    {
+                        var actuatorCtrl = kitObj.AddComponent<AASActuatorController>();
+                        actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+
+                        var sensorCtrl = kitObj.AddComponent<AASSensorController>();
+                        sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+                    }
+                    
+                    Debug.Log($"[BaSyx] ✅ Kit {robotName} prepared via glTF (Native).");
+                }
             }
         }
         pendingRobotIds.Remove(shell.id);
@@ -218,50 +288,95 @@ public class BaSyxManager : MonoBehaviour
 
         if (req.result != UnityWebRequest.Result.Success) yield break;
 
-        var elements = DeserializeList<SubmodelElement>(req.downloadHandler.text);
-        if (elements == null) yield break;
-
-        foreach (var el in elements)
+        var jsonStr = req.downloadHandler.text;
+        if (string.IsNullOrEmpty(jsonStr)) yield break;
+        
+        var filesToDownload = new List<(string idShortPath, string value)>();
+        try
         {
-            if (el == null || string.IsNullOrEmpty(el.idShort)) continue;
-            if (el.modelType == "File")
+            var rootToken = Newtonsoft.Json.Linq.JToken.Parse(jsonStr);
+            FindFilesRecursive(rootToken, "", filesToDownload);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[BaSyx] JSON Parse Error: {e.Message}");
+            yield break;
+        }
+
+        foreach (var fileInfo in filesToDownload)
+        {
+            string idShortPath = fileInfo.idShortPath;
+            string val = fileInfo.value;
+            
+            // Try to extract original filename
+            string relPath = idShortPath.Split('.').Last();
+            if (!string.IsNullOrEmpty(val))
             {
-                string relPath = el.idShort;
-                if (relPath.Contains("-PATH_")) relPath = "PATH_" + relPath.Split(new[] { "-PATH_" }, StringSplitOptions.None).Last();
-                relPath = relPath.Replace("PATH_", "").Replace("_SL_", "/").Replace("_DOT_", ".").Replace("_DASH_", "-");
+                string lastPart = val.Split(new[] { '/', '\\', '-' }).Last();
+                if (lastPart.Contains(".")) relPath = lastPart;
+            }
 
-                string val = el.value?.ToString();
-                if (!string.IsNullOrEmpty(val) && val.Contains("/")) relPath = val;
-                
-                if (el.idShort.Contains("Main_URDF") && !relPath.EndsWith(".urdf")) relPath = "robot.urdf";
-                else if (!relPath.Contains(".")) relPath += ".urdf";
-
-                string cleanPath = relPath;
-                string[] prefixesToRemove = { "/aasx/robot/", "/aasx/", "aasx/", "robot/" };
-                foreach (var prefix in prefixesToRemove)
+            string cleanPath = relPath;
+            string[] prefixesToRemove = { "/aasx/robot/", "/aasx/kit/", "/aasx/", "aasx/", "robot/", "kit/" };
+            foreach (var prefix in prefixesToRemove)
+            {
+                if (cleanPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (cleanPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    {
-                        cleanPath = cleanPath.Substring(prefix.Length);
-                        break;
-                    }
+                    cleanPath = cleanPath.Substring(prefix.Length);
+                    break;
                 }
+            }
 
-                cleanPath = cleanPath.Replace("\\", "/").TrimStart('/');
-                while (cleanPath.StartsWith("../")) cleanPath = cleanPath.Substring(3);
-                
-                string dest = Path.Combine(targetDir, cleanPath);
-                string dir = Path.GetDirectoryName(dest);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            cleanPath = cleanPath.Replace("\\", "/").TrimStart('/');
+            string dest = Path.Combine(targetDir, cleanPath);
+            string dir = Path.GetDirectoryName(dest);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
-                string downloadUrl = $"{aasServerUrl}/submodels/{Base64Url(submodelId)}/submodel-elements/{el.idShort}/attachment";
-                UnityWebRequest dl = UnityWebRequest.Get(downloadUrl);
-                yield return dl.SendWebRequest();
+            string downloadUrl = $"{aasServerUrl}/submodels/{Base64Url(submodelId)}/submodel-elements/{idShortPath}/attachment";
+            Debug.Log($"[BaSyx] 📥 Downloading: {idShortPath} -> {cleanPath}");
+            
+            UnityWebRequest dl = UnityWebRequest.Get(downloadUrl);
+            yield return dl.SendWebRequest();
 
-                if (dl.result == UnityWebRequest.Result.Success) File.WriteAllBytes(dest, dl.downloadHandler.data);
+            if (dl.result == UnityWebRequest.Result.Success) File.WriteAllBytes(dest, dl.downloadHandler.data);
+            else Debug.LogWarning($"[BaSyx] ⚠️ Failed to download {idShortPath}: {dl.error}");
+        }
+    }
+
+    private void FindFilesRecursive(Newtonsoft.Json.Linq.JToken token, string currentPath, List<(string, string)> files)
+    {
+        if (token is Newtonsoft.Json.Linq.JArray arr)
+        {
+            foreach (var item in arr) FindFilesRecursive(item, currentPath, files);
+        }
+        else if (token is Newtonsoft.Json.Linq.JObject obj)
+        {
+            if (obj["result"] != null)
+            {
+                FindFilesRecursive(obj["result"], currentPath, files);
+                return;
+            }
+
+            string modelType = obj["modelType"]?.ToString();
+            string idShort = obj["idShort"]?.ToString();
+            string newPath = string.IsNullOrEmpty(currentPath) ? idShort : $"{currentPath}.{idShort}";
+
+            if (modelType == "File")
+            {
+                string value = obj["value"]?.ToString() ?? "";
+                files.Add((newPath, value));
+            }
+            else if (modelType == "SubmodelElementCollection")
+            {
+                if (obj["value"] != null) FindFilesRecursive(obj["value"], newPath, files);
+            }
+            else if (obj["submodelElements"] != null)
+            {
+                FindFilesRecursive(obj["submodelElements"], newPath, files);
             }
         }
     }
+
 
     void StripPhysics(GameObject root)
     {
@@ -386,8 +501,10 @@ public class BaSyxManager : MonoBehaviour
         if (v is float f) return f;
         if (v is double d) return (float)d;
         if (v is int i) return (float)i;
+        if (v is long l) return (float)l;
         if (v is string s && float.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out float res)) return res;
-        return 0f;
+        try { return Convert.ToSingle(v, System.Globalization.CultureInfo.InvariantCulture); }
+        catch { return 0f; }
     }
 
     bool IsGray(Color c)

@@ -1,0 +1,28 @@
+{
+  "kit_name": "ConveyorKit",
+  "aas_id": "ConveyorKit_01",
+  "description": "Initial test kit using the Conveyor model found in 3D_models.",
+  "components": [
+    {
+      "name": "ConveyorSystem",
+      "mesh": "Conveyor.glb",
+      "parent": null,
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "actuators": [
+        {
+          "pin_id": "IN_Conveyor_Forward",
+          "behavior": "Conveyor",
+          "axis": [0, 1, 0],
+          "speed": 0.5
+        },
+        {
+          "pin_id": "IN_Conveyor_Backward",
+          "behavior": "Conveyor",
+          "axis": [0, -1, 0],
+          "speed": 0.5
+        }
+      ]
+    }
+  ]
+}

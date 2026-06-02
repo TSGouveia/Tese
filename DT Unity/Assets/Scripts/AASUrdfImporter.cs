@@ -173,7 +173,7 @@ public class AASUrdfImporter : MonoBehaviour
         
         // Strategy 2: Upward search for package root
         string currentDir = rootDir;
-        for (int i = 0; i < 5; i++) // Search up to 5 levels up
+        for (int i = 0; i < 3; i++) // Search up to 3 levels up
         {
             string candidate = Path.Combine(currentDir, clean);
             if (File.Exists(candidate)) return "file://" + candidate.Replace("\\", "/");
@@ -181,9 +181,8 @@ public class AASUrdfImporter : MonoBehaviour
             if (string.IsNullOrEmpty(currentDir)) break;
         }
 
-        // Strategy 3: Failsafe fuzzy search with path-tail matching
-        // This is crucial for robots with generic mesh names like 'link1.stl'
-        string[] allFiles = Directory.GetFiles(Path.GetDirectoryName(rootDir), fileNameOnly, SearchOption.AllDirectories);
+        // Strategy 3: Failsafe fuzzy search WITHIN robot folder
+        string[] allFiles = Directory.GetFiles(rootDir, fileNameOnly, SearchOption.AllDirectories);
         string bestMatch = null;
         int maxTailMatch = -1;
 
