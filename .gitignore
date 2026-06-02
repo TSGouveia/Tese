@@ -5,3 +5,4 @@ AAS Client/AAS_Robot_Studio.exe
 
 .gemini/
 gha-creds-*.json
+/.github

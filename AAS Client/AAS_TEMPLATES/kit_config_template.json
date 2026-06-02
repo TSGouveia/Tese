@@ -1,0 +1,43 @@
+{
+  "kit_name": "SortingStation",
+  "aas_id": "SortingStation_01",
+  "description": "A basic conveyor belt with a presence sensor.",
+  "components": [
+    {
+      "name": "ConveyorBase",
+      "mesh": "base.obj",
+      "parent": null,
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0]
+    },
+    {
+      "name": "Belt",
+      "mesh": "belt.obj",
+      "parent": "ConveyorBase",
+      "position": [0, 0.5, 0],
+      "rotation": [0, 0, 0],
+      "actuators": [
+        {
+          "pin_id": "OUT_Conveyor_Run",
+          "behavior": "TranslateContinuous",
+          "axis": [1, 0, 0],
+          "speed": 0.5
+        }
+      ]
+    },
+    {
+      "name": "PresenceSensor",
+      "mesh": "sensor_box.obj",
+      "parent": "ConveyorBase",
+      "position": [0.5, 0.6, 0],
+      "rotation": [0, 0, 0],
+      "sensors": [
+        {
+          "pin_id": "IN_Item_Detected",
+          "behavior": "TriggerZone",
+          "target_filter": "ProductItem"
+        }
+      ]
+    }
+  ]
+}
