@@ -338,7 +338,14 @@ public class BaSyxManager : MonoBehaviour
             UnityWebRequest dl = UnityWebRequest.Get(downloadUrl);
             yield return dl.SendWebRequest();
 
-            if (dl.result == UnityWebRequest.Result.Success) File.WriteAllBytes(dest, dl.downloadHandler.data);
+            if (dl.result == UnityWebRequest.Result.Success) {
+                byte[] data = dl.downloadHandler.data;
+                if (data != null && data.Length > 0) {
+                    File.WriteAllBytes(dest, data);
+                } else {
+                    Debug.LogWarning($"[BaSyx] ⚠️ Downloaded {idShortPath} but content was empty.");
+                }
+            }
             else Debug.LogWarning($"[BaSyx] ⚠️ Failed to download {idShortPath}: {dl.error}");
         }
     }

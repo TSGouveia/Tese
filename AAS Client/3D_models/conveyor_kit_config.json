@@ -5,7 +5,7 @@
   "components": [
     {
       "name": "ConveyorSystem",
-      "mesh": "Conveyor.glb",
+      "mesh": "untitled.glb",
       "parent": null,
       "position": [0, 0, 0],
       "rotation": [0, 0, 0],
@@ -21,6 +21,15 @@
           "behavior": "Conveyor",
           "axis": [0, -1, 0],
           "speed": 0.5
+        }
+      ],
+      "sensors": [
+        {
+          "pin_id": "OUT_Sensor_Magnetic",
+          "node": "TriggerZone",
+          "behavior": "TriggerZone",
+          "target_filter": "Metal",
+          "active_low": true
         }
       ]
     }

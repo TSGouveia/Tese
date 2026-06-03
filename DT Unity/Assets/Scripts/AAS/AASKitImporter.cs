@@ -114,7 +114,15 @@ public class AASKitImporter : MonoBehaviour
                                 
                                 // Rigidbody for stability
                                 Rigidbody rb = compObj.AddComponent<Rigidbody>();
-                                rb.isKinematic = true;
+                                
+                                if (compName.ToLower().Contains("product") || compName.ToLower().Contains("magnetic")) {
+                                    rb.isKinematic = false; // Let gravity work!
+                                    rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+                                    rb.constraints = RigidbodyConstraints.FreezeRotation; // Slide, don't roll
+                                    Debug.Log($"[AASKitImporter] 📦 Configured {compName} as a Dynamic Product.");
+                                } else {
+                                    rb.isKinematic = true;
+                                }
 
                                 Debug.Log($"[AASKitImporter] Successfully loaded GLB: {localPath}");
                             }

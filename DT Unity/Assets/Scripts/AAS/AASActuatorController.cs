@@ -38,21 +38,21 @@ public class AASActuatorController : MonoBehaviour
         public HashSet<Rigidbody> touching = new HashSet<Rigidbody>();
 
         void OnCollisionEnter(Collision c) { 
-            if(c.rigidbody) touching.Add(c.rigidbody);
+            if(c.rigidbody != null && !c.rigidbody.isKinematic) touching.Add(c.rigidbody);
         }
         void OnCollisionStay(Collision c) { 
-            if(c.rigidbody) touching.Add(c.rigidbody); 
+            if(c.rigidbody != null && !c.rigidbody.isKinematic) touching.Add(c.rigidbody); 
         }
         void OnCollisionExit(Collision c) { 
-            if(c.rigidbody) touching.Remove(c.rigidbody);
+            if(c.rigidbody != null && !c.rigidbody.isKinematic) touching.Remove(c.rigidbody);
         }
 
         void OnTriggerEnter(Collider other) {
-            if (other.attachedRigidbody) touching.Add(other.attachedRigidbody);
+            if (other.attachedRigidbody != null && !other.attachedRigidbody.isKinematic) touching.Add(other.attachedRigidbody);
         }
 
         void OnTriggerExit(Collider other) {
-            if (other.attachedRigidbody) touching.Remove(other.attachedRigidbody);
+            if (other.attachedRigidbody != null && !other.attachedRigidbody.isKinematic) touching.Remove(other.attachedRigidbody);
         }
     }
 
@@ -220,22 +220,6 @@ public class AASActuatorController : MonoBehaviour
         }
     }
 
-    void SpawnProduct(ActuatorBinding b) {
-        GameObject product = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        product.name = "Product_Spawned_" + Time.time;
-        // Increase Y offset to 2.0 as requested
-        product.transform.position = b.target.transform.position + Vector3.up * 2.0f;
-        product.transform.localScale = Vector3.one * 0.15f;
-        
-        var rb = product.AddComponent<Rigidbody>();
-        rb.mass = 1.0f;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
-        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
-        rb.constraints = RigidbodyConstraints.FreezeRotation;
-
-        Debug.Log($"[Spawner] 📦 Spawned sliding product at {b.target.name}");
-    }
-
     void FixedUpdate() 
     {
         if (!isInitialized) return;
@@ -247,20 +231,15 @@ public class AASActuatorController : MonoBehaviour
             if (b.type == "Conveyor") {
                 var surfaces = b.target.GetComponentsInChildren<ConveyorSurface>();
                 Vector3 worldDir = b.target.transform.TransformDirection(b.axis);
+                Vector3 targetVel = worldDir * b.speed;
                 
                 foreach (var surf in surfaces) {
-                    if (surf.touching.Count > 0) {
-                        Debug.Log($"[Physics] {surf.gameObject.name} pushing {surf.touching.Count} objs. Dir: {worldDir}, Speed: {b.speed}");
-                        foreach (var rb in surf.touching) {
-                            if (rb) {
-                                // Use MovePosition for more reliable conveyor physics in Unity
-                                Vector3 targetPos = rb.position + (worldDir * b.speed * Time.fixedDeltaTime);
-                                rb.MovePosition(targetPos);
-                                rb.angularVelocity = Vector3.zero;
-                                Debug.Log($"[Physics] Applied MovePosition to {rb.name}. New Pos: {targetPos}");
-                            }
-
-                        }
+                    // Remove destroyed objects from hashset
+                    surf.touching.RemoveWhere(rb => rb == null);
+                    
+                    foreach (var rb in surf.touching) {
+                        // Apply surface velocity directly, preserving gravity (y-axis)
+                        rb.linearVelocity = new Vector3(targetVel.x, rb.linearVelocity.y, targetVel.z);
                     }
                 }
             }
