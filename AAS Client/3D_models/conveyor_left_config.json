@@ -1,0 +1,36 @@
+{
+  "kit_name": "ConveyorLeftKit",
+  "aas_id": "ConveyorLeft_01",
+  "description": "Left Conveyor",
+  "components": [
+    {
+      "name": "ConveyorSystem",
+      "mesh": "untitled.glb",
+      "parent": null,
+      "position": [-4.5, 0, 0],
+      "rotation": [0, 0, 0],
+      "actuators": [
+        {
+          "pin_id": "IN_ConvLeft_Forward",
+          "behavior": "Conveyor",
+          "axis": [0, 1, 0],
+          "speed": 0.5
+        },
+        {
+          "pin_id": "IN_ConvLeft_Backward",
+          "behavior": "Conveyor",
+          "axis": [0, -1, 0],
+          "speed": 0.5
+        }
+      ],
+      "sensors": [
+        {
+          "pin_id": "OUT_ConvLeft_Sensor",
+          "node": "TriggerZone",
+          "behavior": "TriggerZone",
+          "target_filter": "Metal"
+        }
+      ]
+    }
+  ]
+}

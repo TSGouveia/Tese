@@ -24,59 +24,137 @@ public class AASActuatorController : MonoBehaviour
         public float limitMax;
         public bool currentState;
         
-        // Internal state for interpolation/fixed movement
         public Vector3 initialPosition;
         public Quaternion initialRotation;
-        public Vector2 currentOffset; // For texture animation
+        public Vector2 currentOffset;
     }
 
-    private List<ActuatorBinding> bindings = new List<ActuatorBinding>();
+    public List<ActuatorBinding> bindings = new List<ActuatorBinding>();
     private bool isInitialized = false;
 
-    // --- NEW: Physics for Conveyors ---
+    private static PhysicsMaterial _noFrictionMaterial;
+    private static PhysicsMaterial NoFrictionMaterial {
+        get {
+            if (_noFrictionMaterial == null) {
+                _noFrictionMaterial = new PhysicsMaterial("NoFriction") {
+                    dynamicFriction = 0f,
+                    staticFriction = 0f,
+                    frictionCombine = PhysicsMaterialCombine.Minimum,
+                    bounceCombine = PhysicsMaterialCombine.Minimum
+                };
+            }
+            return _noFrictionMaterial;
+        }
+    }
+
+    // --- Product-Centric Movement ---
+    public class ConveyorContactTracker : MonoBehaviour {
+        private Rigidbody rb;
+        private class ContactInfo {
+            public float lastTime;
+            public List<ActuatorBinding> bindings;
+        }
+        private Dictionary<GameObject, ContactInfo> activeContacts = new Dictionary<GameObject, ContactInfo>();
+
+        void Awake() { rb = GetComponent<Rigidbody>(); }
+
+        public void NotifyContact(GameObject root, List<ActuatorBinding> kitBindings) {
+            if (!activeContacts.ContainsKey(root)) {
+                activeContacts[root] = new ContactInfo { bindings = kitBindings };
+            }
+            activeContacts[root].lastTime = Time.fixedTime;
+        }
+
+        void FixedUpdate() {
+            var expired = activeContacts.Where(kvp => Time.fixedTime - kvp.Value.lastTime > 0.2f).Select(kvp => kvp.Key).ToList();
+            foreach (var key in expired) activeContacts.Remove(key);
+
+            if (activeContacts.Count == 0) return;
+
+            List<Vector3> candidateVelocities = new List<Vector3>();
+            foreach (var contact in activeContacts.Values) {
+                foreach (var b in contact.bindings) {
+                    if (b.type == "Conveyor") {
+                        Vector3 worldDir = b.target.transform.TransformDirection(b.axis);
+                        Vector3 vel = b.currentState ? (worldDir * b.speed) : Vector3.zero;
+                        candidateVelocities.Add(vel);
+                    }
+                }
+            }
+
+            Vector3 targetVel = Vector3.zero;
+            var activeVels = candidateVelocities.Where(v => v.sqrMagnitude > 0.001f).ToList();
+
+            if (activeVels.Count > 0) {
+                bool opposing = false;
+                for (int i = 0; i < activeVels.Count; i++) {
+                    for (int j = i + 1; j < activeVels.Count; j++) {
+                        if (Vector3.Dot(activeVels[i].normalized, activeVels[j].normalized) < -0.1f) {
+                            opposing = true; break;
+                        }
+                    }
+                    if (opposing) break;
+                }
+                if (opposing) {
+                    targetVel = Vector3.zero;
+                } else {
+                    targetVel = activeVels[0];
+                    foreach (var v in activeVels) {
+                        if (v.magnitude > targetVel.magnitude) targetVel = v;
+                    }
+                }
+            }
+
+            Vector3 finalVel = new Vector3(targetVel.x, rb.linearVelocity.y, targetVel.z);
+            if (rb.IsSleeping()) rb.WakeUp();
+            rb.linearDamping = 0;
+
+            if (finalVel.sqrMagnitude > 0.001f) {
+                rb.MovePosition(rb.position + finalVel * Time.fixedDeltaTime);
+            } else {
+                rb.linearVelocity = new Vector3(0, rb.linearVelocity.y, 0);
+            }
+            foreach (var col in GetComponentsInChildren<Collider>()) col.contactOffset = 0.001f;
+        }
+    }
+
     public class ConveyorSurface : MonoBehaviour {
-        public HashSet<Rigidbody> touching = new HashSet<Rigidbody>();
-
-        void OnCollisionEnter(Collision c) { 
-            if(c.rigidbody != null && !c.rigidbody.isKinematic) touching.Add(c.rigidbody);
+        public GameObject rootConveyor;
+        private AASActuatorController controller;
+        public void Setup(GameObject root, AASActuatorController ctrl) {
+            rootConveyor = root;
+            controller = ctrl;
         }
-        void OnCollisionStay(Collision c) { 
-            if(c.rigidbody != null && !c.rigidbody.isKinematic) touching.Add(c.rigidbody); 
+        void Start() {
+            var col = GetComponent<Collider>();
+            if (col != null) col.material = NoFrictionMaterial;
         }
-        void OnCollisionExit(Collision c) { 
-            if(c.rigidbody != null && !c.rigidbody.isKinematic) touching.Remove(c.rigidbody);
+        private void Register(GameObject other) {
+            var rb = other.GetComponentInParent<Rigidbody>();
+            if (rb != null && !rb.isKinematic) {
+                var tracker = rb.GetComponent<ConveyorContactTracker>() ?? rb.gameObject.AddComponent<ConveyorContactTracker>();
+                tracker.NotifyContact(rootConveyor, controller.bindings);
+            }
         }
-
-        void OnTriggerEnter(Collider other) {
-            if (other.attachedRigidbody != null && !other.attachedRigidbody.isKinematic) touching.Add(other.attachedRigidbody);
-        }
-
-        void OnTriggerExit(Collider other) {
-            if (other.attachedRigidbody != null && !other.attachedRigidbody.isKinematic) touching.Remove(other.attachedRigidbody);
-        }
+        void OnCollisionStay(Collision c) { Register(c.gameObject); }
+        void OnTriggerStay(Collider other) { Register(other.gameObject); }
     }
 
     public void Init(string serverUrl, string pinsSubmodelId, string behaviorSubmodelId, Dictionary<string, GameObject> componentMap)
     {
         this.pinsUrl = $"{serverUrl}/submodels/{Base64Url(pinsSubmodelId)}/submodel-elements/Inputs";
         this.behaviorUrl = $"{serverUrl}/submodels/{Base64Url(behaviorSubmodelId)}/submodel-elements";
-        Debug.Log($"[Actuator] 🌐 Init with PinsURL: {pinsUrl}");
-        
         StartCoroutine(LoadBindingsRoutine(componentMap));
     }
 
     IEnumerator LoadBindingsRoutine(Dictionary<string, GameObject> componentMap)
     {
-        Debug.Log($"[Actuator] 📥 Loading behaviors from: {behaviorUrl}");
         UnityWebRequest req = UnityWebRequest.Get(behaviorUrl + "?level=deep");
         yield return req.SendWebRequest();
-
         if (req.result == UnityWebRequest.Result.Success)
         {
-            Debug.Log("[Actuator] ✅ Behaviors loaded successfully.");
             JToken root = JToken.Parse(req.downloadHandler.text);
             JArray elements = (root is JObject obj && obj["result"] != null) ? obj["result"] as JArray : root as JArray;
-
             if (elements != null)
             {
                 foreach (var el in elements)
@@ -84,13 +162,11 @@ public class AASActuatorController : MonoBehaviour
                     string pinId = el["idShort"]?.ToString();
                     JToken values = el["value"];
                     if (values == null) continue;
-
                     string compName = "";
                     string type = "";
                     Vector3 axis = Vector3.forward;
                     float speed = 1f;
                     float min = 0f, max = 0f;
-
                     foreach (var val in values)
                     {
                         string id = val["idShort"]?.ToString();
@@ -98,18 +174,11 @@ public class AASActuatorController : MonoBehaviour
                         if (id == "Type") type = val["value"]?.ToString();
                         if (id == "Parameters" && val["value"] != null)
                         {
-                            Debug.Log($"[Actuator] 🔍 Parsing parameters for {pinId}. Token: {val.ToString(Newtonsoft.Json.Formatting.None)}");
                             foreach (var p in val["value"])
                             {
                                 string pid = p["idShort"]?.ToString();
                                 float fv = 0f;
-                                if (p["value"] != null) {
-                                    string strVal = p["value"].ToString().Replace(',', '.');
-                                    bool parsed = float.TryParse(strVal, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out fv);
-                                    Debug.Log($"[Actuator]   -> Param: {pid}, Raw: '{strVal}', Parsed: {parsed}, Value: {fv}");
-                                } else {
-                                    Debug.Log($"[Actuator]   -> Param: {pid} has NULL value.");
-                                }
+                                if (p["value"] != null) float.TryParse(p["value"].ToString().Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out fv);
                                 if (pid == "AxisX") axis.x = fv;
                                 if (pid == "AxisY") axis.y = fv;
                                 if (pid == "AxisZ") axis.z = fv;
@@ -119,9 +188,7 @@ public class AASActuatorController : MonoBehaviour
                             }
                         }
                     }
-
-                    Debug.Log($"[Actuator] 🏁 Finished parsing {pinId}: Speed={speed}, Axis={axis}");
-
+                    if (type == "TriggerZone" || type == "ContactSensor") continue;
                     if (componentMap.TryGetValue(compName, out GameObject target) && !string.IsNullOrEmpty(type))
                     {
                         Vector3 unityAxis = new Vector3(-axis.y, axis.z, axis.x).normalized;
@@ -132,43 +199,21 @@ public class AASActuatorController : MonoBehaviour
                             initialRotation = target.transform.localRotation
                         };
                         bindings.Add(binding);
-
                         if (type == "Conveyor") {
-                            // Ensure the object has a collider for the surface
-                            if (target.GetComponentInChildren<Collider>() == null) {
-                                var box = target.AddComponent<BoxCollider>();
-                                box.isTrigger = false;
-                                Debug.Log($"[Actuator] ➕ Added BoxCollider to {compName} for Conveyor physics.");
-                            }
-                            
-                            // Attach surface to all parts of the conveyor that have colliders
                             foreach (var col in target.GetComponentsInChildren<Collider>()) {
-                                // Unity requires at least one Rigidbody in a collision pair.
-                                // If the conveyor part doesn't have one, add a kinematic one.
                                 if (col.gameObject.GetComponent<Rigidbody>() == null) {
                                     var rb = col.gameObject.AddComponent<Rigidbody>();
                                     rb.isKinematic = true;
                                 }
-
                                 var surf = col.gameObject.GetComponent<ConveyorSurface>() ?? col.gameObject.AddComponent<ConveyorSurface>();
+                                surf.Setup(target, this);
                             }
-                            
-                            Debug.Log($"[Actuator] ⚙️ Bound {pinId} to {compName} (Conveyor Physics on meshes)");
-                        } else {
-                            Debug.Log($"[Actuator] ⚙️ Bound {pinId} to {compName} ({type})");
                         }
-                    }
-                    else {
-                        Debug.LogWarning($"[Actuator] ⚠️ Failed to bind {pinId}. Component found? {componentMap.ContainsKey(compName)} Type? {type}");
                     }
                 }
             }
             isInitialized = true;
-            Debug.Log($"[Actuator] 🚀 Polling started. Interval: {pollInterval}s");
             StartCoroutine(PollingLoop());
-        }
-        else {
-            Debug.LogError($"[Actuator] ❌ Failed to load behaviors: {req.error}");
         }
     }
 
@@ -178,23 +223,12 @@ public class AASActuatorController : MonoBehaviour
         {
             UnityWebRequest req = UnityWebRequest.Get(pinsUrl + "?level=deep");
             yield return req.SendWebRequest();
-
             if (req.result == UnityWebRequest.Result.Success)
             {
                 JToken root = JToken.Parse(req.downloadHandler.text);
                 JArray elements = null;
-                
-                if (root is JObject obj) {
-                    if (obj["result"] != null) elements = obj["result"] as JArray;
-                    else if (obj["value"] != null) elements = obj["value"] as JArray;
-                    else {
-                        // Single element fallback (if URL points directly to a property, though here it points to a collection)
-                        elements = new JArray { root };
-                    }
-                } else if (root is JArray arr) {
-                    elements = arr;
-                }
-                
+                if (root is JObject obj) elements = (obj["result"] ?? obj["value"]) as JArray;
+                else if (root is JArray arr) elements = arr;
                 if (elements != null)
                 {
                     foreach (var el in elements)
@@ -202,66 +236,23 @@ public class AASActuatorController : MonoBehaviour
                         string pid = el["idShort"]?.ToString();
                         bool val = false;
                         if (el["value"] != null) bool.TryParse(el["value"].ToString(), out val);
-                        
                         var b = bindings.Find(x => x.pinId == pid);
-                        if (b != null) {
-                            if (val != b.currentState) {
-                                Debug.Log($"[Actuator] 🔄 Pin {pid} changed: {b.currentState} -> {val}");
-                            }
-                            b.currentState = val;
-                        }
+                        if (b != null) b.currentState = val;
                     }
                 }
-            }
-            else {
-                Debug.LogWarning($"[Actuator] ⚠️ Polling failed: {req.error} at {pinsUrl}");
             }
             yield return new WaitForSeconds(pollInterval);
-        }
-    }
-
-    void FixedUpdate() 
-    {
-        if (!isInitialized) return;
-
-        foreach (var b in bindings)
-        {
-            if (b.target == null || !b.currentState) continue;
-
-            if (b.type == "Conveyor") {
-                var surfaces = b.target.GetComponentsInChildren<ConveyorSurface>();
-                Vector3 worldDir = b.target.transform.TransformDirection(b.axis);
-                Vector3 targetVel = worldDir * b.speed;
-                
-                foreach (var surf in surfaces) {
-                    // Remove destroyed objects from hashset
-                    surf.touching.RemoveWhere(rb => rb == null);
-                    
-                    foreach (var rb in surf.touching) {
-                        // Apply surface velocity directly, preserving gravity (y-axis)
-                        rb.linearVelocity = new Vector3(targetVel.x, rb.linearVelocity.y, targetVel.z);
-                    }
-                }
-            }
         }
     }
 
     void Update()
     {
         if (!isInitialized) return;
-
-        foreach (var b in bindings)
-        {
+        foreach (var b in bindings) {
             if (b.target == null) continue;
-
-            switch (b.type)
-            {
-                case "TranslateContinuous":
-                    if (b.currentState) b.target.transform.Translate(b.axis * b.speed * Time.deltaTime, Space.Self);
-                    break;
-                case "RotateContinuous":
-                    if (b.currentState) b.target.transform.Rotate(b.axis, b.speed * Time.deltaTime * 100f, Space.Self);
-                    break;
+            switch (b.type) {
+                case "TranslateContinuous": if (b.currentState) b.target.transform.Translate(b.axis * b.speed * Time.deltaTime, Space.Self); break;
+                case "RotateContinuous": if (b.currentState) b.target.transform.Rotate(b.axis, b.speed * Time.deltaTime * 100f, Space.Self); break;
                 case "TranslateFixed":
                     Vector3 targetPos = b.initialPosition + (b.axis * (b.currentState ? b.limitMax : b.limitMin));
                     b.target.transform.localPosition = Vector3.Lerp(b.target.transform.localPosition, targetPos, Time.deltaTime * b.speed * 5f);
