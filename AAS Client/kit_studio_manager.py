@@ -74,12 +74,14 @@ class KitStudioManager:
             if "sensors" in comp:
                 for sens in comp["sensors"]:
                     pin_id = sens["pin_id"]
+                    target_comp = sens.get("node", name)
                     outputs_coll.value.add(model.Property(id_short=pin_id, value_type=model.datatypes.Boolean, value=False))
                     beh_coll = model.SubmodelElementCollection(id_short=pin_id)
-                    beh_coll.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=name))
+                    beh_coll.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=target_comp))
                     beh_coll.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=sens.get("behavior")))
                     params_coll = model.SubmodelElementCollection(id_short="Parameters")
                     if "target_filter" in sens: params_coll.value.add(model.Property(id_short="TargetFilter", value_type=model.datatypes.String, value=sens["target_filter"]))
+                    if "active_low" in sens: params_coll.value.add(model.Property(id_short="ActiveLow", value_type=model.datatypes.Boolean, value=bool(sens["active_low"])))
                     beh_coll.value.add(params_coll)
                     behavior_mapping.submodel_element.add(beh_coll)
 
@@ -104,6 +106,7 @@ class KitStudioManager:
                     rel_path = os.path.relpath(local_path, base_dir).replace("\\", "/")
                     with open(local_path, 'rb') as f: content = f.read()
                     aas_path = posixpath.normpath(posixpath.join("/aasx/kit", rel_path))
+                    print(f"Packing {aas_path} ({len(content)} bytes) into AASX.")
                     file_repo.add_file(aas_path, content)
 
         # Update references to point to the AASX paths

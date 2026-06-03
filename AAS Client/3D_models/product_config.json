@@ -1,0 +1,14 @@
+{
+  "kit_name": "MagneticProductKit",
+  "aas_id": "MagneticProduct_01",
+  "description": "A dynamic product that falls onto the conveyor and can be detected by magnetic sensors.",
+  "components": [
+    {
+      "name": "Product_Magnetic",
+      "mesh": "Product.glb",
+      "parent": null,
+      "position": [-1, 0, 2.0],
+      "rotation": [0, 0, 0]
+    }
+  ]
+}

@@ -19,6 +19,7 @@ public class AASSensorController : MonoBehaviour
         public string targetFilter;
         public bool lastState = false;
         public int overlapCount = 0; // For TriggerZone
+        public bool activeLow = false; // Added for Active Low support
     }
 
     private Dictionary<string, SensorBinding> componentToSensor = new Dictionary<string, SensorBinding>();
@@ -52,6 +53,7 @@ public class AASSensorController : MonoBehaviour
                     string compName = "";
                     string type = "";
                     string filter = "";
+                    bool activeLow = false;
 
                     foreach (var val in values)
                     {
@@ -63,33 +65,72 @@ public class AASSensorController : MonoBehaviour
                             foreach (var p in val["value"])
                             {
                                 if (p["idShort"]?.ToString() == "TargetFilter") filter = p["value"]?.ToString();
+                                if (p["idShort"]?.ToString() == "ActiveLow") activeLow = p["value"]?.ToString().ToLower() == "true";
                             }
                         }
                     }
 
-                    if (componentMap.TryGetValue(compName, out GameObject target) && (type == "TriggerZone" || type == "ContactSensor"))
+                    if (!string.IsNullOrEmpty(compName))
                     {
-                        var binding = new SensorBinding {
-                            pinId = pinId,
-                            componentName = compName,
-                            type = type,
-                            targetFilter = filter
-                        };
-                        componentToSensor[compName] = binding;
-                        
-                        // Setup Unity Physics Proxy
-                        var proxy = target.AddComponent<SensorPhysicsProxy>();
-                        proxy.binding = binding;
-                        proxy.onStateChange += (state) => StartCoroutine(UpdateAASPin(binding.pinId, state));
-
-                        // Ensure collider is set correctly
-                        var colliders = target.GetComponentsInChildren<Collider>();
-                        foreach (var c in colliders)
+                        GameObject target = null;
+                        foreach (var kvp in componentMap)
                         {
-                            if (type == "TriggerZone") c.isTrigger = true;
+                            if (kvp.Key == compName) { target = kvp.Value; break; }
+                            
+                            // Search children if it's a sub-mesh (like TriggerZone inside Conveyor.glb)
+                            Transform child = kvp.Value.transform.Find(compName);
+                            if (child == null) {
+                                // Deep search
+                                var allTransforms = kvp.Value.GetComponentsInChildren<Transform>(true);
+                                foreach(var t in allTransforms) {
+                                    if(t.name == compName) { child = t; break; }
+                                }
+                            }
+                            if (child != null) { target = child.gameObject; break; }
                         }
 
-                        Debug.Log($"[Sensor] 👁️ Configured {pinId} on {compName} (Filter: {filter})");
+                        if (target != null && (type == "TriggerZone" || type == "ContactSensor"))
+                        {
+                            var binding = new SensorBinding {
+                                pinId = pinId,
+                                componentName = compName,
+                                type = type,
+                                targetFilter = filter,
+                                activeLow = activeLow
+                            };
+                            componentToSensor[compName] = binding;
+                            
+                            // Setup Unity Physics Proxy
+                            var proxy = target.AddComponent<SensorPhysicsProxy>();
+                            proxy.binding = binding;
+                            proxy.onStateChange += (state) => StartCoroutine(UpdateAASPin(binding.pinId, state));
+
+                            // Ensure collider is set correctly and hide the mesh for TriggerZones
+                            var colliders = target.GetComponentsInChildren<Collider>();
+                            if (colliders.Length == 0) {
+                                // If it's just an empty mesh node, add a box collider
+                                var box = target.AddComponent<BoxCollider>();
+                                box.isTrigger = (type == "TriggerZone");
+                            }
+
+                            foreach (var c in target.GetComponentsInChildren<Collider>())
+                            {
+                                if (type == "TriggerZone") 
+                                {
+                                    c.isTrigger = true;
+                                    
+                                    // Auto-hide the trigger zone mesh
+                                    var renderer = c.GetComponent<Renderer>();
+                                    if (renderer != null) renderer.enabled = false;
+                                }
+                            }
+
+                            Debug.Log($"[Sensor] 👁️ Configured {pinId} on {compName} (Filter: {filter})");
+                        }
+                        else if (target == null)
+                        {
+                            Debug.LogWarning($"[Sensor] ⚠️ Could not find component '{compName}' in the model to attach sensor '{pinId}'.");
+                        }
                     }
                 }
             }
@@ -98,7 +139,8 @@ public class AASSensorController : MonoBehaviour
 
     IEnumerator UpdateAASPin(string pinId, bool state)
     {
-        string url = $"{pinsUrl}/{pinId}";
+        // BaSyx 2.0 requires dot notation for nested elements inside collections
+        string url = $"{pinsUrl}.{pinId}";
         string json = $"{{\"idShort\":\"{pinId}\",\"modelType\":\"Property\",\"valueType\":\"xs:boolean\",\"value\":\"{state.ToString().ToLower()}\"}}";
         
         using (UnityWebRequest req = new UnityWebRequest(url, "PUT"))
@@ -120,13 +162,19 @@ public class AASSensorController : MonoBehaviour
     {
         public SensorBinding binding;
         public Action<bool> onStateChange;
+        public HashSet<Collider> touching = new HashSet<Collider>();
+
+        void Start() {
+            // Force initial state sync (especially important for activeLow sensors which start as 'true' when nothing is touching)
+            CheckState(true);
+        }
 
         private void OnTriggerEnter(Collider other)
         {
             if (binding.type != "TriggerZone") return;
             if (MatchesFilter(other))
             {
-                binding.overlapCount++;
+                touching.Add(other);
                 CheckState();
             }
         }
@@ -136,7 +184,7 @@ public class AASSensorController : MonoBehaviour
             if (binding.type != "TriggerZone") return;
             if (MatchesFilter(other))
             {
-                binding.overlapCount = Math.Max(0, binding.overlapCount - 1);
+                touching.Remove(other);
                 CheckState();
             }
         }
@@ -146,7 +194,7 @@ public class AASSensorController : MonoBehaviour
             if (binding.type != "ContactSensor") return;
             if (MatchesFilter(collision.collider))
             {
-                binding.overlapCount++;
+                touching.Add(collision.collider);
                 CheckState();
             }
         }
@@ -156,7 +204,7 @@ public class AASSensorController : MonoBehaviour
             if (binding.type != "ContactSensor") return;
             if (MatchesFilter(collision.collider))
             {
-                binding.overlapCount = Math.Max(0, binding.overlapCount - 1);
+                touching.Remove(collision.collider);
                 CheckState();
             }
         }
@@ -164,13 +212,24 @@ public class AASSensorController : MonoBehaviour
         private bool MatchesFilter(Collider other)
         {
             if (string.IsNullOrEmpty(binding.targetFilter)) return true;
-            return other.name.Contains(binding.targetFilter) || other.CompareTag(binding.targetFilter);
+            
+            // Exclusively check if the name contains the filter word (case-insensitive)
+            if (other.name.IndexOf(binding.targetFilter, StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+            
+            return false;
         }
 
-        private void CheckState()
+        private void CheckState(bool force = false)
         {
-            bool newState = binding.overlapCount > 0;
-            if (newState != binding.lastState)
+            // Remove any colliders that might have been destroyed while inside the trigger
+            touching.RemoveWhere(c => c == null);
+
+            bool isOverlapping = touching.Count > 0;
+            bool newState = binding.activeLow ? !isOverlapping : isOverlapping;
+            
+            if (force || newState != binding.lastState)
             {
                 binding.lastState = newState;
                 onStateChange?.Invoke(newState);
