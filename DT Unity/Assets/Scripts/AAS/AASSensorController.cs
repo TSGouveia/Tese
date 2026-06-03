@@ -37,6 +37,21 @@ public class AASSensorController : MonoBehaviour
         UnityWebRequest req = UnityWebRequest.Get(behaviorUrl + "?level=deep");
         yield return req.SendWebRequest();
 
+        // Pass 1: Global cleanup - Hide ALL meshes named "TriggerZone" across all instantiated models
+        // This ensures duplicated static meshes are always hidden regardless of active sensor bindings.
+        foreach (var kvp in componentMap)
+        {
+            var allTransforms = kvp.Value.GetComponentsInChildren<Transform>(true);
+            foreach (var t in allTransforms)
+            {
+                if (t.name.Contains("TriggerZone"))
+                {
+                    var renderer = t.GetComponent<Renderer>();
+                    if (renderer != null) renderer.enabled = false;
+                }
+            }
+        }
+
         if (req.result == UnityWebRequest.Result.Success)
         {
             JToken root = JToken.Parse(req.downloadHandler.text);
@@ -73,20 +88,23 @@ public class AASSensorController : MonoBehaviour
                     if (!string.IsNullOrEmpty(compName))
                     {
                         GameObject target = null;
-                        foreach (var kvp in componentMap)
-                        {
-                            if (kvp.Key == compName) { target = kvp.Value; break; }
-                            
-                            // Search children if it's a sub-mesh (like TriggerZone inside Conveyor.glb)
-                            Transform child = kvp.Value.transform.Find(compName);
-                            if (child == null) {
-                                // Deep search
-                                var allTransforms = kvp.Value.GetComponentsInChildren<Transform>(true);
+                        
+                        // First, check if there's an exact match in the component map
+                        if (DirectTargetMatch(componentMap, compName, out target)) {
+                            // target found
+                        } else {
+                            // If not, search across ALL imported components for this child (e.g., "TriggerZone")
+                            foreach (var rootObj in componentMap.Values)
+                            {
+                                var allTransforms = rootObj.GetComponentsInChildren<Transform>(true);
                                 foreach(var t in allTransforms) {
-                                    if(t.name == compName) { child = t; break; }
+                                    if(t.name == compName) {
+                                        target = t.gameObject;
+                                        break;
+                                    }
                                 }
+                                if (target != null) break;
                             }
-                            if (child != null) { target = child.gameObject; break; }
                         }
 
                         if (target != null && (type == "TriggerZone" || type == "ContactSensor"))
@@ -105,10 +123,16 @@ public class AASSensorController : MonoBehaviour
                             proxy.binding = binding;
                             proxy.onStateChange += (state) => StartCoroutine(UpdateAASPin(binding.pinId, state));
 
-                            // Ensure collider is set correctly and hide the mesh for TriggerZones
+                            // IMPORTANT: Sensors need a Rigidbody (Kinematic) to guarantee trigger events
+                            if (target.GetComponent<Rigidbody>() == null) {
+                                var rb = target.AddComponent<Rigidbody>();
+                                rb.isKinematic = true;
+                                rb.useGravity = false;
+                            }
+
+                            // Ensure collider is set correctly
                             var colliders = target.GetComponentsInChildren<Collider>();
                             if (colliders.Length == 0) {
-                                // If it's just an empty mesh node, add a box collider
                                 var box = target.AddComponent<BoxCollider>();
                                 box.isTrigger = (type == "TriggerZone");
                             }
@@ -137,8 +161,18 @@ public class AASSensorController : MonoBehaviour
         }
     }
 
+    private bool DirectTargetMatch(Dictionary<string, GameObject> map, string name, out GameObject target) {
+        if (map.TryGetValue(name, out target)) return true;
+        foreach (var kvp in map) {
+            Transform child = kvp.Value.transform.Find(name);
+            if (child != null) { target = child.gameObject; return true; }
+        }
+        return false;
+    }
+
     IEnumerator UpdateAASPin(string pinId, bool state)
     {
+        Debug.Log($"[Sensor] 📡 Updating {pinId} to {state}");
         // BaSyx 2.0 requires dot notation for nested elements inside collections
         string url = $"{pinsUrl}.{pinId}";
         string json = $"{{\"idShort\":\"{pinId}\",\"modelType\":\"Property\",\"valueType\":\"xs:boolean\",\"value\":\"{state.ToString().ToLower()}\"}}";
@@ -153,7 +187,7 @@ public class AASSensorController : MonoBehaviour
 
             yield return req.SendWebRequest();
             if (req.result != UnityWebRequest.Result.Success)
-                Debug.LogWarning($"[Sensor] ❌ Failed to update {pinId}: {req.error}");
+                Debug.LogWarning($"[Sensor] ❌ Failed to update {pinId}: {req.error} (URL: {url})");
         }
     }
 
@@ -165,7 +199,6 @@ public class AASSensorController : MonoBehaviour
         public HashSet<Collider> touching = new HashSet<Collider>();
 
         void Start() {
-            // Force initial state sync (especially important for activeLow sensors which start as 'true' when nothing is touching)
             CheckState(true);
         }
 
@@ -213,19 +246,29 @@ public class AASSensorController : MonoBehaviour
         {
             if (string.IsNullOrEmpty(binding.targetFilter)) return true;
             
-            // Exclusively check if the name contains the filter word (case-insensitive)
-            if (other.name.IndexOf(binding.targetFilter, StringComparison.OrdinalIgnoreCase) >= 0) {
-                return true;
-            }
+            string n = other.gameObject.name;
+            string t = other.gameObject.tag;
+            string filter = binding.targetFilter;
+
+            bool nameMatch = n.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
+            bool tagMatch = t.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
             
-            return false;
+            bool parentMatch = false;
+            Transform p = other.transform.parent;
+            while(p != null) {
+                if(p.name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0) {
+                    parentMatch = true;
+                    break;
+                }
+                p = p.parent;
+            }
+
+            return nameMatch || tagMatch || parentMatch;
         }
 
         private void CheckState(bool force = false)
         {
-            // Remove any colliders that might have been destroyed while inside the trigger
             touching.RemoveWhere(c => c == null);
-
             bool isOverlapping = touching.Count > 0;
             bool newState = binding.activeLow ? !isOverlapping : isOverlapping;
             
