@@ -31,22 +31,28 @@ def get_active_kits():
             shell_id = s.get("id")
             if not shell_id: continue
             
-            # Step 2: Get detailed descriptor for this shell
+            # Step 2: Get detailed descriptor for this shell from the Repository
             try:
-                detail_url = f"{REGISTRY_URL}/{encode_id(shell_id)}"
-                detail_res = requests.get(detail_url, timeout=2)
-                if detail_res.status_code == 200:
-                    detail_data = detail_res.json()
+                repo_url = f"{REPO_URL}/shells/{encode_id(shell_id)}"
+                repo_res = requests.get(repo_url, timeout=2)
+                if repo_res.status_code == 200:
+                    shell_data = repo_res.json()
                     
-                    # Look for VirtualPins specifically
-                    pins_sm = next((sm for sm in detail_data.get("submodelDescriptors", []) 
-                                  if sm.get("idShort") == "VirtualPins"), None)
-                    
-                    if pins_sm:
+                    # Look for the submodel reference that contains 'Pins'
+                    pins_sm_id = None
+                    for sm_ref in shell_data.get("submodels", []):
+                        keys = sm_ref.get("keys", [])
+                        if keys and len(keys) > 0:
+                            sm_id = keys[0].get("value")
+                            if sm_id and ("Pins_" in sm_id or "VirtualPins" in sm_id):
+                                pins_sm_id = sm_id
+                                break
+                                
+                    if pins_sm_id:
                         kits.append({
                             "idShort": s.get("idShort", "Unknown"),
                             "id": shell_id,
-                            "pins_id": pins_sm.get("id")
+                            "pins_id": pins_sm_id
                         })
             except:
                 continue

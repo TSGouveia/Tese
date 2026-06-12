@@ -27,6 +27,9 @@ public class AASActuatorController : MonoBehaviour
         public Vector3 initialPosition;
         public Quaternion initialRotation;
         public Vector2 currentOffset;
+        
+        public string stopSensorComponent;
+        public AASSensorController.SensorPhysicsProxy linkedSensor;
     }
 
     public List<ActuatorBinding> bindings = new List<ActuatorBinding>();
@@ -76,7 +79,8 @@ public class AASActuatorController : MonoBehaviour
                 foreach (var b in contact.bindings) {
                     if (b.type == "Conveyor") {
                         Vector3 worldDir = b.target.transform.TransformDirection(b.axis);
-                        Vector3 vel = b.currentState ? (worldDir * b.speed) : Vector3.zero;
+                        bool isBlocked = b.linkedSensor != null && b.linkedSensor.binding.lastState;
+                        Vector3 vel = (b.currentState && !isBlocked) ? (worldDir * b.speed) : Vector3.zero;
                         candidateVelocities.Add(vel);
                     }
                 }
@@ -167,6 +171,7 @@ public class AASActuatorController : MonoBehaviour
                     Vector3 axis = Vector3.forward;
                     float speed = 1f;
                     float min = 0f, max = 0f;
+                    string stopSensorComponent = null;
                     foreach (var val in values)
                     {
                         string id = val["idShort"]?.ToString();
@@ -185,18 +190,38 @@ public class AASActuatorController : MonoBehaviour
                                 if (pid == "Speed") speed = fv;
                                 if (pid == "LimitMin") min = fv;
                                 if (pid == "LimitMax") max = fv;
+                                if (pid == "StopSensorComponent") stopSensorComponent = p["value"]?.ToString();
                             }
                         }
                     }
                     if (type == "TriggerZone" || type == "ContactSensor") continue;
-                    if (componentMap.TryGetValue(compName, out GameObject target) && !string.IsNullOrEmpty(type))
+                    
+                    GameObject target = null;
+                    if (DirectTargetMatch(componentMap, compName, out target)) {
+                        // target found
+                    } else {
+                        foreach (var rootObj in componentMap.Values) {
+                            var allTransforms = rootObj.GetComponentsInChildren<Transform>(true);
+                            foreach(var t in allTransforms) {
+                                if(t.name == compName) {
+                                    target = t.gameObject;
+                                    break;
+                                }
+                            }
+                            if (target != null) break;
+                        }
+                    }
+
+                    if (target != null && !string.IsNullOrEmpty(type))
                     {
-                        Vector3 unityAxis = new Vector3(-axis.y, axis.z, axis.x).normalized;
+                        // Z-up to Y-up mapping (X=X, Y=Z, Z=Y)
+                        Vector3 unityAxis = new Vector3(axis.x, axis.z, axis.y).normalized;
                         var binding = new ActuatorBinding {
                             pinId = pinId, target = target, type = type, axis = unityAxis,
                             speed = speed, limitMin = min, limitMax = max,
                             initialPosition = target.transform.localPosition,
-                            initialRotation = target.transform.localRotation
+                            initialRotation = target.transform.localRotation,
+                            stopSensorComponent = stopSensorComponent
                         };
                         bindings.Add(binding);
                         if (type == "Conveyor") {
@@ -213,8 +238,27 @@ public class AASActuatorController : MonoBehaviour
                 }
             }
             isInitialized = true;
+            
+            var sensorProxies = FindObjectsByType<AASSensorController.SensorPhysicsProxy>(FindObjectsSortMode.None);
+            foreach (var b in bindings) {
+                if (!string.IsNullOrEmpty(b.stopSensorComponent)) {
+                    b.linkedSensor = sensorProxies.FirstOrDefault(s => 
+                        s.binding.componentName == b.stopSensorComponent || 
+                        s.binding.pinId == b.stopSensorComponent);
+                }
+            }
+
             StartCoroutine(PollingLoop());
         }
+    }
+
+    private bool DirectTargetMatch(Dictionary<string, GameObject> map, string name, out GameObject target) {
+        if (map.TryGetValue(name, out target)) return true;
+        foreach (var kvp in map) {
+            Transform child = kvp.Value.transform.Find(name);
+            if (child != null) { target = child.gameObject; return true; }
+        }
+        return false;
     }
 
     IEnumerator PollingLoop()
@@ -245,14 +289,45 @@ public class AASActuatorController : MonoBehaviour
         }
     }
 
+    private bool IsBlockedBySensor(ActuatorBinding b)
+    {
+        if (b.linkedSensor == null && !string.IsNullOrEmpty(b.stopSensorComponent))
+        {
+            var sensorProxies = FindObjectsByType<AASSensorController.SensorPhysicsProxy>(FindObjectsSortMode.None);
+            b.linkedSensor = sensorProxies.FirstOrDefault(s => 
+                s.binding.componentName == b.stopSensorComponent || 
+                s.binding.pinId == b.stopSensorComponent);
+            
+            if (b.linkedSensor != null) {
+                Debug.Log($"[Actuator] 🔗 Dynamically linked {b.pinId} to sensor {b.stopSensorComponent}");
+            }
+        }
+
+        if (b.linkedSensor != null)
+        {
+            return b.linkedSensor.binding.lastState;
+        }
+        return false;
+    }
+
     void Update()
     {
         if (!isInitialized) return;
         foreach (var b in bindings) {
             if (b.target == null) continue;
+            
+            bool isBlocked = IsBlockedBySensor(b);
+            if (isBlocked && b.currentState) continue; // Skip movement
+            
             switch (b.type) {
                 case "TranslateContinuous": if (b.currentState) b.target.transform.Translate(b.axis * b.speed * Time.deltaTime, Space.Self); break;
-                case "RotateContinuous": if (b.currentState) b.target.transform.Rotate(b.axis, b.speed * Time.deltaTime * 100f, Space.Self); break;
+                case "RotateContinuous": 
+                    if (b.currentState) {
+                        // Use Rotate with Space.Self to ensure it rotates around its own axis 
+                        // regardless of parent rotation or local scale.
+                        b.target.transform.Rotate(b.axis, b.speed * Time.deltaTime * 200f, Space.Self); 
+                    }
+                    break;
                 case "TranslateFixed":
                     Vector3 targetPos = b.initialPosition + (b.axis * (b.currentState ? b.limitMax : b.limitMin));
                     b.target.transform.localPosition = Vector3.Lerp(b.target.transform.localPosition, targetPos, Time.deltaTime * b.speed * 5f);

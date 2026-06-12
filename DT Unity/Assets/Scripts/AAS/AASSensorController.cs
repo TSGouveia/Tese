@@ -20,6 +20,11 @@ public class AASSensorController : MonoBehaviour
         public bool lastState = false;
         public int overlapCount = 0; // For TriggerZone
         public bool activeLow = false; // Added for Active Low support
+        public bool visible = true;
+        
+        public string snapTarget;
+        public Vector3 snapPosition;
+        public bool hasSnap;
     }
 
     private Dictionary<string, SensorBinding> componentToSensor = new Dictionary<string, SensorBinding>();
@@ -69,6 +74,10 @@ public class AASSensorController : MonoBehaviour
                     string type = "";
                     string filter = "";
                     bool activeLow = false;
+                    bool? visibleParam = null;
+                    string snapTarget = null;
+                    Vector3 snapPos = Vector3.zero;
+                    bool hasSnap = false;
 
                     foreach (var val in values)
                     {
@@ -79,11 +88,22 @@ public class AASSensorController : MonoBehaviour
                         {
                             foreach (var p in val["value"])
                             {
-                                if (p["idShort"]?.ToString() == "TargetFilter") filter = p["value"]?.ToString();
-                                if (p["idShort"]?.ToString() == "ActiveLow") activeLow = p["value"]?.ToString().ToLower() == "true";
+                                string pid = p["idShort"]?.ToString();
+                                if (pid == "TargetFilter") filter = p["value"]?.ToString();
+                                if (pid == "ActiveLow") activeLow = p["value"]?.ToString().ToLower() == "true";
+                                if (pid == "Visible") visibleParam = p["value"]?.ToString().ToLower() == "true";
+                                if (pid == "SnapTarget") { snapTarget = p["value"]?.ToString(); hasSnap = true; }
+                                
+                                float fv = 0f;
+                                if (p["value"] != null) float.TryParse(p["value"].ToString().Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out fv);
+                                if (pid == "SnapPosX") snapPos.x = fv;
+                                if (pid == "SnapPosY") snapPos.y = fv;
+                                if (pid == "SnapPosZ") snapPos.z = fv;
                             }
                         }
                     }
+
+                    bool visible = visibleParam.HasValue ? visibleParam.Value : (type != "TriggerZone");
 
                     if (!string.IsNullOrEmpty(compName))
                     {
@@ -114,14 +134,18 @@ public class AASSensorController : MonoBehaviour
                                 componentName = compName,
                                 type = type,
                                 targetFilter = filter,
-                                activeLow = activeLow
+                                activeLow = activeLow,
+                                visible = visible,
+                                snapTarget = snapTarget,
+                                snapPosition = snapPos,
+                                hasSnap = hasSnap
                             };
                             componentToSensor[compName] = binding;
                             
                             // Setup Unity Physics Proxy
                             var proxy = target.AddComponent<SensorPhysicsProxy>();
                             proxy.binding = binding;
-                            proxy.onStateChange += (state) => StartCoroutine(UpdateAASPin(binding.pinId, state));
+                            proxy.onStateChange += (state) => StartCoroutine(UpdateAASPin(binding, state));
 
                             // IMPORTANT: Sensors need a Rigidbody (Kinematic) to guarantee trigger events
                             if (target.GetComponent<Rigidbody>() == null) {
@@ -142,11 +166,13 @@ public class AASSensorController : MonoBehaviour
                                 if (type == "TriggerZone") 
                                 {
                                     c.isTrigger = true;
-                                    
-                                    // Auto-hide the trigger zone mesh
-                                    var renderer = c.GetComponent<Renderer>();
-                                    if (renderer != null) renderer.enabled = false;
                                 }
+                            }
+
+                            // Auto-hide or show the sensor mesh based on visibility
+                            foreach (var renderer in target.GetComponentsInChildren<Renderer>())
+                            {
+                                renderer.enabled = binding.visible;
                             }
 
                             Debug.Log($"[Sensor] 👁️ Configured {pinId} on {compName} (Filter: {filter})");
@@ -170,9 +196,34 @@ public class AASSensorController : MonoBehaviour
         return false;
     }
 
-    IEnumerator UpdateAASPin(string pinId, bool state)
+    IEnumerator UpdateAASPin(SensorBinding binding, bool state)
     {
+        string pinId = binding.pinId;
         Debug.Log($"[Sensor] 📡 Updating {pinId} to {state}");
+
+        // --- SNAP / TELEPORT LOGIC ---
+        // If the sensor real signal becomes TRUE and has a Snap configuration,
+        // we force the target object to the specified position.
+        if (state && binding.hasSnap && !string.IsNullOrEmpty(binding.snapTarget))
+        {
+            GameObject product = GameObject.Find(binding.snapTarget);
+            if (product != null)
+            {
+                // Mapping SnapPosition (Z-up) to Unity (Y-up)
+                Vector3 unityPos = new Vector3(binding.snapPosition.x, binding.snapPosition.z, binding.snapPosition.y);
+                product.transform.localPosition = unityPos;
+                
+                // Reset velocity to avoid physical "bouncing" after teleport
+                var rb = product.GetComponent<Rigidbody>();
+                if (rb != null) {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
+                
+                Debug.Log($"[Sensor] ⚡ SNAP! Teleported {binding.snapTarget} to {unityPos} via {pinId}");
+            }
+        }
+
         // BaSyx 2.0 requires dot notation for nested elements inside collections
         string url = $"{pinsUrl}.{pinId}";
         string json = $"{{\"idShort\":\"{pinId}\",\"modelType\":\"Property\",\"valueType\":\"xs:boolean\",\"value\":\"{state.ToString().ToLower()}\"}}";
