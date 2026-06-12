@@ -20,7 +20,8 @@ configs = [
     "3D_models/conveyor_left_config.json",
     "3D_models/conveyor_center_config.json",
     "3D_models/conveyor_right_config.json",
-    "3D_models/product_config.json"
+    "3D_models/product_config.json",
+    "3D_models/torre_config.json"
 ]
 
 print("\n--- 2. Generating and Deploying AAS ---")

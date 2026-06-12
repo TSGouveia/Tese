@@ -31,19 +31,17 @@ public class AASKitImporter : MonoBehaviour
             Dictionary<string, GameObject> components = new Dictionary<string, GameObject>();
             Dictionary<string, string> parentMap = new Dictionary<string, string>();
 
-            // 1. First Pass: Create GameObjects and Load GLBs
+            // 1. First Pass: Create/Find GameObjects and Load GLBs
             foreach (JToken token in elements)
             {
                 string compName = token["idShort"]?.ToString();
                 if (string.IsNullOrEmpty(compName)) continue;
 
-                GameObject compObj = new GameObject(compName);
-                components[compName] = compObj;
-
                 string meshFile = "";
                 string parentName = "";
                 Vector3 pos = Vector3.zero;
                 Vector3 rot = Vector3.zero;
+                Vector3 scale = Vector3.one;
 
                 JToken valueNode = token["value"];
                 if (valueNode != null && valueNode.Type == JTokenType.Array)
@@ -61,16 +59,61 @@ public class AASKitImporter : MonoBehaviour
                                 float v = tp["value"] != null ? (float)tp["value"] : 0f;
                                 if (tId == "PosX") pos.x = v; if (tId == "PosY") pos.y = v; if (tId == "PosZ") pos.z = v;
                                 if (tId == "RotX") rot.x = v; if (tId == "RotY") rot.y = v; if (tId == "RotZ") rot.z = v;
+                                if (tId == "ScaleX") scale.x = v; if (tId == "ScaleY") scale.y = v; if (tId == "ScaleZ") scale.z = v;
                             }
                         }
                     }
                 }
 
-                parentMap[compName] = parentName;
+                GameObject compObj = null;
                 
-                // Blender (RH, Z-up) to Unity (LH, Y-up)
-                compObj.transform.localPosition = new Vector3(-pos.x, pos.z, pos.y);
-                compObj.transform.localEulerAngles = new Vector3(rot.x * Mathf.Rad2Deg, -rot.z * Mathf.Rad2Deg, -rot.y * Mathf.Rad2Deg);
+                // CRITICAL FIX: Search for this component name across ALL already loaded 
+                // mesh hierarchies in this kit BEFORE creating a new one.
+                foreach (var existing in components.Values) {
+                    if (existing == null) continue;
+                    // Check if the 'existing' object itself is the target, or one of its children
+                    if (existing.name == compName) {
+                        compObj = existing;
+                        break;
+                    }
+                    var found = existing.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == compName);
+                    if (found != null) {
+                        compObj = found.gameObject;
+                        break;
+                    }
+                }
+
+                // If not found in existing meshes, and it HAS a mesh file, create a new container
+                if (compObj == null && !string.IsNullOrEmpty(meshFile)) 
+                {
+                    compObj = new GameObject(compName);
+                } 
+                // If still not found and has NO mesh (virtual node), create it only as a last resort
+                else if (compObj == null)
+                {
+                    compObj = new GameObject(compName);
+                }
+
+                components[compName] = compObj;
+                parentMap[compName] = parentName;
+
+                // Only apply transform if the object was NOT pre-existing in a GLB.
+                // We check if it's a child of something that isn't the kit root.
+                bool isPartOfGlb = compObj.transform.parent != null && 
+                                   compObj.transform.parent.name != kitName &&
+                                   !parentMap.ContainsKey(compObj.transform.parent.name);
+                
+                if (!isPartOfGlb)
+                {
+                    // Standard Z-up (AAS) to Y-up (Unity) conversion
+                    compObj.transform.localPosition = new Vector3(pos.x, pos.z, pos.y);
+                    compObj.transform.localEulerAngles = new Vector3(rot.x, rot.z, rot.y);
+                    compObj.transform.localScale = new Vector3(scale.x, scale.z, scale.y);
+                }
+                else 
+                {
+                    Debug.Log($"[AASKitImporter] 🧊 Found '{compName}' inside GLB. Preserving Blender transform and hierarchy.");
+                }
 
                 if (!string.IsNullOrEmpty(meshFile))
                 {
@@ -135,17 +178,127 @@ public class AASKitImporter : MonoBehaviour
             // 2. Second Pass: Set Hierarchy
             foreach (var kvp in parentMap)
             {
+                GameObject child = components[kvp.Key];
+                Transform targetParent = null;
+
                 if (!string.IsNullOrEmpty(kvp.Value) && components.ContainsKey(kvp.Value))
-                    components[kvp.Key].transform.SetParent(components[kvp.Value].transform, false);
+                    targetParent = components[kvp.Value].transform;
                 else
-                    components[kvp.Key].transform.SetParent(kitRoot.transform, false);
+                    targetParent = kitRoot.transform;
+
+                // LOGIC UPDATE: If the child is already a sub-object from Blender
+                // and its CURRENT parent is also part of this kit, we DON'T re-parent.
+                // This preserves functional hierarchies (like Drill being child of a Move axis).
+                bool currentParentIsKitPart = child.transform.parent != null && 
+                                              components.Values.Any(c => c.transform == child.transform.parent);
+                
+                // NEW: Also check if it's already a descendant of the target parent (deep hierarchy)
+                bool isAlreadyDescendant = child.transform.IsChildOf(targetParent);
+
+                if (child.transform.parent != targetParent && !currentParentIsKitPart && !isAlreadyDescendant)
+                {
+                    child.transform.SetParent(targetParent, true);
+                    Debug.Log($"[AASKitImporter] 🔗 SetParent for {kvp.Key} to {targetParent.name} (New Root/Manual Parent)");
+                }
+                else if (isAlreadyDescendant && child.transform.parent != targetParent)
+                {
+                    Debug.Log($"[AASKitImporter] 🧬 Preserving nested Blender hierarchy for {kvp.Key} (already descendant of {targetParent.name})");
+                }
+                else if (currentParentIsKitPart && child.transform.parent != targetParent)
+                {
+                    Debug.Log($"[AASKitImporter] 🧬 Preserving functional Blender hierarchy for {kvp.Key} (Parent: {child.transform.parent.name})");
+                }
             }
+
+            // FINAL STEP: Normalize the entire kit hierarchy.
+            // This bakes all scales into meshes and resets all transforms to (1,1,1).
+            // This is CRITICAL to prevent rotation shearing (skewing) in Unity.
+            NormalizeHierarchy(kitRoot.transform);
 
             return new KitImportData { root = kitRoot, components = components };
         } catch (Exception e) {
             Debug.LogError($"[AASKitImporter] Fatal error parsing kit: {e}");
             return null;
         }
+    }
+
+    private static void NormalizeHierarchy(Transform root)
+    {
+        if (root == null) return;
+
+        // Process this node
+        Vector3 localScale = root.localScale;
+        
+        // 1. Bake any mesh on THIS specific node using its local scale
+        BakeMeshesOnObject(root.gameObject, localScale);
+
+        // 2. If this node has scale, we must reset it and fix children
+        if (Vector3.Distance(localScale, Vector3.one) > 0.0001f)
+        {
+            // Capture children
+            List<Transform> children = new List<Transform>();
+            for (int i = 0; i < root.childCount; i++) children.Add(root.GetChild(i));
+
+            // Detach children to world space (Unity preserves their world transform)
+            foreach (var c in children) c.SetParent(null, true);
+            
+            // Reset parent scale
+            root.localScale = Vector3.one;
+            
+            // Re-attach children (Unity calculates new local scales/positions)
+            foreach (var c in children) c.SetParent(root, true);
+            
+            Debug.Log($"[AASKitImporter] 🧼 Normalized scale for node: {root.name}");
+        }
+
+        // 3. Recurse to children (they might now have new local scales inherited from step 2)
+        // We use a copy of the child list to avoid issues with hierarchy changes
+        List<Transform> next = new List<Transform>();
+        for (int i = 0; i < root.childCount; i++) next.Add(root.GetChild(i));
+        foreach (var n in next) NormalizeHierarchy(n);
+    }
+
+    private static void BakeMeshesOnObject(GameObject obj, Vector3 scale)
+    {
+        if (Vector3.Distance(scale, Vector3.one) <= 0.0001f) return;
+
+        // Handle standard MeshFilters
+        foreach (var mf in obj.GetComponents<MeshFilter>())
+        {
+            if (mf.sharedMesh != null)
+            {
+                mf.sharedMesh = BakeMeshInstance(mf.sharedMesh, scale);
+                // Sync MeshColliders
+                foreach (var mc in obj.GetComponents<MeshCollider>())
+                {
+                    if (mc.sharedMesh != null) mc.sharedMesh = mf.sharedMesh;
+                }
+            }
+        }
+
+        // Handle SkinnedMeshRenderers (sometimes used in GLBs)
+        foreach (var smr in obj.GetComponents<SkinnedMeshRenderer>())
+        {
+            if (smr.sharedMesh != null)
+            {
+                smr.sharedMesh = BakeMeshInstance(smr.sharedMesh, scale);
+            }
+        }
+    }
+
+    private static Mesh BakeMeshInstance(Mesh original, Vector3 scale)
+    {
+        Mesh mesh = Instantiate(original);
+        Vector3[] v = mesh.vertices;
+        for (int i = 0; i < v.Length; i++)
+        {
+            v[i] = Vector3.Scale(v[i], scale);
+        }
+        mesh.vertices = v;
+        mesh.RecalculateBounds();
+        mesh.RecalculateNormals();
+        mesh.RecalculateTangents();
+        return mesh;
     }
 
     private static void RotateMeshUVs(Mesh mesh)

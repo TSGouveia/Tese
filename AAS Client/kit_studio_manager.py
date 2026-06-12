@@ -44,30 +44,36 @@ class KitStudioManager:
 
         for comp in self.components:
             name = comp["name"]
-            comp_coll = model.SubmodelElementCollection(id_short=name)
+            safe_name = name.replace(" ", "_").replace("-", "_")
+            comp_coll = model.SubmodelElementCollection(id_short=safe_name)
             mesh_filename = comp.get("mesh", "")
-            comp_coll.value.add(model.File(id_short="Mesh", content_type="application/octet-stream", value=mesh_filename))
+            if mesh_filename:
+                comp_coll.value.add(model.File(id_short="Mesh", content_type="application/octet-stream", value=mesh_filename))
             comp_coll.value.add(model.Property(id_short="Parent", value_type=model.datatypes.String, value=comp.get("parent", "")))
             
             transform_coll = model.SubmodelElementCollection(id_short="Transform")
             pos = comp.get("position", [0,0,0])
             rot = comp.get("rotation", [0,0,0])
+            scale = comp.get("scale", [1,1,1])
             for i, axis in enumerate(["X", "Y", "Z"]): transform_coll.value.add(model.Property(id_short=f"Pos{axis}", value_type=model.datatypes.Double, value=float(pos[i])))
             for i, axis in enumerate(["X", "Y", "Z"]): transform_coll.value.add(model.Property(id_short=f"Rot{axis}", value_type=model.datatypes.Double, value=float(rot[i])))
+            for i, axis in enumerate(["X", "Y", "Z"]): transform_coll.value.add(model.Property(id_short=f"Scale{axis}", value_type=model.datatypes.Double, value=float(scale[i])))
             comp_coll.value.add(transform_coll)
             visual_structure.submodel_element.add(comp_coll)
 
             if "actuators" in comp:
                 for act in comp["actuators"]:
                     pin_id = act["pin_id"]
+                    target_comp = act.get("node", name)
                     inputs_coll.value.add(model.Property(id_short=pin_id, value_type=model.datatypes.Boolean, value=False))
                     beh_coll = model.SubmodelElementCollection(id_short=pin_id)
-                    beh_coll.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=name))
+                    beh_coll.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=target_comp))
                     beh_coll.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=act.get("behavior")))
                     params_coll = model.SubmodelElementCollection(id_short="Parameters")
                     if "axis" in act:
                         for i, a in enumerate(["X", "Y", "Z"]): params_coll.value.add(model.Property(id_short=f"Axis{a}", value_type=model.datatypes.Double, value=float(act["axis"][i])))
                     if "speed" in act: params_coll.value.add(model.Property(id_short="Speed", value_type=model.datatypes.Double, value=float(act["speed"])))
+                    if "stop_sensor" in act: params_coll.value.add(model.Property(id_short="StopSensorComponent", value_type=model.datatypes.String, value=act["stop_sensor"]))
                     beh_coll.value.add(params_coll)
                     behavior_mapping.submodel_element.add(beh_coll)
             
@@ -82,6 +88,10 @@ class KitStudioManager:
                     params_coll = model.SubmodelElementCollection(id_short="Parameters")
                     if "target_filter" in sens: params_coll.value.add(model.Property(id_short="TargetFilter", value_type=model.datatypes.String, value=sens["target_filter"]))
                     if "active_low" in sens: params_coll.value.add(model.Property(id_short="ActiveLow", value_type=model.datatypes.Boolean, value=bool(sens["active_low"])))
+                    if "visible" in sens: params_coll.value.add(model.Property(id_short="Visible", value_type=model.datatypes.Boolean, value=bool(sens["visible"])))
+                    if "snap_target" in sens: params_coll.value.add(model.Property(id_short="SnapTarget", value_type=model.datatypes.String, value=sens["snap_target"]))
+                    if "snap_position" in sens:
+                        for i, a in enumerate(["X", "Y", "Z"]): params_coll.value.add(model.Property(id_short=f"SnapPos{a}", value_type=model.datatypes.Double, value=float(sens["snap_position"][i])))
                     beh_coll.value.add(params_coll)
                     behavior_mapping.submodel_element.add(beh_coll)
 
