@@ -82,6 +82,7 @@ public class AASSensorController : MonoBehaviour
                     foreach (var val in values)
                     {
                         string id = val["idShort"]?.ToString();
+                        if (id == "PinID") pinId = val["value"]?.ToString();
                         if (id == "Component") compName = val["value"]?.ToString();
                         if (id == "Type") type = val["value"]?.ToString();
                         if (id == "Parameters" && val["value"] != null)
