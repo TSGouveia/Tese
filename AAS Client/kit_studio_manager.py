@@ -65,8 +65,16 @@ class KitStudioManager:
                 for act in comp["actuators"]:
                     pin_id = act["pin_id"]
                     target_comp = act.get("node", name)
-                    inputs_coll.value.add(model.Property(id_short=pin_id, value_type=model.datatypes.Boolean, value=False))
-                    beh_coll = model.SubmodelElementCollection(id_short=pin_id)
+                    
+                    # Only add to virtual pins if it doesn't exist
+                    existing_pins = [p.id_short for p in inputs_coll.value]
+                    if pin_id not in existing_pins:
+                        inputs_coll.value.add(model.Property(id_short=pin_id, value_type=model.datatypes.Boolean, value=False))
+                    
+                    # Make behavior mapping ID unique
+                    beh_id = f"{pin_id}_{target_comp}".replace(" ", "_")
+                    beh_coll = model.SubmodelElementCollection(id_short=beh_id)
+                    beh_coll.value.add(model.Property(id_short="PinID", value_type=model.datatypes.String, value=pin_id))
                     beh_coll.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=target_comp))
                     beh_coll.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=act.get("behavior")))
                     params_coll = model.SubmodelElementCollection(id_short="Parameters")
@@ -81,8 +89,16 @@ class KitStudioManager:
                 for sens in comp["sensors"]:
                     pin_id = sens["pin_id"]
                     target_comp = sens.get("node", name)
-                    outputs_coll.value.add(model.Property(id_short=pin_id, value_type=model.datatypes.Boolean, value=False))
-                    beh_coll = model.SubmodelElementCollection(id_short=pin_id)
+                    
+                    # Only add to virtual pins if it doesn't exist
+                    existing_pins = [p.id_short for p in outputs_coll.value]
+                    if pin_id not in existing_pins:
+                        outputs_coll.value.add(model.Property(id_short=pin_id, value_type=model.datatypes.Boolean, value=False))
+                    
+                    # Make behavior mapping ID unique
+                    beh_id = f"{pin_id}_{target_comp}".replace(" ", "_")
+                    beh_coll = model.SubmodelElementCollection(id_short=beh_id)
+                    beh_coll.value.add(model.Property(id_short="PinID", value_type=model.datatypes.String, value=pin_id))
                     beh_coll.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=target_comp))
                     beh_coll.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=sens.get("behavior")))
                     params_coll = model.SubmodelElementCollection(id_short="Parameters")

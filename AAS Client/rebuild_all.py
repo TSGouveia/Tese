@@ -20,6 +20,7 @@ configs = [
     "3D_models/conveyor_left_config.json",
     "3D_models/conveyor_center_config.json",
     "3D_models/conveyor_right_config.json",
+    "3D_models/kit_config_rotativo.json",
     "3D_models/product_config.json",
     "3D_models/torre_config.json"
 ]

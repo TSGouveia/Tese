@@ -66,6 +66,7 @@ public class AASKitImporter : MonoBehaviour
                 }
 
                 GameObject compObj = null;
+                bool wasPreExisting = false;
                 
                 // CRITICAL FIX: Search for this component name across ALL already loaded 
                 // mesh hierarchies in this kit BEFORE creating a new one.
@@ -74,11 +75,13 @@ public class AASKitImporter : MonoBehaviour
                     // Check if the 'existing' object itself is the target, or one of its children
                     if (existing.name == compName) {
                         compObj = existing;
+                        wasPreExisting = true;
                         break;
                     }
                     var found = existing.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == compName);
                     if (found != null) {
                         compObj = found.gameObject;
+                        wasPreExisting = true;
                         break;
                     }
                 }
@@ -97,13 +100,7 @@ public class AASKitImporter : MonoBehaviour
                 components[compName] = compObj;
                 parentMap[compName] = parentName;
 
-                // Only apply transform if the object was NOT pre-existing in a GLB.
-                // We check if it's a child of something that isn't the kit root.
-                bool isPartOfGlb = compObj.transform.parent != null && 
-                                   compObj.transform.parent.name != kitName &&
-                                   !parentMap.ContainsKey(compObj.transform.parent.name);
-                
-                if (!isPartOfGlb)
+                if (!wasPreExisting)
                 {
                     // Standard Z-up (AAS) to Y-up (Unity) conversion
                     compObj.transform.localPosition = new Vector3(pos.x, pos.z, pos.y);
@@ -115,7 +112,7 @@ public class AASKitImporter : MonoBehaviour
                     Debug.Log($"[AASKitImporter] 🧊 Found '{compName}' inside GLB. Preserving Blender transform and hierarchy.");
                 }
 
-                if (!string.IsNullOrEmpty(meshFile))
+                if (!string.IsNullOrEmpty(meshFile) && !wasPreExisting)
                 {
                     string localPath = ResolveMeshPath(meshFile, kitPath);
                     if (!string.IsNullOrEmpty(localPath))

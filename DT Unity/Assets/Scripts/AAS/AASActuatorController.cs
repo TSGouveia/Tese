@@ -175,6 +175,7 @@ public class AASActuatorController : MonoBehaviour
                     foreach (var val in values)
                     {
                         string id = val["idShort"]?.ToString();
+                        if (id == "PinID") pinId = val["value"]?.ToString();
                         if (id == "Component") compName = val["value"]?.ToString();
                         if (id == "Type") type = val["value"]?.ToString();
                         if (id == "Parameters" && val["value"] != null)
@@ -280,8 +281,9 @@ public class AASActuatorController : MonoBehaviour
                         string pid = el["idShort"]?.ToString();
                         bool val = false;
                         if (el["value"] != null) bool.TryParse(el["value"].ToString(), out val);
-                        var b = bindings.Find(x => x.pinId == pid);
-                        if (b != null) b.currentState = val;
+                        foreach (var b in bindings.Where(x => x.pinId == pid)) {
+                            b.currentState = val;
+                        }
                     }
                 }
             }

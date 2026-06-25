@@ -1,83 +1,64 @@
 {
-  "kit_name": "RotationalConveyor",
-  "aas_id": "RotationalConveyor_01",
-  "description": "Conveyor rotativo com limites em 0 e 90 graus e correias paralelas.",
+  "kit_name": "RotationalConveyorV9",
+  "aas_id": "RotationalConveyor_V9",
+  "description": "Conveyor rotativo com limites Rotate 0 e Rotate 90 e correias paralelas.",
   "components": [
     {
-      "name": "Base",
-      "mesh": "Rotativo.glb/Base",
+      "name": "ConveyorSystem",
+      "mesh": "Rotativo.glb",
       "parent": null,
-      "position": [0, 0, 0],
-      "sensors": [
-        {
-          "pin_id": "IN_Rotate_0",
-          "behavior": "TriggerZone",
-          "node": "Sensor_0",
-          "target_filter": "Ativador",
-          "visible": false
-        },
-        {
-          "pin_id": "IN_Rotate_90",
-          "behavior": "TriggerZone",
-          "node": "Sensor_90",
-          "target_filter": "Ativador",
-          "visible": false
-        }
-      ]
-    },
-    {
-      "name": "Rotator",
-      "mesh": "Rotativo.glb/Rotator",
-      "parent": "Base",
+      "position": [9, 0, 0],
+      "scale": [0.5, 0.5, 0.5],
       "actuators": [
         {
           "pin_id": "OUT_Rotate_CW",
+          "node": "Rotator",
+          "behavior": "RotateContinuous",
+          "axis": [0, 0, -1],
+          "speed": 0.5,
+          "stop_sensor": "IN_Rotate_90"
+        },
+        {
+          "pin_id": "OUT_Rotate_ACW",
+          "node": "Rotator",
           "behavior": "RotateContinuous",
           "axis": [0, 0, 1],
           "speed": 0.5,
           "stop_sensor": "IN_Rotate_0"
         },
         {
-          "pin_id": "OUT_Rotate_ACW",
-          "behavior": "RotateContinuous",
-          "axis": [0, 0, -1],
-          "speed": 0.5,
-          "stop_sensor": "IN_Rotate_90"
-        }
-      ]
-    },
-    {
-      "name": "Belt",
-      "mesh": "Rotativo.glb/Belt",
-      "parent": "Rotator",
-      "actuators": [
+          "pin_id": "OUT_Belts_Run",
+          "node": "Belt",
+          "behavior": "Conveyor",
+          "axis": [1, 0, 0],
+          "speed": 1.0
+        },
         {
           "pin_id": "OUT_Belts_Run",
+          "node": "Belt1",
           "behavior": "Conveyor",
           "axis": [1, 0, 0],
           "speed": 1.0
         }
-      ]
-    },
-    {
-      "name": "Belt1",
-      "mesh": "Rotativo.glb/Belt1",
-      "parent": "Rotator",
-      "actuators": [
-        {
-          "pin_id": "OUT_Belts_Run",
-          "behavior": "Conveyor",
-          "axis": [1, 0, 0],
-          "speed": 1.0
-        }
-      ]
-    },
-    {
-      "name": "ZoneProduto",
-      "parent": "Rotator",
+      ],
       "sensors": [
         {
+          "pin_id": "IN_Rotate_0",
+          "node": "Rotate 0",
+          "behavior": "TriggerZone",
+          "target_filter": "Ativador",
+          "visible": false
+        },
+        {
+          "pin_id": "IN_Rotate_90",
+          "node": "Rotate 90",
+          "behavior": "TriggerZone",
+          "target_filter": "Ativador",
+          "visible": false
+        },
+        {
           "pin_id": "IN_Product_Detected",
+          "node": "TriggerZone",
           "behavior": "TriggerZone",
           "target_filter": "Product",
           "visible": false
