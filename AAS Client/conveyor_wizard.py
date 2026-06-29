@@ -298,8 +298,7 @@ class ConveyorWizard(QMainWindow):
     def deselect_all(self):
         for actor in self.actors.values(): actor.prop.opacity = 1.0
 
-    def manage_deployed_aas(self):
-        pass
+
 
     def setup_steps(self):
         # P1: Model Selection
@@ -342,29 +341,143 @@ class ConveyorWizard(QMainWindow):
         # P5: Preview
         self.page5 = QWidget(); l5 = QVBoxLayout(self.page5); self.json_preview = QTextEdit(); self.json_preview.setReadOnly(True); l5.addWidget(self.json_preview); self.stack.addWidget(self.page5)
 
-    def clone_from_aas(self):
+    def manage_deployed_aas(self):
         try:
             res = requests.get("http://localhost:8082/shell-descriptors", timeout=5)
             shells = res.json().get("result", [])
-            if not shells: return QMessageBox.information(self, "Info", "No AAS found on server.")
-        except Exception as e: return QMessageBox.critical(self, "Error", f"Could not connect to registry: {e}")
-            
-        dlg = QDialog(self); dlg.setWindowTitle("Clone AAS"); layout = QVBoxLayout(dlg)
-        combo = QComboBox()
-        for s in shells: combo.addItem(f"{s.get('idShort')} ({s.get('id')})", s)
-        layout.addWidget(QLabel("Select an existing Kit to clone:")); layout.addWidget(combo)
-        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        btn_box.accepted.connect(dlg.accept); btn_box.rejected.connect(dlg.reject); layout.addWidget(btn_box)
+            if not shells:
+                QMessageBox.information(self, "Info", "No AAS found on server.")
+                return
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not connect to registry: {e}")
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Manage Deployed AAS")
+        dlg.resize(600, 400)
+        layout = QVBoxLayout(dlg)
+
+        layout.addWidget(QLabel("Select a Deployed AAS to Clone or Delete:"))
         
-        if dlg.exec() != QDialog.DialogCode.Accepted: return
-        shell_desc = combo.currentData()
+        list_widget = QListWidget()
+        layout.addWidget(list_widget)
+
+        def refresh_list(initial_shells=None):
+            list_widget.clear()
+            try:
+                if initial_shells is not None:
+                    curr_shells = initial_shells
+                else:
+                    res_refresh = requests.get("http://localhost:8082/shell-descriptors", timeout=5)
+                    curr_shells = res_refresh.json().get("result", [])
+                for s in curr_shells:
+                    item = QListWidgetItem(f"{s.get('idShort')} ({s.get('id')})")
+                    item.setData(Qt.ItemDataRole.UserRole, s)
+                    list_widget.addItem(item)
+            except Exception as e:
+                QMessageBox.warning(dlg, "Error", f"Failed to refresh list: {e}")
+
+        refresh_list(initial_shells=shells)
+
+        btn_layout = QHBoxLayout()
+        btn_clone = QPushButton("Clone & Edit")
+        btn_clone.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; min-height: 35px;")
+        
+        btn_delete = QPushButton("Delete AAS")
+        btn_delete.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; min-height: 35px;")
+        
+        btn_close = QPushButton("Close")
+        btn_close.setStyleSheet("min-height: 35px;")
+
+        btn_layout.addWidget(btn_clone)
+        btn_layout.addWidget(btn_delete)
+        btn_layout.addWidget(btn_close)
+        layout.addLayout(btn_layout)
+
+        def on_clone_clicked():
+            item = list_widget.currentItem()
+            if not item:
+                QMessageBox.warning(dlg, "Warning", "Please select an AAS to clone.")
+                return
+            shell_desc = item.data(Qt.ItemDataRole.UserRole)
+            dlg.accept()
+            self.load_cloned_aas(shell_desc)
+
+        def on_delete_clicked():
+            item = list_widget.currentItem()
+            if not item:
+                QMessageBox.warning(dlg, "Warning", "Please select an AAS to delete.")
+                return
+            shell_desc = item.data(Qt.ItemDataRole.UserRole)
+            id_short = shell_desc.get("idShort", "Unknown")
+            shell_id = shell_desc.get("id")
+
+            reply = QMessageBox.question(
+                dlg, "Confirm Delete",
+                f"Are you sure you want to delete AAS '{id_short}' and all its associated submodels?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
+                
+                def checked_delete(url):
+                    r = requests.delete(url, timeout=5)
+                    if r.status_code not in [200, 204, 404]:
+                        raise Exception(f"Delete failed with status {r.status_code} for {url}")
+
+                # Fetch shell to get submodel references
+                shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=5)
+                if shell_res.status_code == 200:
+                    shell_data = shell_res.json()
+                    submodel_refs = shell_data.get("submodels", [])
+                    for ref in submodel_refs:
+                        keys = ref.get("keys", [])
+                        if keys:
+                            sm_id = keys[0].get("value")
+                            encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
+                            
+                            # Delete from repository
+                            checked_delete(f"http://localhost:8081/submodels/{encoded_sm_id}")
+                            # Delete from registry
+                            checked_delete(f"http://localhost:8083/submodel-descriptors/{encoded_sm_id}")
+                
+                # Delete shell from repository
+                checked_delete(f"http://localhost:8081/shells/{encoded_shell_id}")
+                
+                # Delete shell descriptor from registry
+                checked_delete(f"http://localhost:8082/shell-descriptors/{encoded_shell_id}")
+                
+                while QApplication.overrideCursor() is not None:
+                    QApplication.restoreOverrideCursor()
+                QMessageBox.information(dlg, "Success", f"AAS '{id_short}' and its associated submodels deleted successfully.")
+                refresh_list()
+            except Exception as e:
+                while QApplication.overrideCursor() is not None:
+                    QApplication.restoreOverrideCursor()
+                traceback.print_exc()
+                QMessageBox.critical(dlg, "Error", f"Failed to delete AAS: {e}")
+            finally:
+                while QApplication.overrideCursor() is not None:
+                    QApplication.restoreOverrideCursor()
+
+        btn_clone.clicked.connect(on_clone_clicked)
+        btn_delete.clicked.connect(on_delete_clicked)
+        btn_close.clicked.connect(dlg.reject)
+
+        dlg.exec()
+
+    def load_cloned_aas(self, shell_desc):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             shell_id = shell_desc.get("id")
             encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
             
             # Fetch the actual shell from the repository
-            shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}")
+            shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=5)
             if shell_res.status_code != 200: raise Exception(f"Failed to fetch Shell from repository (Code {shell_res.status_code})")
             shell_data = shell_res.json()
             
@@ -376,7 +489,7 @@ class ConveyorWizard(QMainWindow):
                 if keys:
                     sm_id = keys[0].get("value")
                     encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
-                    sm_res = requests.get(f"http://localhost:8081/submodels/{encoded_sm_id}")
+                    sm_res = requests.get(f"http://localhost:8081/submodels/{encoded_sm_id}", timeout=5)
                     if sm_res.status_code == 200:
                         sm_data = sm_res.json()
                         submodels_data[sm_data.get("idShort", "")] = sm_data
@@ -469,7 +582,7 @@ class ConveyorWizard(QMainWindow):
                                 
                 if coll_id_short:
                     dl_url = f"http://localhost:8081/submodels/{encoded_vis_id}/submodel-elements/{coll_id_short}.Mesh/attachment"
-                    m_res = requests.get(dl_url)
+                    m_res = requests.get(dl_url, timeout=5)
                     if m_res.status_code == 200:
                         import tempfile
                         tp = os.path.join(tempfile.gettempdir(), f"{shell_desc['idShort']}_cloned.glb")
@@ -477,8 +590,14 @@ class ConveyorWizard(QMainWindow):
                         self.glb_path = tp; self.lbl_glb_path.setText(f"[Cloned] {shell_desc['idShort']}.glb"); self.load_model(tp)
 
             self.stack.setCurrentIndex(1); self.update_nav()
+            while QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
             QMessageBox.information(self, "Success", "AAS Cloned successfully! You can now edit and deploy as a new Kit.")
-        except Exception as e: traceback.print_exc(); QMessageBox.critical(self, "Error", f"Failed to clone AAS: {e}")
+        except Exception as e:
+            while QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
+            traceback.print_exc()
+            QMessageBox.critical(self, "Error", f"Failed to clone AAS: {e}")
         finally:
             while QApplication.overrideCursor() is not None: QApplication.restoreOverrideCursor()
 
