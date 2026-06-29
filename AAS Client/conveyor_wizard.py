@@ -792,11 +792,13 @@ class ConveyorWizard(QMainWindow):
                                     rg = getattr(mat, 'roughnessFactor', 0.5)
                                 pv_mesh = pv.wrap(mesh)
                                 self.plotter.add_mesh(pv_mesh, texture=tx, color=cl, metallic=mt, roughness=rg)
-                                centers.append(mesh.bounds)
+                                flat_b = [mesh.bounds[0,0], mesh.bounds[1,0], mesh.bounds[0,1], mesh.bounds[1,1], mesh.bounds[0,2], mesh.bounds[1,2]]
+                                centers.append(flat_b)
                         elif isinstance(scene, trimesh.Trimesh):
                             pv_mesh = pv.wrap(scene)
                             self.plotter.add_mesh(pv_mesh)
-                            centers.append(scene.bounds)
+                            flat_b = [scene.bounds[0,0], scene.bounds[1,0], scene.bounds[0,1], scene.bounds[1,1], scene.bounds[0,2], scene.bounds[1,2]]
+                            centers.append(flat_b)
                         
                         # Add point label at center
                         if centers:
