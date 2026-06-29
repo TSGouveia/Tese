@@ -383,6 +383,12 @@ class ConveyorWizard(QMainWindow):
         btn_clone = QPushButton("Clone & Edit")
         btn_clone.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; min-height: 35px;")
         
+        btn_backup = QPushButton("Backup (Download)")
+        btn_backup.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; min-height: 35px;")
+        
+        btn_restore = QPushButton("Restore (Upload)")
+        btn_restore.setStyleSheet("background-color: #16a085; color: white; font-weight: bold; min-height: 35px;")
+        
         btn_delete = QPushButton("Delete AAS")
         btn_delete.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; min-height: 35px;")
         
@@ -390,6 +396,8 @@ class ConveyorWizard(QMainWindow):
         btn_close.setStyleSheet("min-height: 35px;")
 
         btn_layout.addWidget(btn_clone)
+        btn_layout.addWidget(btn_backup)
+        btn_layout.addWidget(btn_restore)
         btn_layout.addWidget(btn_delete)
         btn_layout.addWidget(btn_close)
         layout.addLayout(btn_layout)
@@ -465,6 +473,8 @@ class ConveyorWizard(QMainWindow):
                     QApplication.restoreOverrideCursor()
 
         btn_clone.clicked.connect(on_clone_clicked)
+        btn_backup.clicked.connect(lambda: QMessageBox.information(dlg, "Stub", "Backup clicked"))
+        btn_restore.clicked.connect(lambda: QMessageBox.information(dlg, "Stub", "Restore clicked"))
         btn_delete.clicked.connect(on_delete_clicked)
         btn_close.clicked.connect(dlg.reject)
 
