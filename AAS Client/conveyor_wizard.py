@@ -271,7 +271,7 @@ class ConveyorWizard(QMainWindow):
         
         # NUCLEAR OPTION FOR HELP TEXT
         self.plotter.enable_mesh_picking(callback=self.on_mesh_picked, show=False, show_message=False, left_clicking=True)
-        self.cleanup_timer = QTimer(); self.cleanup_timer.timeout.connect(self.kill_ove rlays); self.cleanup_timer.start(200)
+        self.cleanup_timer = QTimer(); self.cleanup_timer.timeout.connect(self.kill_overlays); self.cleanup_timer.start(200)
         
         viewer_layout.addWidget(self.plotter.interactor)
         try: self.plotter.camera.up = (0, 1, 0); self.plotter.enable_terrain_style()
