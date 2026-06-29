@@ -629,9 +629,78 @@ class ConveyorWizard(QMainWindow):
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
 
+        def on_restore_clicked():
+            open_path, _ = QFileDialog.getOpenFileName(dlg, "Open AAS Backup", "", "JSON Files (*.json)")
+            if not open_path:
+                return
+
+            try:
+                with open(open_path, "r", encoding="utf-8") as f:
+                    backup_data = json.load(f)
+            except Exception as e:
+                QMessageBox.critical(dlg, "Error", f"Failed to parse backup file: {e}")
+                return
+
+            config_data = backup_data.get("config_data")
+            glb_base64 = backup_data.get("glb_base64", "")
+            if not config_data:
+                QMessageBox.critical(dlg, "Error", "Invalid backup file: config_data missing.")
+                return
+
+            # Decode GLB to temp file
+            try:
+                glb_bytes = base64.b64decode(glb_base64.encode('utf-8'))
+                import tempfile
+                tp = os.path.join(tempfile.gettempdir(), backup_data.get("glb_filename", "restored.glb"))
+                with open(tp, "wb") as f:
+                    f.write(glb_bytes)
+                config_data["glb_path"] = tp
+            except Exception as e:
+                QMessageBox.critical(dlg, "Error", f"Failed to decode GLB mesh: {e}")
+                return
+
+            # Ask user what they want to do
+            reply = QMessageBox.question(
+                dlg, "Restore Options",
+                "Would you like to load this backup into the Wizard for editing (Yes) or deploy it directly to the server (No)?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+
+            if reply == QMessageBox.StandardButton.Yes:
+                # Option A: Load into Wizard
+                self.restore_wizard_state(config_data)
+                dlg.accept()
+                QMessageBox.information(self, "Success", "Backup loaded into Wizard successfully.")
+            else:
+                # Option B: Deploy directly
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                try:
+                    # Save current state
+                    curr_state = self.save_wizard_state()
+                    # Load state temporarily
+                    self.restore_wizard_state(config_data)
+                    # Trigger deploy
+                    self.deploy_to_aas()
+                    # Restore old state
+                    self.restore_wizard_state(curr_state)
+                    
+                    while QApplication.overrideCursor() is not None:
+                        QApplication.restoreOverrideCursor()
+                    QMessageBox.information(dlg, "Success", "AAS restored directly to BaSyx successfully.")
+                    refresh_list()
+                except Exception as ex:
+                    while QApplication.overrideCursor() is not None:
+                        QApplication.restoreOverrideCursor()
+                    QMessageBox.critical(dlg, "Error", f"Direct deployment failed: {ex}")
+                finally:
+                    while QApplication.overrideCursor() is not None:
+                        QApplication.restoreOverrideCursor()
+
         btn_clone.clicked.connect(on_clone_clicked)
         btn_backup.clicked.connect(on_backup_clicked)
-        btn_restore.clicked.connect(lambda: QMessageBox.information(dlg, "Stub", "Restore clicked"))
+        btn_restore.clicked.connect(on_restore_clicked)
         btn_delete.clicked.connect(on_delete_clicked)
         btn_close.clicked.connect(dlg.reject)
 
@@ -811,7 +880,6 @@ class ConveyorWizard(QMainWindow):
             w.spin_z.setValue(axis[2])
             w.spin_speed.setValue(act.get("speed", 1.0))
             w.check_visible.setChecked(act.get("visible", True))
-            if "stop_sensor" in act: w.combo_stop_sens.setCurrentText(act["stop_sensor"])
             
         for sns in state.get("sensors", []):
             self.add_sensor(); w = self.sensor_widgets[-1]
@@ -821,7 +889,12 @@ class ConveyorWizard(QMainWindow):
             w.edit_filter.setText(sns.get("target_filter", "Metal"))
             w.check_visible.setChecked(sns.get("visible", False))
             w.check_active_low.setChecked(sns.get("active_low", False))
+            
         self.update_all_actuator_dropdowns()
+
+        for i, act in enumerate(state.get("actuators", [])):
+            if i < len(self.actuator_widgets) and "stop_sensor" in act:
+                self.actuator_widgets[i].combo_stop_sens.setCurrentText(act["stop_sensor"])
 
     def update_validation_ui(self):
         valid_aas = is_valid_aas_id(self.edit_aas_id.text())
