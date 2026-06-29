@@ -305,7 +305,7 @@ class ConveyorWizard(QMainWindow):
         self.page1 = QWidget(); l1 = QVBoxLayout(self.page1); l1.setAlignment(Qt.AlignmentFlag.AlignCenter)
         il = QLabel("📁"); il.setAlignment(Qt.AlignmentFlag.AlignCenter); il.setStyleSheet("font-size: 60px;")
         
-        bl = QHBoxLayout()
+        bl = QVBoxLayout(); bl.setSpacing(10); bl.setContentsMargins(50, 0, 50, 0)
         self.btn_select_glb = QPushButton("Select GLB File"); self.btn_select_glb.setMinimumHeight(55); self.btn_select_glb.clicked.connect(self.browse_glb)
         self.btn_manage_aas = QPushButton("Manage Deployed AAS"); self.btn_manage_aas.setMinimumHeight(55); self.btn_manage_aas.setStyleSheet("background-color: #27ae60;")
         self.btn_manage_aas.clicked.connect(self.manage_deployed_aas)
@@ -770,7 +770,7 @@ class ConveyorWizard(QMainWindow):
                         # Build transformation matrix M = T * R * S
                         T = tf.translation_matrix(pos_val)
                         R = tf.euler_matrix(np.radians(rot_val[0]), np.radians(rot_val[1]), np.radians(rot_val[2]), 'sxyz')
-                        S = tf.scale_matrix(scale_val)
+                        S = np.diag([scale_val[0], scale_val[1], scale_val[2], 1.0])
                         M = tf.concatenate_matrices(T, R, S)
                         
                         scene.apply_transform(M)
