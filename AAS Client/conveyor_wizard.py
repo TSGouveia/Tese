@@ -715,7 +715,6 @@ class ConveyorWizard(QMainWindow):
 
                 # Fetch submodel refs
                 submodel_refs = shell_data.get("submodels", [])
-                vis_id = None
                 submodels_data = {}
                 for ref in submodel_refs:
                     keys = ref.get("keys", [])
@@ -764,7 +763,7 @@ class ConveyorWizard(QMainWindow):
                         tp = os.path.join(tempfile.gettempdir(), f"{id_short}_layout.glb")
                         with open(tp, "wb") as f: f.write(m_res.content)
                         
-                        # Load and transform geometry
+                        # Load geometry
                         scene = trimesh.load(tp, process=False)
                         
                         # Build transformation matrix M = T * R * S
@@ -773,11 +772,11 @@ class ConveyorWizard(QMainWindow):
                         S = np.diag([scale_val[0], scale_val[1], scale_val[2], 1.0])
                         M = tf.concatenate_matrices(T, R, S)
                         
-                        scene.apply_transform(M)
+                        centers_list = []
                         
-                        # Add meshes to main viewport
-                        centers = []
                         if isinstance(scene, trimesh.Scene):
+                            # Gather material metadata
+                            geo_mats = {}
                             for gn, mesh in scene.geometry.items():
                                 tx = None; cl = None; mt = 0.0; rg = 0.5
                                 if hasattr(mesh, 'visual') and hasattr(mesh.visual, 'material'):
@@ -785,24 +784,41 @@ class ConveyorWizard(QMainWindow):
                                     if img:
                                         try: tx = pv.Texture(np.array(img))
                                         except: pass
-                                    if hasattr(mat, 'main_color') or hasattr(mat, 'baseColorFactor'):
-                                        c = getattr(mat, 'main_color', getattr(mat, 'baseColorFactor', None))
-                                        if c is not None: cl = [x/255.0 for x in c[:3]] if max(c) > 1.0 else c[:3]
+                                    if hasattr(mat, 'baseColorFactor') and mat.baseColorFactor is not None:
+                                        cl = mat.baseColorFactor[:3]
                                     mt = getattr(mat, 'metallicFactor', 0.0)
                                     rg = getattr(mat, 'roughnessFactor', 0.5)
-                                pv_mesh = pv.wrap(mesh)
-                                self.plotter.add_mesh(pv_mesh, texture=tx, color=cl, metallic=mt, roughness=rg)
-                                flat_b = [mesh.bounds[0,0], mesh.bounds[1,0], mesh.bounds[0,1], mesh.bounds[1,1], mesh.bounds[0,2], mesh.bounds[1,2]]
-                                centers.append(flat_b)
+                                geo_mats[gn] = (tx, cl, mt, rg)
+                            
+                            # Recursively add nodes with graph transforms + global matrix
+                            root_nodes = [node for node in scene.graph.nodes if scene.graph.transforms.parents.get(node) is None]
+                            
+                            def add_preview_node(node):
+                                if node in scene.graph.nodes_geometry:
+                                    node_tf, gn = scene.graph[node]
+                                    mi = scene.geometry[gn].copy()
+                                    combined_tf = M @ node_tf
+                                    mi.apply_transform(combined_tf)
+                                    pm = pv.wrap(mi)
+                                    tx, cl, mt, rg = geo_mats.get(gn, (None, None, 0.0, 0.5))
+                                    self.plotter.add_mesh(pm, texture=tx, color=cl if not tx else None, smooth_shading=True, pbr=True, metallic=mt, roughness=rg)
+                                    flat_b = [mi.bounds[0,0], mi.bounds[1,0], mi.bounds[0,1], mi.bounds[1,1], mi.bounds[0,2], mi.bounds[1,2]]
+                                    centers_list.append(flat_b)
+                                for c in scene.graph.transforms.children.get(node, []):
+                                    add_preview_node(c)
+                                    
+                            for r in root_nodes:
+                                add_preview_node(r)
                         elif isinstance(scene, trimesh.Trimesh):
-                            pv_mesh = pv.wrap(scene)
-                            self.plotter.add_mesh(pv_mesh)
-                            flat_b = [scene.bounds[0,0], scene.bounds[1,0], scene.bounds[0,1], scene.bounds[1,1], scene.bounds[0,2], scene.bounds[1,2]]
-                            centers.append(flat_b)
+                            pm = pv.wrap(scene)
+                            pm.transform(M)
+                            self.plotter.add_mesh(pm, pbr=True)
+                            flat_b = [pm.bounds[0], pm.bounds[1], pm.bounds[2], pm.bounds[3], pm.bounds[4], pm.bounds[5]]
+                            centers_list.append(flat_b)
                         
-                        # Add point label at center
-                        if centers:
-                            b = np.array(centers)
+                        # Add point label at center of bounding box
+                        if centers_list:
+                            b = np.array(centers_list)
                             min_b = np.min(b[:, [0, 2, 4]], axis=0); max_b = np.max(b[:, [1, 3, 5]], axis=0)
                             pos = (min_b + max_b) / 2.0
                             # Float slightly above the conveyor model
