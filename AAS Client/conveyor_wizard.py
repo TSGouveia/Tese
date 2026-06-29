@@ -693,6 +693,9 @@ class ConveyorWizard(QMainWindow):
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self.plotter.clear()
+        self.plotter.enable_eye_dome_lighting()
+        self.plotter.enable_shadows()
+        self.kill_overlays()
         self.meshes = {}
         self.actors = {}
         self.node_tree.clear()
