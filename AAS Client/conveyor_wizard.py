@@ -472,8 +472,165 @@ class ConveyorWizard(QMainWindow):
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
 
+        def on_backup_clicked():
+            item = list_widget.currentItem()
+            if not item:
+                QMessageBox.warning(dlg, "Warning", "Please select an AAS to backup.")
+                return
+            shell_desc = item.data(Qt.ItemDataRole.UserRole)
+            id_short = shell_desc.get("idShort", "Unknown")
+            shell_id = shell_desc.get("id")
+
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
+                
+                # Fetch shell to get submodels
+                shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=5)
+                if shell_res.status_code != 200:
+                    raise Exception(f"Failed to fetch Shell (Code {shell_res.status_code})")
+                shell_data = shell_res.json()
+                
+                submodel_refs = shell_data.get("submodels", [])
+                submodels_data = {}
+                for ref in submodel_refs:
+                    keys = ref.get("keys", [])
+                    if keys:
+                        sm_id = keys[0].get("value")
+                        encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
+                        sm_res = requests.get(f"http://localhost:8081/submodels/{encoded_sm_id}", timeout=5)
+                        if sm_res.status_code == 200:
+                            sm_data = sm_res.json()
+                            submodels_data[sm_data.get("idShort", "")] = sm_data
+
+                vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
+                beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
+                
+                if not all([vis_data, beh_data]):
+                    raise Exception("AAS is missing required submodels.")
+
+                # Gather config parameters (equivalent to clone parsing)
+                kit_name = shell_desc.get("idShort", "ClonedKit")
+                description = ""
+                if "KitConfiguration" in submodels_data:
+                    cfg = submodels_data["KitConfiguration"]
+                    for el in cfg.get("submodelElements", []):
+                        if el["idShort"] == "Description":
+                            description = el.get("value", "")
+
+                pos_val = [0.0]*3; rot_val = [0.0]*3; scale_val = [1.0]*3
+                mesh_href = None
+                for el in vis_data.get("submodelElements", []):
+                    if el["modelType"] == "SubmodelElementCollection": 
+                        for sel in el.get("value", []):
+                            if sel["idShort"] == "Transform":
+                                for t in sel.get("value", []):
+                                    v = float(t.get("value", 0))
+                                    if t["idShort"] == "PosX": pos_val[0] = v
+                                    elif t["idShort"] == "PosY": pos_val[1] = v
+                                    elif t["idShort"] == "PosZ": pos_val[2] = v
+                                    elif t["idShort"] == "RotX": rot_val[0] = v
+                                    elif t["idShort"] == "RotY": rot_val[1] = v
+                                    elif t["idShort"] == "RotZ": rot_val[2] = v
+                                    elif t["idShort"] == "ScaleX": scale_val[0] = v
+                                    elif t["idShort"] == "ScaleY": scale_val[1] = v
+                                    elif t["idShort"] == "ScaleZ": scale_val[2] = v
+                            elif sel["idShort"] == "Mesh" and sel["modelType"] == "File":
+                                mesh_href = sel.get("value")
+
+                actuators = []
+                sensors = []
+                act_types = ["Conveyor", "RotateContinuous", "TranslateContinuous", "Piston", "Linear"]
+                sens_types = ["TriggerZone", "Presence", "Proximity"]
+                
+                for el in beh_data.get("submodelElements", []):
+                    if el["modelType"] == "SubmodelElementCollection":
+                        props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
+                        params = {}
+                        for p in el.get("value", []):
+                            if p["idShort"] == "Parameters":
+                                params = {pp["idShort"]: pp.get("value") for pp in p.get("value", []) if pp["modelType"] == "Property"}
+                                
+                        b_type = props.get("Type", ""); pin_id = props.get("PinID", ""); node = props.get("Component", "")
+                        
+                        if b_type in act_types:
+                            act_data = {
+                                "pin_id": pin_id, "node": node, "behavior": b_type,
+                                "axis": [float(params.get("AxisX", 0)), float(params.get("AxisY", 0)), float(params.get("AxisZ", 0))],
+                                "speed": float(params.get("Speed", 1.0)),
+                                "visible": str(params.get("Visible", "True")).lower() == "true"
+                            }
+                            if "StopSensorComponent" in params:
+                                act_data["stop_sensor"] = params["StopSensorComponent"]
+                              
+                            actuators.append(act_data)
+                        elif b_type in sens_types:
+                            sens_data = {
+                                "pin_id": pin_id, "node": node, "behavior": b_type,
+                                "target_filter": params.get("TargetFilter", "Metal"),
+                                "visible": str(params.get("Visible", "False")).lower() == "true",
+                                "active_low": str(params.get("ActiveLow", "False")).lower() == "true"
+                            }
+                            sensors.append(sens_data)
+
+                # Get GLB attachment
+                glb_bytes = b""
+                if mesh_href:
+                    vis_id = vis_data.get("id")
+                    encoded_vis_id = base64.urlsafe_b64encode(vis_id.encode()).decode().rstrip("=")
+                    coll_id_short = None
+                    for el in vis_data.get("submodelElements", []):
+                        if el["modelType"] == "SubmodelElementCollection": 
+                            for sel in el.get("value", []):
+                                if sel["idShort"] == "Mesh":
+                                    coll_id_short = el["idShort"]
+                                    break
+                    if coll_id_short:
+                        dl_url = f"http://localhost:8081/submodels/{encoded_vis_id}/submodel-elements/{coll_id_short}.Mesh/attachment"
+                        m_res = requests.get(dl_url, timeout=5)
+                        if m_res.status_code == 200:
+                            glb_bytes = m_res.content
+
+                # Assemble backup structure
+                backup_data = {
+                    "version": "1.0",
+                    "kit_name": kit_name,
+                    "aas_id": shell_desc.get("id", f"https://acplt.org/AAS_{kit_name}"),
+                    "description": description,
+                    "config_data": {
+                        "kit_name": kit_name,
+                        "aas_id": kit_name,
+                        "description": description,
+                        "pos": pos_val,
+                        "rot": rot_val,
+                        "scale": scale_val,
+                        "actuators": actuators,
+                        "sensors": sensors
+                    },
+                    "glb_filename": f"{kit_name}.glb",
+                    "glb_base64": base64.b64encode(glb_bytes).decode('utf-8')
+                }
+
+                # Restore override cursor before QFileDialog blocks the thread
+                while QApplication.overrideCursor() is not None:
+                    QApplication.restoreOverrideCursor()
+
+                save_path, _ = QFileDialog.getSaveFileName(dlg, "Save AAS Backup", f"{kit_name}_backup.json", "JSON Files (*.json)")
+                if save_path:
+                    with open(save_path, "w", encoding="utf-8") as f:
+                        json.dump(backup_data, f, indent=2)
+                    QMessageBox.information(dlg, "Success", "Backup saved successfully!")
+            except Exception as e:
+                while QApplication.overrideCursor() is not None:
+                    QApplication.restoreOverrideCursor()
+                traceback.print_exc()
+                QMessageBox.critical(dlg, "Error", f"Failed to backup AAS: {e}")
+            finally:
+                while QApplication.overrideCursor() is not None:
+                    QApplication.restoreOverrideCursor()
+
         btn_clone.clicked.connect(on_clone_clicked)
-        btn_backup.clicked.connect(lambda: QMessageBox.information(dlg, "Stub", "Backup clicked"))
+        btn_backup.clicked.connect(on_backup_clicked)
         btn_restore.clicked.connect(lambda: QMessageBox.information(dlg, "Stub", "Restore clicked"))
         btn_delete.clicked.connect(on_delete_clicked)
         btn_close.clicked.connect(dlg.reject)
