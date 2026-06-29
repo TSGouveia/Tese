@@ -354,41 +354,13 @@ class ConveyorWizard(QMainWindow):
 
         dlg = QDialog(self)
         dlg.setWindowTitle("Manage Deployed AAS")
-        dlg.resize(1000, 500)
-        main_h_layout = QHBoxLayout(dlg)
+        dlg.resize(600, 400)
+        layout = QVBoxLayout(dlg)
 
-        # Left Panel (List + Buttons)
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        
-        left_layout.addWidget(QLabel("Select a Deployed AAS to Clone, Backup or Delete:"))
+        layout.addWidget(QLabel("Select a Deployed AAS to Clone or Delete:"))
         
         list_widget = QListWidget()
-        left_layout.addWidget(list_widget)
-
-        # Right Panel (3D Preview)
-        right_panel = QGroupBox("3D Model Preview")
-        right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(5, 10, 5, 5)
-        
-        preview_plotter = BackgroundPlotter(show=False)
-        preview_plotter.set_background("#161616")
-        right_layout.addWidget(preview_plotter.interactor)
-        
-        # Splitter
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(left_panel)
-        splitter.addWidget(right_panel)
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 2)
-        main_h_layout.addWidget(splitter)
-
-        # Clean up plotter when dialog is closed
-        def cleanup_plotter():
-            try: preview_plotter.close()
-            except: pass
-        dlg.finished.connect(lambda r: cleanup_plotter())
+        layout.addWidget(list_widget)
 
         def refresh_list(initial_shells=None):
             list_widget.clear()
@@ -428,77 +400,7 @@ class ConveyorWizard(QMainWindow):
         btn_layout.addWidget(btn_restore)
         btn_layout.addWidget(btn_delete)
         btn_layout.addWidget(btn_close)
-        left_layout.addLayout(btn_layout)
-
-        def on_selection_changed():
-            item = list_widget.currentItem()
-            if not item:
-                preview_plotter.clear()
-                return
-            shell_desc = item.data(Qt.ItemDataRole.UserRole)
-            shell_id = shell_desc.get("id")
-            
-            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            try:
-                encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
-                
-                # Fetch shell
-                shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=2)
-                if shell_res.status_code != 200:
-                    preview_plotter.clear()
-                    return
-                shell_data = shell_res.json()
-                
-                # Fetch submodel refs
-                submodel_refs = shell_data.get("submodels", [])
-                vis_id = None
-                for ref in submodel_refs:
-                    keys = ref.get("keys", [])
-                    if keys and ("VisualStructure" in keys[0].get("value", "") or "Visual" in keys[0].get("value", "")):
-                        vis_id = keys[0].get("value")
-                        break
-                
-                if not vis_id:
-                    preview_plotter.clear()
-                    return
-                
-                # Fetch visual structure
-                encoded_vis_id = base64.urlsafe_b64encode(vis_id.encode()).decode().rstrip("=")
-                vis_res = requests.get(f"http://localhost:8081/submodels/{encoded_vis_id}", timeout=2)
-                if vis_res.status_code != 200:
-                    preview_plotter.clear()
-                    return
-                vis_data = vis_res.json()
-                
-                mesh_href = None
-                coll_id_short = None
-                for el in vis_data.get("submodelElements", []):
-                    if el["modelType"] == "SubmodelElementCollection": 
-                        for sel in el.get("value", []):
-                            if sel["idShort"] == "Mesh" and sel["modelType"] == "File":
-                                mesh_href = sel.get("value")
-                                coll_id_short = el["idShort"]
-                                break
-                
-                if mesh_href and coll_id_short:
-                    dl_url = f"http://localhost:8081/submodels/{encoded_vis_id}/submodel-elements/{coll_id_short}.Mesh/attachment"
-                    m_res = requests.get(dl_url, timeout=3)
-                    if m_res.status_code == 200:
-                        import tempfile
-                        tp = os.path.join(tempfile.gettempdir(), f"{shell_desc['idShort']}_preview.glb")
-                        with open(tp, "wb") as f:
-                            f.write(m_res.content)
-                        load_model_into_plotter(preview_plotter, tp)
-                        return
-                preview_plotter.clear()
-            except Exception as e:
-                traceback.print_exc()
-                preview_plotter.clear()
-            finally:
-                while QApplication.overrideCursor() is not None:
-                    QApplication.restoreOverrideCursor()
-
-        list_widget.currentItemChanged.connect(on_selection_changed)
+        layout.addLayout(btn_layout)
 
         def on_clone_clicked():
             item = list_widget.currentItem()
@@ -1213,33 +1115,6 @@ class ConveyorWizard(QMainWindow):
             self.btn_next.setEnabled(True); self.btn_next.setText("Deploy to AAS")
             while QApplication.overrideCursor() is not None:
                 QApplication.restoreOverrideCursor()
-
-def load_model_into_plotter(plotter, path):
-    plotter.clear()
-    try:
-        scene = trimesh.load(path, process=False)
-        if isinstance(scene, trimesh.Scene):
-            for gn, mesh in scene.geometry.items():
-                tx = None; cl = None; mt = 0.0; rg = 0.5
-                if hasattr(mesh, 'visual') and hasattr(mesh.visual, 'material'):
-                    mat = mesh.visual.material; img = getattr(mat, 'image', getattr(mat, 'baseColorTexture', None))
-                    if img:
-                        try: tx = pv.Texture(np.array(img))
-                        except: pass
-                    if hasattr(mat, 'main_color') or hasattr(mat, 'baseColorFactor'):
-                        c = getattr(mat, 'main_color', getattr(mat, 'baseColorFactor', None))
-                        if c is not None: cl = [x/255.0 for x in c[:3]] if max(c) > 1.0 else c[:3]
-                    mt = getattr(mat, 'metallicFactor', 0.0)
-                    rg = getattr(mat, 'roughnessFactor', 0.5)
-                pv_mesh = pv.wrap(mesh)
-                plotter.add_mesh(pv_mesh, texture=tx, color=cl, metallic=mt, roughness=rg)
-        elif isinstance(scene, trimesh.Trimesh):
-            pv_mesh = pv.wrap(scene)
-            plotter.add_mesh(pv_mesh)
-        plotter.reset_camera()
-        plotter.camera.up = (0, 1, 0)
-    except Exception as e:
-        traceback.print_exc()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv); window = ConveyorWizard(); window.show(); sys.exit(app.exec())
