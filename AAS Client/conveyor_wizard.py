@@ -729,6 +729,27 @@ class ConveyorWizard(QMainWindow):
                 vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
                 if not vis_data: continue
 
+                beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
+                hidden_nodes = set()
+                if beh_data:
+                    act_types = ["Conveyor", "RotateContinuous", "TranslateContinuous", "Piston", "Linear"]
+                    sens_types = ["TriggerZone", "Presence", "Proximity"]
+                    for el in beh_data.get("submodelElements", []):
+                        if el["modelType"] == "SubmodelElementCollection":
+                            props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
+                            params = {}
+                            for p in el.get("value", []):
+                                if p["idShort"] == "Parameters":
+                                    params = {pp["idShort"]: pp.get("value") for pp in p.get("value", []) if pp["modelType"] == "Property"}
+                            b_type = props.get("Type", "")
+                            node = props.get("Component", "")
+                            if b_type in act_types:
+                                visible = str(params.get("Visible", "True")).lower() == "true"
+                                if not visible and node: hidden_nodes.add(node)
+                            elif b_type in sens_types:
+                                visible = str(params.get("Visible", "False")).lower() == "true"
+                                if not visible and node: hidden_nodes.add(node)
+
                 # Parse transform
                 pos_val = [0.0]*3; rot_val = [0.0]*3; scale_val = [1.0]*3
                 mesh_href = None
@@ -793,17 +814,26 @@ class ConveyorWizard(QMainWindow):
                             # Recursively add nodes with graph transforms + global matrix
                             root_nodes = [node for node in scene.graph.nodes if scene.graph.transforms.parents.get(node) is None]
                             
+                            def is_hidden(node):
+                                curr = node
+                                while curr is not None:
+                                    if curr in hidden_nodes:
+                                        return True
+                                    curr = scene.graph.transforms.parents.get(curr)
+                                return False
+
                             def add_preview_node(node):
                                 if node in scene.graph.nodes_geometry:
-                                    node_tf, gn = scene.graph[node]
-                                    mi = scene.geometry[gn].copy()
-                                    combined_tf = M @ node_tf
-                                    mi.apply_transform(combined_tf)
-                                    pm = pv.wrap(mi)
-                                    tx, cl, mt, rg = geo_mats.get(gn, (None, None, 0.0, 0.5))
-                                    self.plotter.add_mesh(pm, texture=tx, color=cl if not tx else None, smooth_shading=True, pbr=True, metallic=mt, roughness=rg)
-                                    flat_b = [mi.bounds[0,0], mi.bounds[1,0], mi.bounds[0,1], mi.bounds[1,1], mi.bounds[0,2], mi.bounds[1,2]]
-                                    centers_list.append(flat_b)
+                                    if not is_hidden(node):
+                                        node_tf, gn = scene.graph[node]
+                                        mi = scene.geometry[gn].copy()
+                                        combined_tf = M @ node_tf
+                                        mi.apply_transform(combined_tf)
+                                        pm = pv.wrap(mi)
+                                        tx, cl, mt, rg = geo_mats.get(gn, (None, None, 0.0, 0.5))
+                                        self.plotter.add_mesh(pm, texture=tx, color=cl if not tx else None, smooth_shading=True, pbr=True, metallic=mt, roughness=rg)
+                                        flat_b = [mi.bounds[0,0], mi.bounds[1,0], mi.bounds[0,1], mi.bounds[1,1], mi.bounds[0,2], mi.bounds[1,2]]
+                                        centers_list.append(flat_b)
                                 for c in scene.graph.transforms.children.get(node, []):
                                     add_preview_node(c)
                                     
