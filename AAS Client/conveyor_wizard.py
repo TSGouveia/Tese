@@ -298,6 +298,9 @@ class ConveyorWizard(QMainWindow):
     def deselect_all(self):
         for actor in self.actors.values(): actor.prop.opacity = 1.0
 
+    def manage_deployed_aas(self):
+        pass
+
     def setup_steps(self):
         # P1: Model Selection
         self.page1 = QWidget(); l1 = QVBoxLayout(self.page1); l1.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -305,9 +308,9 @@ class ConveyorWizard(QMainWindow):
         
         bl = QHBoxLayout()
         self.btn_select_glb = QPushButton("Select GLB File"); self.btn_select_glb.setMinimumHeight(55); self.btn_select_glb.clicked.connect(self.browse_glb)
-        self.btn_clone_aas = QPushButton("Clone Existing AAS"); self.btn_clone_aas.setMinimumHeight(55); self.btn_clone_aas.setStyleSheet("background-color: #27ae60;")
-        self.btn_clone_aas.clicked.connect(self.clone_from_aas)
-        bl.addWidget(self.btn_select_glb); bl.addWidget(self.btn_clone_aas)
+        self.btn_manage_aas = QPushButton("Manage Deployed AAS"); self.btn_manage_aas.setMinimumHeight(55); self.btn_manage_aas.setStyleSheet("background-color: #27ae60;")
+        self.btn_manage_aas.clicked.connect(self.manage_deployed_aas)
+        bl.addWidget(self.btn_select_glb); bl.addWidget(self.btn_manage_aas)
         
         self.lbl_glb_path = QLabel("No file selected")
         l1.addWidget(il); l1.addLayout(bl); l1.addWidget(self.lbl_glb_path); self.stack.addWidget(self.page1)
