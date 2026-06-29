@@ -601,6 +601,61 @@ class ConveyorWizard(QMainWindow):
         finally:
             while QApplication.overrideCursor() is not None: QApplication.restoreOverrideCursor()
 
+    def save_wizard_state(self):
+        return {
+            "kit_name": self.edit_kit_name.text(),
+            "aas_id": self.edit_aas_id.text(),
+            "description": self.edit_desc.text(),
+            "glb_path": self.glb_path,
+            "pos": [self.sys_pos[i].value() for i in range(3)],
+            "rot": [self.sys_rot[i].value() for i in range(3)],
+            "scale": [self.sys_scale[i].value() for i in range(3)],
+            "actuators": [w.get_data() for w in self.actuator_widgets],
+            "sensors": [w.get_data() for w in self.sensor_widgets]
+        }
+
+    def restore_wizard_state(self, state):
+        self.glb_path = state.get("glb_path")
+        self.lbl_glb_path.setText(os.path.basename(self.glb_path) if self.glb_path else "No file selected")
+        if self.glb_path and os.path.exists(self.glb_path):
+            self.load_model(self.glb_path)
+        self.edit_kit_name.setText(state.get("kit_name", ""))
+        self.edit_aas_id.setText(state.get("aas_id", ""))
+        self.edit_desc.setText(state.get("description", ""))
+        pos = state.get("pos", [0, 0, 0])
+        rot = state.get("rot", [0, 0, 0])
+        scale = state.get("scale", [1, 1, 1])
+        for i in range(3):
+            self.sys_pos[i].setValue(pos[i])
+            self.sys_rot[i].setValue(rot[i])
+            self.sys_scale[i].setValue(scale[i])
+            
+        for w in list(self.actuator_widgets): self.remove_actuator(w)
+        for w in list(self.sensor_widgets): self.remove_sensor(w)
+        
+        for act in state.get("actuators", []):
+            self.add_actuator(); w = self.actuator_widgets[-1]
+            w.edit_pin.setText(act.get("pin_id", ""))
+            w.edit_node.setText(act.get("node", ""))
+            w.combo_behavior.setCurrentText(act.get("behavior", ""))
+            axis = act.get("axis", [0, 0, 0])
+            w.spin_x.setValue(axis[0])
+            w.spin_y.setValue(axis[1])
+            w.spin_z.setValue(axis[2])
+            w.spin_speed.setValue(act.get("speed", 1.0))
+            w.check_visible.setChecked(act.get("visible", True))
+            if "stop_sensor" in act: w.combo_stop_sens.setCurrentText(act["stop_sensor"])
+            
+        for sns in state.get("sensors", []):
+            self.add_sensor(); w = self.sensor_widgets[-1]
+            w.edit_pin.setText(sns.get("pin_id", ""))
+            w.edit_node.setText(sns.get("node", ""))
+            w.combo_behavior.setCurrentText(sns.get("behavior", ""))
+            w.edit_filter.setText(sns.get("target_filter", "Metal"))
+            w.check_visible.setChecked(sns.get("visible", False))
+            w.check_active_low.setChecked(sns.get("active_low", False))
+        self.update_all_actuator_dropdowns()
+
     def update_validation_ui(self):
         valid_aas = is_valid_aas_id(self.edit_aas_id.text())
         self.edit_aas_id.setStyleSheet(VALID_STYLE if valid_aas else ERROR_STYLE)
