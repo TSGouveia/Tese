@@ -704,8 +704,6 @@ class ConveyorWizard(QMainWindow):
 
         import trimesh.transformations as tf
         loaded_count = 0
-        all_label_positions = []
-        all_label_names = []
 
         try:
             for s in shells:
@@ -798,8 +796,6 @@ class ConveyorWizard(QMainWindow):
                         S = np.diag([scale_val[0], scale_val[1], scale_val[2], 1.0])
                         M = tf.concatenate_matrices(T, R, S)
                         
-                        centers_list = []
-                        
                         if isinstance(scene, trimesh.Scene):
                             # Gather material metadata
                             geo_mats = {}
@@ -837,8 +833,6 @@ class ConveyorWizard(QMainWindow):
                                         pm = pv.wrap(mi)
                                         tx, cl, mt, rg = geo_mats.get(gn, (None, None, 0.0, 0.5))
                                         self.plotter.add_mesh(pm, texture=tx, color=cl if not tx else None, smooth_shading=True, pbr=True, metallic=mt, roughness=rg)
-                                        flat_b = [mi.bounds[0,0], mi.bounds[1,0], mi.bounds[0,1], mi.bounds[1,1], mi.bounds[0,2], mi.bounds[1,2]]
-                                        centers_list.append(flat_b)
                                 for c in scene.graph.transforms.children.get(node, []):
                                     add_preview_node(c)
                                     
@@ -848,23 +842,8 @@ class ConveyorWizard(QMainWindow):
                             pm = pv.wrap(scene)
                             pm.transform(M)
                             self.plotter.add_mesh(pm, pbr=True)
-                            flat_b = [pm.bounds[0], pm.bounds[1], pm.bounds[2], pm.bounds[3], pm.bounds[4], pm.bounds[5]]
-                            centers_list.append(flat_b)
-                        
-                        # Add point label at center of bounding box
-                        if centers_list:
-                            b = np.array(centers_list)
-                            min_b = np.min(b[:, [0, 2, 4]], axis=0); max_b = np.max(b[:, [1, 3, 5]], axis=0)
-                            pos = (min_b + max_b) / 2.0
-                            # Float higher to avoid overlapping and Z-fighting
-                            pos[1] += (max_b[1] - min_b[1]) * 1.2 + 0.8
-                            all_label_positions.append(pos)
-                            all_label_names.append(id_short)
                         
                         loaded_count += 1
-
-            if all_label_positions:
-                self.plotter.add_point_labels(all_label_positions, all_label_names, font_size=15, text_color="white", shape_color="#8e44ad", show_points=False)
 
             self.plotter.reset_camera()
             self.plotter.camera.up = (0, 1, 0)
