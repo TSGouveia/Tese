@@ -430,35 +430,7 @@ class ConveyorWizard(QMainWindow):
 
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
-                encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
-                
-                def checked_delete(url):
-                    r = requests.delete(url, timeout=5)
-                    if r.status_code not in [200, 204, 404]:
-                        raise Exception(f"Delete failed with status {r.status_code} for {url}")
-
-                # Fetch shell to get submodel references
-                shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=5)
-                if shell_res.status_code == 200:
-                    shell_data = shell_res.json()
-                    submodel_refs = shell_data.get("submodels", [])
-                    for ref in submodel_refs:
-                        keys = ref.get("keys", [])
-                        if keys:
-                            sm_id = keys[0].get("value")
-                            encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
-                            
-                            # Delete from repository
-                            checked_delete(f"http://localhost:8081/submodels/{encoded_sm_id}")
-                            # Delete from registry
-                            checked_delete(f"http://localhost:8083/submodel-descriptors/{encoded_sm_id}")
-                
-                # Delete shell from repository
-                checked_delete(f"http://localhost:8081/shells/{encoded_shell_id}")
-                
-                # Delete shell descriptor from registry
-                checked_delete(f"http://localhost:8082/shell-descriptors/{encoded_shell_id}")
-                
+                self.delete_aas_by_id(shell_id)
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
                 QMessageBox.information(dlg, "Success", f"AAS '{id_short}' and its associated submodels deleted successfully.")
@@ -896,6 +868,35 @@ class ConveyorWizard(QMainWindow):
             if i < len(self.actuator_widgets) and "stop_sensor" in act:
                 self.actuator_widgets[i].combo_stop_sens.setCurrentText(act["stop_sensor"])
 
+    def delete_aas_by_id(self, shell_id):
+        encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
+        def checked_delete(url):
+            r = requests.delete(url, timeout=5)
+            if r.status_code not in [200, 204, 404]:
+                raise Exception(f"Delete failed with status {r.status_code} for {url}")
+
+        # Fetch shell to get submodel references
+        shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=5)
+        if shell_res.status_code == 200:
+            shell_data = shell_res.json()
+            submodel_refs = shell_data.get("submodels", [])
+            for ref in submodel_refs:
+                keys = ref.get("keys", [])
+                if keys:
+                    sm_id = keys[0].get("value")
+                    encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
+                    
+                    # Delete from repository
+                    checked_delete(f"http://localhost:8081/submodels/{encoded_sm_id}")
+                    # Delete from registry
+                    checked_delete(f"http://localhost:8083/submodel-descriptors/{encoded_sm_id}")
+        
+        # Delete shell from repository
+        checked_delete(f"http://localhost:8081/shells/{encoded_shell_id}")
+        
+        # Delete shell descriptor from registry
+        checked_delete(f"http://localhost:8082/shell-descriptors/{encoded_shell_id}")
+
     def update_validation_ui(self):
         valid_aas = is_valid_aas_id(self.edit_aas_id.text())
         self.edit_aas_id.setStyleSheet(VALID_STYLE if valid_aas else ERROR_STYLE)
@@ -1063,11 +1064,48 @@ class ConveyorWizard(QMainWindow):
             os.makedirs("aasx_packages", exist_ok=True); out = os.path.join("aasx_packages", f"{kfn}_Kit.aasx")
             with aasx.AASXWriter(out) as w: w.write_aas(shell.id, obj_store, fr, aid)
             with open(out, 'rb') as f: res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
-            if res.status_code in [200, 201, 204]:
+            
+            is_conflict = False
+            if res.status_code == 409:
+                is_conflict = True
+            elif "Duplicate element id detected" in res.text or "CollidingIdentifierException" in res.text:
+                is_conflict = True
+
+            if is_conflict:
+                while QApplication.overrideCursor() is not None:
+                    QApplication.restoreOverrideCursor()
+                reply = QMessageBox.question(
+                    self, "AAS Already Exists",
+                    f"An AAS with ID '{shell.id}' already exists. Would you like to overwrite it?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                    # Delete the existing AAS
+                    self.delete_aas_by_id(shell.id)
+                    # Retry upload
+                    with open(out, 'rb') as f:
+                        res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
+                    if res.status_code in [200, 201, 204]:
+                        requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                        while QApplication.overrideCursor() is not None:
+                            QApplication.restoreOverrideCursor()
+                        QMessageBox.information(self, "Success", f"AAS Kit deployed (overwritten) successfully!")
+                        # Go back to start screen
+                        self.stack.setCurrentIndex(0)
+                        self.update_nav()
+                    else:
+                        raise Exception(f"Upload failed after overwrite: {res.text}")
+                else:
+                    return
+            elif res.status_code in [200, 201, 204]:
                 requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
-                QMessageBox.information(self, "Success", f"AAS Kit deployed!")
+                QMessageBox.information(self, "Success", f"AAS Kit deployed successfully!")
+                # Go back to start screen
+                self.stack.setCurrentIndex(0)
+                self.update_nav()
             else: raise Exception(f"Upload failed: {res.text}")
         except Exception as e:
             while QApplication.overrideCursor() is not None:
