@@ -320,7 +320,9 @@ class ConveyorWizard(QMainWindow):
         self.page2 = QWidget(); l2 = QVBoxLayout(self.page2); info_group = QGroupBox("System Info"); ifl = QFormLayout(info_group)
         self.edit_kit_name = QLineEdit("ConveyorKit"); self.edit_aas_id = QLineEdit("Conveyor_01"); self.edit_desc = QLineEdit("Standard Conveyor System")
         self.edit_aas_id.textChanged.connect(self.update_validation_ui)
+        self.check_is_product = QCheckBox("Is Dynamic Product (adds Rigidbody/Physics in Unity)")
         ifl.addRow("Kit Name:", self.edit_kit_name); ifl.addRow("AAS ID:", self.edit_aas_id); ifl.addRow("Description:", self.edit_desc)
+        ifl.addRow("", self.check_is_product)
         
         trans_group = QGroupBox("System Transform"); tfl = QFormLayout(trans_group)
         self.sys_pos = [QDoubleSpinBox() for _ in range(3)]; self.sys_rot = [QDoubleSpinBox() for _ in range(3)]; self.sys_scale = [QDoubleSpinBox() for _ in range(3)]
@@ -385,8 +387,11 @@ class ConveyorWizard(QMainWindow):
         btn_clone = QPushButton("Clone & Edit")
         btn_clone.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; min-height: 35px;")
         
-        btn_backup = QPushButton("Backup (Download)")
+        btn_backup = QPushButton("Backup Selected")
         btn_backup.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; min-height: 35px;")
+        
+        btn_backup_all = QPushButton("Backup All")
+        btn_backup_all.setStyleSheet("background-color: #34495e; color: white; font-weight: bold; min-height: 35px;")
         
         btn_restore = QPushButton("Restore (Upload)")
         btn_restore.setStyleSheet("background-color: #16a085; color: white; font-weight: bold; min-height: 35px;")
@@ -399,6 +404,7 @@ class ConveyorWizard(QMainWindow):
 
         btn_layout.addWidget(btn_clone)
         btn_layout.addWidget(btn_backup)
+        btn_layout.addWidget(btn_backup_all)
         btn_layout.addWidget(btn_restore)
         btn_layout.addWidget(btn_delete)
         btn_layout.addWidget(btn_close)
@@ -446,6 +452,141 @@ class ConveyorWizard(QMainWindow):
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
 
+        def get_backup_data(shell_desc):
+            shell_id = shell_desc.get("id")
+            encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
+            
+            # Fetch shell to get submodels
+            shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=5)
+            if shell_res.status_code != 200:
+                raise Exception(f"Failed to fetch Shell (Code {shell_res.status_code})")
+            shell_data = shell_res.json()
+            
+            submodel_refs = shell_data.get("submodels", [])
+            submodels_data = {}
+            for ref in submodel_refs:
+                keys = ref.get("keys", [])
+                if keys:
+                    sm_id = keys[0].get("value")
+                    encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
+                    sm_res = requests.get(f"http://localhost:8081/submodels/{encoded_sm_id}", timeout=5)
+                    if sm_res.status_code == 200:
+                        sm_data = sm_res.json()
+                        submodels_data[sm_data.get("idShort", "")] = sm_data
+
+            vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
+            beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
+            
+            if not all([vis_data, beh_data]):
+                raise Exception("AAS is missing required submodels.")
+
+            # Gather config parameters (equivalent to clone parsing)
+            kit_name = shell_desc.get("idShort", "ClonedKit")
+            description = ""
+            if "KitConfiguration" in submodels_data:
+                cfg = submodels_data["KitConfiguration"]
+                for el in cfg.get("submodelElements", []):
+                    if el["idShort"] == "Description":
+                        description = el.get("value", "")
+
+            pos_val = [0.0]*3; rot_val = [0.0]*3; scale_val = [1.0]*3
+            mesh_href = None
+            is_dynamic = False
+            for el in vis_data.get("submodelElements", []):
+                if el["modelType"] == "SubmodelElementCollection": 
+                    for sel in el.get("value", []):
+                        if sel["idShort"] == "Transform":
+                            for t in sel.get("value", []):
+                                v = float(t.get("value", 0))
+                                if t["idShort"] == "PosX": pos_val[0] = v
+                                elif t["idShort"] == "PosY": pos_val[1] = v
+                                elif t["idShort"] == "PosZ": pos_val[2] = v
+                                elif t["idShort"] == "RotX": rot_val[0] = v
+                                elif t["idShort"] == "RotY": rot_val[1] = v
+                                elif t["idShort"] == "RotZ": rot_val[2] = v
+                                elif t["idShort"] == "ScaleX": scale_val[0] = v
+                                elif t["idShort"] == "ScaleY": scale_val[1] = v
+                                elif t["idShort"] == "ScaleZ": scale_val[2] = v
+                        elif sel["idShort"] == "Mesh" and sel["modelType"] == "File":
+                            mesh_href = sel.get("value")
+                        elif sel["idShort"] == "DynamicObject" and sel["modelType"] == "Property":
+                            is_dynamic = str(sel.get("value", "False")).lower() == "true"
+
+            actuators = []
+            sensors = []
+            act_types = ["Conveyor", "RotateContinuous", "TranslateContinuous", "Piston", "Linear"]
+            sens_types = ["TriggerZone", "Presence", "Proximity"]
+            
+            for el in beh_data.get("submodelElements", []):
+                if el["modelType"] == "SubmodelElementCollection":
+                    props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
+                    params = {}
+                    for p in el.get("value", []):
+                        if p["idShort"] == "Parameters":
+                            params = {pp["idShort"]: pp.get("value") for pp in p.get("value", []) if pp["modelType"] == "Property"}
+                            
+                    b_type = props.get("Type", ""); pin_id = props.get("PinID", ""); node = props.get("Component", "")
+                    
+                    if b_type in act_types:
+                        act_data = {
+                            "pin_id": pin_id, "node": node, "behavior": b_type,
+                            "axis": [float(params.get("AxisX", 0)), float(params.get("AxisY", 0)), float(params.get("AxisZ", 0))],
+                            "speed": float(params.get("Speed", 1.0)),
+                            "visible": str(params.get("Visible", "True")).lower() == "true"
+                        }
+                        if "StopSensorComponent" in params:
+                            act_data["stop_sensor"] = params["StopSensorComponent"]
+                          
+                        actuators.append(act_data)
+                    elif b_type in sens_types:
+                        sens_data = {
+                            "pin_id": pin_id, "node": node, "behavior": b_type,
+                            "target_filter": params.get("TargetFilter", "Metal"),
+                            "visible": str(params.get("Visible", "False")).lower() == "true",
+                            "active_low": str(params.get("ActiveLow", "False")).lower() == "true"
+                        }
+                        sensors.append(sens_data)
+
+            # Get GLB attachment
+            glb_bytes = b""
+            if mesh_href:
+                vis_id = vis_data.get("id")
+                encoded_vis_id = base64.urlsafe_b64encode(vis_id.encode()).decode().rstrip("=")
+                coll_id_short = None
+                for el in vis_data.get("submodelElements", []):
+                    if el["modelType"] == "SubmodelElementCollection": 
+                        for sel in el.get("value", []):
+                            if sel["idShort"] == "Mesh":
+                                coll_id_short = el["idShort"]
+                                break
+                if coll_id_short:
+                    dl_url = f"http://localhost:8081/submodels/{encoded_vis_id}/submodel-elements/{coll_id_short}.Mesh/attachment"
+                    m_res = requests.get(dl_url, timeout=5)
+                    if m_res.status_code == 200:
+                        glb_bytes = m_res.content
+
+            # Assemble backup structure
+            return {
+                "version": "1.0",
+                "kit_name": kit_name,
+                "aas_id": shell_desc.get("id", f"https://acplt.org/AAS_{kit_name}"),
+                "description": description,
+                "config_data": {
+                    "kit_name": kit_name,
+                    "aas_id": kit_name,
+                    "description": description,
+                    "is_product": is_dynamic,
+                    "dynamic": is_dynamic,
+                    "pos": pos_val,
+                    "rot": rot_val,
+                    "scale": scale_val,
+                    "actuators": actuators,
+                    "sensors": sensors
+                },
+                "glb_filename": f"{kit_name}.glb",
+                "glb_base64": base64.b64encode(glb_bytes).decode('utf-8')
+            }
+
         def on_backup_clicked():
             item = list_widget.currentItem()
             if not item:
@@ -453,143 +594,14 @@ class ConveyorWizard(QMainWindow):
                 return
             shell_desc = item.data(Qt.ItemDataRole.UserRole)
             id_short = shell_desc.get("idShort", "Unknown")
-            shell_id = shell_desc.get("id")
 
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
-                encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
-                
-                # Fetch shell to get submodels
-                shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=5)
-                if shell_res.status_code != 200:
-                    raise Exception(f"Failed to fetch Shell (Code {shell_res.status_code})")
-                shell_data = shell_res.json()
-                
-                submodel_refs = shell_data.get("submodels", [])
-                submodels_data = {}
-                for ref in submodel_refs:
-                    keys = ref.get("keys", [])
-                    if keys:
-                        sm_id = keys[0].get("value")
-                        encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
-                        sm_res = requests.get(f"http://localhost:8081/submodels/{encoded_sm_id}", timeout=5)
-                        if sm_res.status_code == 200:
-                            sm_data = sm_res.json()
-                            submodels_data[sm_data.get("idShort", "")] = sm_data
-
-                vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
-                beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
-                
-                if not all([vis_data, beh_data]):
-                    raise Exception("AAS is missing required submodels.")
-
-                # Gather config parameters (equivalent to clone parsing)
-                kit_name = shell_desc.get("idShort", "ClonedKit")
-                description = ""
-                if "KitConfiguration" in submodels_data:
-                    cfg = submodels_data["KitConfiguration"]
-                    for el in cfg.get("submodelElements", []):
-                        if el["idShort"] == "Description":
-                            description = el.get("value", "")
-
-                pos_val = [0.0]*3; rot_val = [0.0]*3; scale_val = [1.0]*3
-                mesh_href = None
-                for el in vis_data.get("submodelElements", []):
-                    if el["modelType"] == "SubmodelElementCollection": 
-                        for sel in el.get("value", []):
-                            if sel["idShort"] == "Transform":
-                                for t in sel.get("value", []):
-                                    v = float(t.get("value", 0))
-                                    if t["idShort"] == "PosX": pos_val[0] = v
-                                    elif t["idShort"] == "PosY": pos_val[1] = v
-                                    elif t["idShort"] == "PosZ": pos_val[2] = v
-                                    elif t["idShort"] == "RotX": rot_val[0] = v
-                                    elif t["idShort"] == "RotY": rot_val[1] = v
-                                    elif t["idShort"] == "RotZ": rot_val[2] = v
-                                    elif t["idShort"] == "ScaleX": scale_val[0] = v
-                                    elif t["idShort"] == "ScaleY": scale_val[1] = v
-                                    elif t["idShort"] == "ScaleZ": scale_val[2] = v
-                            elif sel["idShort"] == "Mesh" and sel["modelType"] == "File":
-                                mesh_href = sel.get("value")
-
-                actuators = []
-                sensors = []
-                act_types = ["Conveyor", "RotateContinuous", "TranslateContinuous", "Piston", "Linear"]
-                sens_types = ["TriggerZone", "Presence", "Proximity"]
-                
-                for el in beh_data.get("submodelElements", []):
-                    if el["modelType"] == "SubmodelElementCollection":
-                        props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
-                        params = {}
-                        for p in el.get("value", []):
-                            if p["idShort"] == "Parameters":
-                                params = {pp["idShort"]: pp.get("value") for pp in p.get("value", []) if pp["modelType"] == "Property"}
-                                
-                        b_type = props.get("Type", ""); pin_id = props.get("PinID", ""); node = props.get("Component", "")
-                        
-                        if b_type in act_types:
-                            act_data = {
-                                "pin_id": pin_id, "node": node, "behavior": b_type,
-                                "axis": [float(params.get("AxisX", 0)), float(params.get("AxisY", 0)), float(params.get("AxisZ", 0))],
-                                "speed": float(params.get("Speed", 1.0)),
-                                "visible": str(params.get("Visible", "True")).lower() == "true"
-                            }
-                            if "StopSensorComponent" in params:
-                                act_data["stop_sensor"] = params["StopSensorComponent"]
-                              
-                            actuators.append(act_data)
-                        elif b_type in sens_types:
-                            sens_data = {
-                                "pin_id": pin_id, "node": node, "behavior": b_type,
-                                "target_filter": params.get("TargetFilter", "Metal"),
-                                "visible": str(params.get("Visible", "False")).lower() == "true",
-                                "active_low": str(params.get("ActiveLow", "False")).lower() == "true"
-                            }
-                            sensors.append(sens_data)
-
-                # Get GLB attachment
-                glb_bytes = b""
-                if mesh_href:
-                    vis_id = vis_data.get("id")
-                    encoded_vis_id = base64.urlsafe_b64encode(vis_id.encode()).decode().rstrip("=")
-                    coll_id_short = None
-                    for el in vis_data.get("submodelElements", []):
-                        if el["modelType"] == "SubmodelElementCollection": 
-                            for sel in el.get("value", []):
-                                if sel["idShort"] == "Mesh":
-                                    coll_id_short = el["idShort"]
-                                    break
-                    if coll_id_short:
-                        dl_url = f"http://localhost:8081/submodels/{encoded_vis_id}/submodel-elements/{coll_id_short}.Mesh/attachment"
-                        m_res = requests.get(dl_url, timeout=5)
-                        if m_res.status_code == 200:
-                            glb_bytes = m_res.content
-
-                # Assemble backup structure
-                backup_data = {
-                    "version": "1.0",
-                    "kit_name": kit_name,
-                    "aas_id": shell_desc.get("id", f"https://acplt.org/AAS_{kit_name}"),
-                    "description": description,
-                    "config_data": {
-                        "kit_name": kit_name,
-                        "aas_id": kit_name,
-                        "description": description,
-                        "pos": pos_val,
-                        "rot": rot_val,
-                        "scale": scale_val,
-                        "actuators": actuators,
-                        "sensors": sensors
-                    },
-                    "glb_filename": f"{kit_name}.glb",
-                    "glb_base64": base64.b64encode(glb_bytes).decode('utf-8')
-                }
-
-                # Restore override cursor before QFileDialog blocks the thread
+                backup_data = get_backup_data(shell_desc)
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
 
-                save_path, _ = QFileDialog.getSaveFileName(dlg, "Save AAS Backup", f"{kit_name}_backup.json", "JSON Files (*.json)")
+                save_path, _ = QFileDialog.getSaveFileName(dlg, "Save AAS Backup", f"{id_short}_backup.json", "JSON Files (*.json)")
                 if save_path:
                     with open(save_path, "w", encoding="utf-8") as f:
                         json.dump(backup_data, f, indent=2)
@@ -603,77 +615,164 @@ class ConveyorWizard(QMainWindow):
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
 
-        def on_restore_clicked():
-            open_path, _ = QFileDialog.getOpenFileName(dlg, "Open AAS Backup", "", "JSON Files (*.json)")
-            if not open_path:
+        def on_backup_all_clicked():
+            if list_widget.count() == 0:
+                QMessageBox.warning(dlg, "Warning", "No active AAS kits to backup.")
                 return
 
+            dest_dir = QFileDialog.getExistingDirectory(dlg, "Select Directory to Save Backups")
+            if not dest_dir:
+                return
+
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            success_count = 0
+            fail_messages = []
+            
             try:
-                with open(open_path, "r", encoding="utf-8") as f:
-                    backup_data = json.load(f)
+                for i in range(list_widget.count()):
+                    item = list_widget.item(i)
+                    shell_desc = item.data(Qt.ItemDataRole.UserRole)
+                    id_short = shell_desc.get("idShort", f"Kit_{i}")
+                    
+                    try:
+                        backup_data = get_backup_data(shell_desc)
+                        save_path = os.path.join(dest_dir, f"{id_short}_backup.json")
+                        with open(save_path, "w", encoding="utf-8") as f:
+                            json.dump(backup_data, f, indent=2)
+                        success_count += 1
+                    except Exception as e:
+                        fail_messages.append(f"{id_short}: {e}")
+                        
+                while QApplication.overrideCursor() is not None:
+                    QApplication.restoreOverrideCursor()
+                
+                if success_count > 0:
+                    msg = f"Successfully backed up {success_count} kits to:\n{dest_dir}"
+                    if fail_messages:
+                        msg += "\n\nFailures:\n" + "\n".join(fail_messages)
+                    QMessageBox.information(dlg, "Backup All Success", msg)
+                else:
+                    QMessageBox.warning(dlg, "Backup All Failed", "Failed to backup any kits.\n\nErrors:\n" + "\n".join(fail_messages))
             except Exception as e:
-                QMessageBox.critical(dlg, "Error", f"Failed to parse backup file: {e}")
+                while QApplication.overrideCursor() is not None:
+                    QApplication.restoreOverrideCursor()
+                QMessageBox.critical(dlg, "Error", f"An unexpected error occurred during Backup All: {e}")
+            finally:
+                while QApplication.overrideCursor() is not None:
+                    QApplication.restoreOverrideCursor()
+
+        def on_restore_clicked():
+            open_paths, _ = QFileDialog.getOpenFileNames(dlg, "Open AAS Backup(s)", "", "JSON Files (*.json)")
+            if not open_paths:
                 return
 
-            config_data = backup_data.get("config_data")
-            glb_base64 = backup_data.get("glb_base64", "")
-            if not config_data:
-                QMessageBox.critical(dlg, "Error", "Invalid backup file: config_data missing.")
-                return
-
-            # Decode GLB to temp file
-            try:
-                glb_bytes = base64.b64decode(glb_base64.encode('utf-8'))
+            def process_backup_file(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    b_data = json.load(f)
+                
+                cfg_data = b_data.get("config_data")
+                glb_b64 = b_data.get("glb_base64", "")
+                if not cfg_data:
+                    raise Exception("Invalid backup file: config_data missing.")
+                
                 import tempfile
-                tp = os.path.join(tempfile.gettempdir(), backup_data.get("glb_filename", "restored.glb"))
+                tp = os.path.join(tempfile.gettempdir(), b_data.get("glb_filename", "restored.glb"))
+                glb_bytes = base64.b64decode(glb_b64.encode('utf-8'))
                 with open(tp, "wb") as f:
                     f.write(glb_bytes)
-                config_data["glb_path"] = tp
-            except Exception as e:
-                QMessageBox.critical(dlg, "Error", f"Failed to decode GLB mesh: {e}")
-                return
+                cfg_data["glb_path"] = tp
+                return cfg_data
 
-            # Ask user what they want to do
-            reply = QMessageBox.question(
-                dlg, "Restore Options",
-                "Would you like to load this backup into the Wizard for editing (Yes) or deploy it directly to the server (No)?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
-            )
-            if reply == QMessageBox.StandardButton.Cancel:
-                return
-
-            if reply == QMessageBox.StandardButton.Yes:
-                # Option A: Load into Wizard
-                self.restore_wizard_state(config_data)
-                dlg.accept()
-                QMessageBox.information(self, "Success", "Backup loaded into Wizard successfully.")
-            else:
-                # Option B: Deploy directly
-                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            if len(open_paths) == 1:
+                # Single-file restore flow
+                path = open_paths[0]
                 try:
-                    # Save current state
-                    curr_state = self.save_wizard_state()
-                    # Load state temporarily
+                    config_data = process_backup_file(path)
+                except Exception as e:
+                    QMessageBox.critical(dlg, "Error", f"Failed to parse backup file: {e}")
+                    return
+
+                reply = QMessageBox.question(
+                    dlg, "Restore Options",
+                    "Would you like to load this backup into the Wizard for editing (Yes) or deploy it directly to the server (No)?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+                )
+                if reply == QMessageBox.StandardButton.Cancel:
+                    return
+
+                if reply == QMessageBox.StandardButton.Yes:
                     self.restore_wizard_state(config_data)
-                    # Trigger deploy
-                    self.deploy_to_aas()
-                    # Restore old state
+                    dlg.accept()
+                    QMessageBox.information(self, "Success", "Backup loaded into Wizard successfully.")
+                else:
+                    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                    try:
+                        curr_state = self.save_wizard_state()
+                        self.restore_wizard_state(config_data)
+                        self.deploy_to_aas()
+                        self.restore_wizard_state(curr_state)
+                        while QApplication.overrideCursor() is not None:
+                            QApplication.restoreOverrideCursor()
+                        QMessageBox.information(dlg, "Success", "AAS restored directly to BaSyx successfully.")
+                        refresh_list()
+                    except Exception as ex:
+                        while QApplication.overrideCursor() is not None:
+                            QApplication.restoreOverrideCursor()
+                        QMessageBox.critical(dlg, "Error", f"Direct deployment failed: {ex}")
+                    finally:
+                        while QApplication.overrideCursor() is not None:
+                            QApplication.restoreOverrideCursor()
+            else:
+                # Multiple-file restore flow: deploy directly to server
+                reply = QMessageBox.question(
+                    dlg, "Restore Multiple Backups",
+                    f"You have selected {len(open_paths)} backup files. These will be deployed directly to the BaSyx server. Do you want to proceed?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                success_count = 0
+                fail_messages = []
+                curr_state = self.save_wizard_state()
+                
+                try:
+                    for path in open_paths:
+                        fn = os.path.basename(path)
+                        try:
+                            config_data = process_backup_file(path)
+                            self.restore_wizard_state(config_data)
+                            self.deploy_to_aas()
+                            success_count += 1
+                        except Exception as e:
+                            fail_messages.append(f"{fn}: {e}")
+                    
                     self.restore_wizard_state(curr_state)
                     
                     while QApplication.overrideCursor() is not None:
                         QApplication.restoreOverrideCursor()
-                    QMessageBox.information(dlg, "Success", "AAS restored directly to BaSyx successfully.")
-                    refresh_list()
-                except Exception as ex:
+
+                    if success_count > 0:
+                        msg = f"Successfully deployed {success_count} backups directly to BaSyx!"
+                        if fail_messages:
+                            msg += "\n\nFailures:\n" + "\n".join(fail_messages)
+                        QMessageBox.information(dlg, "Restore Multiple Success", msg)
+                        refresh_list()
+                    else:
+                        QMessageBox.warning(dlg, "Restore Multiple Failed", "Failed to restore any backups.\n\nErrors:\n" + "\n".join(fail_messages))
+                except Exception as e:
+                    self.restore_wizard_state(curr_state)
                     while QApplication.overrideCursor() is not None:
                         QApplication.restoreOverrideCursor()
-                    QMessageBox.critical(dlg, "Error", f"Direct deployment failed: {ex}")
+                    QMessageBox.critical(dlg, "Error", f"An unexpected error occurred during restore: {e}")
                 finally:
                     while QApplication.overrideCursor() is not None:
                         QApplication.restoreOverrideCursor()
 
         btn_clone.clicked.connect(on_clone_clicked)
         btn_backup.clicked.connect(on_backup_clicked)
+        btn_backup_all.clicked.connect(on_backup_all_clicked)
         btn_restore.clicked.connect(on_restore_clicked)
         btn_delete.clicked.connect(on_delete_clicked)
         btn_close.clicked.connect(dlg.reject)
@@ -922,6 +1021,9 @@ class ConveyorWizard(QMainWindow):
                                 elif t["idShort"] == "ScaleZ": self.sys_scale[2].setValue(v)
                         elif sel["idShort"] == "Mesh" and sel["modelType"] == "File":
                             mesh_href = sel.get("value")
+                        elif sel["idShort"] == "DynamicObject" and sel["modelType"] == "Property":
+                            is_dyn = str(sel.get("value", "False")).lower() == "true"
+                            self.check_is_product.setChecked(is_dyn)
 
             # Behavior
             for w in list(self.actuator_widgets): self.remove_actuator(w)
@@ -995,6 +1097,7 @@ class ConveyorWizard(QMainWindow):
             "kit_name": self.edit_kit_name.text(),
             "aas_id": self.edit_aas_id.text(),
             "description": self.edit_desc.text(),
+            "is_product": self.check_is_product.isChecked(),
             "glb_path": self.glb_path,
             "pos": [self.sys_pos[i].value() for i in range(3)],
             "rot": [self.sys_rot[i].value() for i in range(3)],
@@ -1011,6 +1114,7 @@ class ConveyorWizard(QMainWindow):
         self.edit_kit_name.setText(state.get("kit_name", ""))
         self.edit_aas_id.setText(state.get("aas_id", ""))
         self.edit_desc.setText(state.get("description", ""))
+        self.check_is_product.setChecked(state.get("is_product", False))
         pos = state.get("pos", [0, 0, 0])
         rot = state.get("rot", [0, 0, 0])
         scale = state.get("scale", [1, 1, 1])
@@ -1048,6 +1152,38 @@ class ConveyorWizard(QMainWindow):
         for i, act in enumerate(state.get("actuators", [])):
             if i < len(self.actuator_widgets) and "stop_sensor" in act:
                 self.actuator_widgets[i].combo_stop_sens.setCurrentText(act["stop_sensor"])
+
+    def reset_wizard(self):
+        # 1. Clear GLB model path
+        self.glb_path = None
+        self.lbl_glb_path.setText("No file selected")
+        
+        # 2. Reset text fields
+        self.edit_kit_name.setText("ConveyorKit")
+        self.edit_aas_id.setText("Conveyor_01")
+        self.edit_desc.setText("Standard Conveyor System")
+        self.check_is_product.setChecked(False)
+        
+        # 3. Reset transforms
+        for i in range(3):
+            self.sys_pos[i].setValue(0.0)
+            self.sys_rot[i].setValue(0.0)
+            self.sys_scale[i].setValue(1.0)
+            
+        # 4. Remove all actuators and sensors
+        for w in list(self.actuator_widgets):
+            self.remove_actuator(w)
+        for w in list(self.sensor_widgets):
+            self.remove_sensor(w)
+            
+        # 5. Clear plotter and node tree
+        self.plotter.clear()
+        self.node_tree.clear()
+        self.meshes = {}
+        self.actors = {}
+        
+        # 6. Update UI
+        self.update_validation_ui()
 
     def delete_aas_by_id(self, shell_id):
         encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
@@ -1180,10 +1316,12 @@ class ConveyorWizard(QMainWindow):
             
     def update_json_preview(self):
         self.config_data["kit_name"] = self.edit_kit_name.text(); self.config_data["aas_id"] = self.edit_aas_id.text(); self.config_data["description"] = self.edit_desc.text()
-        comp = {"name": "ConveyorSystem", "mesh": os.path.basename(self.glb_path) if self.glb_path else "", "parent": None, "position": [s.value() for s in self.sys_pos], "rotation": [s.value() for s in self.sys_rot], "scale": [s.value() for s in self.sys_scale], "actuators": [w.get_data() for w in self.actuator_widgets], "sensors": [w.get_data() for w in self.sensor_widgets]}
+        comp_name = "Product_ConveyorSystem" if self.check_is_product.isChecked() else "ConveyorSystem"
+        comp = {"name": comp_name, "mesh": os.path.basename(self.glb_path) if self.glb_path else "", "parent": None, "position": [s.value() for s in self.sys_pos], "rotation": [s.value() for s in self.sys_rot], "scale": [s.value() for s in self.sys_scale], "dynamic": self.check_is_product.isChecked(), "actuators": [w.get_data() for w in self.actuator_widgets], "sensors": [w.get_data() for w in self.sensor_widgets]}
         self.config_data["components"] = [comp]; self.json_preview.setText(json.dumps(self.config_data, indent=2))
 
     def deploy_to_aas(self):
+        self.update_json_preview()
         if not self.glb_path: return QMessageBox.warning(self, "Error", "Select model.")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self.btn_next.setEnabled(False); self.btn_next.setText("Deploying...")
@@ -1199,6 +1337,8 @@ class ConveyorWizard(QMainWindow):
                 cc = model.SubmodelElementCollection(id_short=sanitize_aas_id(c["name"])); mf = c.get("mesh", "")
                 if mf: cc.value.add(model.File(id_short="Mesh", content_type="application/octet-stream", value=mf))
                 cc.value.add(model.Property(id_short="Parent", value_type=model.datatypes.String, value=c.get("parent", "")))
+                is_prod = c.get("dynamic", False) or (c["name"] == "Product_ConveyorSystem") or self.check_is_product.isChecked()
+                cc.value.add(model.Property(id_short="DynamicObject", value_type=model.datatypes.Boolean, value=is_prod))
                 tc = model.SubmodelElementCollection(id_short="Transform"); ps = c.get("position", [0,0,0]); rt = c.get("rotation", [0,0,0]); sc = c.get("scale", [1,1,1])
                 for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Pos{a}", value_type=model.datatypes.Double, value=float(ps[i])))
                 for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Rot{a}", value_type=model.datatypes.Double, value=float(rt[i])))
@@ -1228,14 +1368,26 @@ class ConveyorWizard(QMainWindow):
                     bc.value.add(pc); bm.submodel_element.add(bc)
             shell.submodel.add(model.ModelReference.from_referable(vs)); shell.submodel.add(model.ModelReference.from_referable(vp)); shell.submodel.add(model.ModelReference.from_referable(bm))
             obj_store = model.DictObjectStore(); obj_store.add(shell); obj_store.add(vs); obj_store.add(vp); obj_store.add(bm); fr = RobustFileRepo()
-            bd = os.path.dirname(self.glb_path); ae = ['.obj', '.mtl', '.stl', '.png', '.jpg', '.jpeg', '.dae', '.fbx', '.glb', '.gltf', '.bin']
-            for r, d, fs in os.walk(bd):
-                for f in fs:
-                    if any(f.lower().endswith(ext) for ext in ae):
-                        lp = os.path.join(r, f); rp = os.path.relpath(lp, bd).replace("\\", "/")
-                        with open(lp, 'rb') as tf:
-                            co = tf.read()
-                        ap = posixpath.normpath(posixpath.join("/aasx/kit", rp)); fr.add_file(ap, co)
+            import tempfile
+            import time
+            bd = os.path.dirname(self.glb_path)
+            ae = ['.obj', '.mtl', '.stl', '.png', '.jpg', '.jpeg', '.dae', '.fbx', '.glb', '.gltf', '.bin']
+            is_temp_dir = os.path.abspath(bd) == os.path.abspath(tempfile.gettempdir())
+            
+            if is_temp_dir:
+                fn = os.path.basename(self.glb_path)
+                with open(self.glb_path, 'rb') as tf:
+                    co = tf.read()
+                ap = posixpath.normpath(posixpath.join("/aasx/kit", fn))
+                fr.add_file(ap, co)
+            else:
+                for r, d, fs in os.walk(bd):
+                    for f in fs:
+                        if any(f.lower().endswith(ext) for ext in ae):
+                            lp = os.path.join(r, f); rp = os.path.relpath(lp, bd).replace("\\", "/")
+                            with open(lp, 'rb') as tf:
+                                co = tf.read()
+                            ap = posixpath.normpath(posixpath.join("/aasx/kit", rp)); fr.add_file(ap, co)
             for sm in [vs, vp, bm]:
                 for el in sm.submodel_element:
                     if isinstance(el, model.File) and el.value and not el.value.startswith("/aasx/"): el.value = posixpath.normpath(posixpath.join("/aasx/kit", el.value))
@@ -1251,7 +1403,7 @@ class ConveyorWizard(QMainWindow):
                 is_conflict = True
             elif "Duplicate element id detected" in res.text or "CollidingIdentifierException" in res.text:
                 is_conflict = True
-
+ 
             if is_conflict:
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
@@ -1264,6 +1416,7 @@ class ConveyorWizard(QMainWindow):
                     QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
                     # Delete the existing AAS
                     self.delete_aas_by_id(shell.id)
+                    time.sleep(0.5)  # Wait for BaSyx database to complete deletion & release file locks
                     # Retry upload
                     with open(out, 'rb') as f:
                         res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
@@ -1272,7 +1425,7 @@ class ConveyorWizard(QMainWindow):
                         while QApplication.overrideCursor() is not None:
                             QApplication.restoreOverrideCursor()
                         QMessageBox.information(self, "Success", f"AAS Kit deployed (overwritten) successfully!")
-                        # Go back to start screen
+                        self.reset_wizard()
                         self.stack.setCurrentIndex(0)
                         self.update_nav()
                     else:
@@ -1284,7 +1437,7 @@ class ConveyorWizard(QMainWindow):
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
                 QMessageBox.information(self, "Success", f"AAS Kit deployed successfully!")
-                # Go back to start screen
+                self.reset_wizard()
                 self.stack.setCurrentIndex(0)
                 self.update_nav()
             else: raise Exception(f"Upload failed: {res.text}")

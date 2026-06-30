@@ -31,6 +31,8 @@ public class AASKitImporter : MonoBehaviour
             Dictionary<string, GameObject> components = new Dictionary<string, GameObject>();
             Dictionary<string, string> parentMap = new Dictionary<string, string>();
 
+            HashSet<string> dynamicComponents = new HashSet<string>();
+
             // 1. First Pass: Create/Find GameObjects and Load GLBs
             foreach (JToken token in elements)
             {
@@ -51,12 +53,19 @@ public class AASKitImporter : MonoBehaviour
                         string idShort = prop["idShort"]?.ToString();
                         if (idShort == "Mesh") meshFile = prop["value"]?.ToString();
                         if (idShort == "Parent") parentName = prop["value"]?.ToString();
+                        if (idShort != null && idShort.Replace(" ", "").ToLower() == "dynamicobject")
+                        {
+                            if (prop["value"]?.ToString().ToLower() == "true")
+                            {
+                                dynamicComponents.Add(compName);
+                            }
+                        }
                         if (idShort == "Transform")
                         {
                             foreach (JToken tp in prop["value"])
                             {
                                 string tId = tp["idShort"]?.ToString();
-                                float v = tp["value"] != null ? (float)tp["value"] : 0f;
+                                float v = SafeFloat(tp["value"]);
                                 if (tId == "PosX") pos.x = v; if (tId == "PosY") pos.y = v; if (tId == "PosZ") pos.z = v;
                                 if (tId == "RotX") rot.x = v; if (tId == "RotY") rot.y = v; if (tId == "RotZ") rot.z = v;
                                 if (tId == "ScaleX") scale.x = v; if (tId == "ScaleY") scale.y = v; if (tId == "ScaleZ") scale.z = v;
@@ -100,12 +109,16 @@ public class AASKitImporter : MonoBehaviour
                 components[compName] = compObj;
                 parentMap[compName] = parentName;
 
+                Debug.Log($"[AASKitImporter] 🔎 Component '{compName}': Pos=({pos.x}, {pos.y}, {pos.z}), Rot=({rot.x}, {rot.y}, {rot.z}), Scale=({scale.x}, {scale.y}, {scale.z}), wasPreExisting={wasPreExisting}");
+
                 if (!wasPreExisting)
                 {
-                    // Standard Z-up (AAS) to Y-up (Unity) conversion
-                    compObj.transform.localPosition = new Vector3(pos.x, pos.z, pos.y);
-                    compObj.transform.localEulerAngles = new Vector3(rot.x, rot.z, rot.y);
-                    compObj.transform.localScale = new Vector3(scale.x, scale.z, scale.y);
+                    // AAS layout is already Y-up (matching Python preview).
+                    // Add 180 degrees around Y to compensate for the right-to-left handed coordinate conversion of the glTF importer.
+                    compObj.transform.localPosition = new Vector3(pos.x, pos.y, -pos.z);
+                    compObj.transform.localEulerAngles = new Vector3(rot.x, rot.y + 180f, rot.z);
+                    compObj.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    Debug.Log($"[AASKitImporter] 📐 Applied transform to '{compName}': localPosition={compObj.transform.localPosition}, localEulerAngles={compObj.transform.localEulerAngles}");
                 }
                 else 
                 {
@@ -125,6 +138,14 @@ public class AASKitImporter : MonoBehaviour
                             if (success) 
                             {
                                 await gltf.InstantiateMainSceneAsync(compObj.transform);
+                                
+                                // Re-apply the transform after GLB instantiation to ensure it is not overwritten or reset by gltfast.
+                                // Add 180 degrees around Y to compensate for the glTF importer rotation.
+                                compObj.transform.localPosition = new Vector3(pos.x, pos.y, -pos.z);
+                                compObj.transform.localEulerAngles = new Vector3(rot.x, rot.y + 180f, rot.z);
+                                compObj.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                                
+                                Debug.Log($"[AASKitImporter] 📂 GLB Loaded for '{compName}'. Re-applied localEulerAngles={compObj.transform.localEulerAngles}, Child count={compObj.transform.childCount}");
                                 
                                 // POST-IMPORT FIXES (UVs and Colliders)
                                 foreach (var renderer in compObj.GetComponentsInChildren<MeshRenderer>())
@@ -152,17 +173,9 @@ public class AASKitImporter : MonoBehaviour
                                     }
                                 }
                                 
-                                // Rigidbody for stability
+                                // Rigidbody for stability - initialized as kinematic to prevent premature falling during import
                                 Rigidbody rb = compObj.AddComponent<Rigidbody>();
-                                
-                                if (compName.ToLower().Contains("product") || compName.ToLower().Contains("magnetic")) {
-                                    rb.isKinematic = false; // Let gravity work!
-                                    rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
-                                    rb.constraints = RigidbodyConstraints.FreezeRotation; // Slide, don't roll
-                                    Debug.Log($"[AASKitImporter] 📦 Configured {compName} as a Dynamic Product.");
-                                } else {
-                                    rb.isKinematic = true;
-                                }
+                                rb.isKinematic = true;
 
                                 Debug.Log($"[AASKitImporter] Successfully loaded GLB: {localPath}");
                             }
@@ -212,6 +225,27 @@ public class AASKitImporter : MonoBehaviour
             // This is CRITICAL to prevent rotation shearing (skewing) in Unity.
             NormalizeHierarchy(kitRoot.transform);
 
+            // 3. Third Pass: Activate physics for dynamic products AFTER everything is assembled and normalized
+            foreach (var kvp in components)
+            {
+                string compName = kvp.Key;
+                GameObject compObj = kvp.Value;
+                if (compObj == null) continue;
+
+                if (dynamicComponents.Contains(compName))
+                {
+                    Rigidbody rb = compObj.GetComponent<Rigidbody>();
+                    if (rb == null) {
+                        rb = compObj.AddComponent<Rigidbody>();
+                        rb.isKinematic = true;
+                    }
+                    rb.isKinematic = false;
+                    rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+                    rb.constraints = RigidbodyConstraints.FreezeRotation;
+                    Debug.Log($"[AASKitImporter] 📦 Activated Dynamic Product physics for '{compName}'.");
+                }
+            }
+
             return new KitImportData { root = kitRoot, components = components };
         } catch (Exception e) {
             Debug.LogError($"[AASKitImporter] Fatal error parsing kit: {e}");
@@ -226,6 +260,8 @@ public class AASKitImporter : MonoBehaviour
         // Process this node
         Vector3 localScale = root.localScale;
         
+        Debug.Log($"[AASKitImporter] 🧼 NormalizeHierarchy checking '{root.name}': localPosition={root.localPosition}, localEulerAngles={root.localEulerAngles}, localScale={localScale}");
+
         // 1. Bake any mesh on THIS specific node using its local scale
         BakeMeshesOnObject(root.gameObject, localScale);
 
@@ -245,7 +281,7 @@ public class AASKitImporter : MonoBehaviour
             // Re-attach children (Unity calculates new local scales/positions)
             foreach (var c in children) c.SetParent(root, true);
             
-            Debug.Log($"[AASKitImporter] 🧼 Normalized scale for node: {root.name}");
+            Debug.Log($"[AASKitImporter] 🧼 Normalized scale for node: {root.name}. Post-normalization localEulerAngles={root.localEulerAngles}");
         }
 
         // 3. Recurse to children (they might now have new local scales inherited from step 2)
@@ -319,5 +355,16 @@ public class AASKitImporter : MonoBehaviour
             if (allFiles.Length > 0) return allFiles[0];
         }
         return null;
+    }
+
+    private static float SafeFloat(Newtonsoft.Json.Linq.JToken v)
+    {
+        if (v == null) return 0f;
+        if (v.Type == Newtonsoft.Json.Linq.JTokenType.Float || v.Type == Newtonsoft.Json.Linq.JTokenType.Integer)
+            return (float)v;
+        string s = v.ToString().Replace(',', '.');
+        if (float.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out float res))
+            return res;
+        return 0f;
     }
 }
