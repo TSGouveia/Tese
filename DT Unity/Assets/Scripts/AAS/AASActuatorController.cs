@@ -28,6 +28,9 @@ public class AASActuatorController : MonoBehaviour
         public Quaternion initialRotation;
         public Vector2 currentOffset;
         
+        public Vector3 lastPosition;
+        public Quaternion lastRotation;
+        
         public string stopSensorComponent;
         public AASSensorController.SensorPhysicsProxy linkedSensor;
     }
@@ -74,9 +77,22 @@ public class AASActuatorController : MonoBehaviour
 
             if (activeContacts.Count == 0) return;
 
+            Vector3 deltaTranslation = Vector3.zero;
+            Quaternion deltaRotation = Quaternion.identity;
             List<Vector3> candidateVelocities = new List<Vector3>();
+
             foreach (var contact in activeContacts.Values) {
                 foreach (var b in contact.bindings) {
+                    if (b.target == null) continue;
+
+                    // 1. Calculate physical translation/rotation delta of the platform itself
+                    Vector3 dPos = b.target.transform.position - b.lastPosition;
+                    Quaternion dRot = b.target.transform.rotation * Quaternion.Inverse(b.lastRotation);
+
+                    deltaTranslation += dPos;
+                    deltaRotation = dRot * deltaRotation;
+
+                    // 2. Standard linear conveyor surface movement (simulated belt speed)
                     if (b.type == "Conveyor") {
                         Vector3 worldDir = b.target.transform.TransformDirection(b.axis);
                         bool isBlocked = b.linkedSensor != null && b.linkedSensor.binding.lastState;
@@ -86,6 +102,23 @@ public class AASActuatorController : MonoBehaviour
                 }
             }
 
+            // Apply platform delta translation & rotation to the product
+            if (deltaTranslation.sqrMagnitude > 0.0001f || Quaternion.Angle(deltaRotation, Quaternion.identity) > 0.01f) {
+                Vector3 pivot = rb.position;
+                var firstContact = activeContacts.Keys.FirstOrDefault();
+                if (firstContact != null) {
+                    pivot = firstContact.transform.position;
+                }
+                
+                Vector3 relativeToPivot = rb.position - pivot;
+                Vector3 rotatedPos = deltaRotation * relativeToPivot;
+                Vector3 rotDisplacement = rotatedPos - relativeToPivot;
+
+                rb.position += deltaTranslation + rotDisplacement;
+                rb.rotation = deltaRotation * rb.rotation;
+            }
+
+            // Apply conveyor surface belt speed
             Vector3 targetVel = Vector3.zero;
             var activeVels = candidateVelocities.Where(v => v.sqrMagnitude > 0.001f).ToList();
 
@@ -197,35 +230,23 @@ public class AASActuatorController : MonoBehaviour
                     }
                     if (type == "TriggerZone" || type == "ContactSensor") continue;
                     
-                    GameObject target = null;
-                    if (DirectTargetMatch(componentMap, compName, out target)) {
-                        // target found
-                    } else {
-                        foreach (var rootObj in componentMap.Values) {
-                            var allTransforms = rootObj.GetComponentsInChildren<Transform>(true);
-                            foreach(var t in allTransforms) {
-                                if(t.name == compName) {
-                                    target = t.gameObject;
-                                    break;
-                                }
-                            }
-                            if (target != null) break;
-                        }
-                    }
+                    GameObject target = FindTargetComponent(componentMap, compName);
 
                     if (target != null && !string.IsNullOrEmpty(type))
                     {
-                        // Z-up to Y-up mapping (X=X, Y=Z, Z=Y)
+                        // Swap Y and Z to match existing AAS configuration files
                         Vector3 unityAxis = new Vector3(axis.x, axis.z, axis.y).normalized;
                         var binding = new ActuatorBinding {
                             pinId = pinId, target = target, type = type, axis = unityAxis,
                             speed = speed, limitMin = min, limitMax = max,
                             initialPosition = target.transform.localPosition,
                             initialRotation = target.transform.localRotation,
+                            lastPosition = target.transform.position,
+                            lastRotation = target.transform.rotation,
                             stopSensorComponent = stopSensorComponent
                         };
                         bindings.Add(binding);
-                        if (type == "Conveyor") {
+                        if (type == "Conveyor" || type == "RotateContinuous" || type == "TranslateContinuous") {
                             foreach (var col in target.GetComponentsInChildren<Collider>()) {
                                 if (col.gameObject.GetComponent<Rigidbody>() == null) {
                                     var rb = col.gameObject.AddComponent<Rigidbody>();
@@ -253,13 +274,67 @@ public class AASActuatorController : MonoBehaviour
         }
     }
 
-    private bool DirectTargetMatch(Dictionary<string, GameObject> map, string name, out GameObject target) {
-        if (map.TryGetValue(name, out target)) return true;
-        foreach (var kvp in map) {
-            Transform child = kvp.Value.transform.Find(name);
-            if (child != null) { target = child.gameObject; return true; }
+    private GameObject FindTargetComponent(Dictionary<string, GameObject> map, string compName)
+    {
+        if (string.IsNullOrEmpty(compName)) return null;
+
+        // 1. First priority: Exact case-sensitive match in map
+        if (map.TryGetValue(compName, out GameObject directTarget)) return directTarget;
+
+        // Collect all GameObjects and their child transforms
+        List<GameObject> allObjects = new List<GameObject>();
+        foreach (var rootObj in map.Values)
+        {
+            if (rootObj == null) continue;
+            if (!allObjects.Contains(rootObj)) allObjects.Add(rootObj);
+            foreach (Transform t in rootObj.GetComponentsInChildren<Transform>(true))
+            {
+                if (t != null && !allObjects.Contains(t.gameObject))
+                {
+                    allObjects.Add(t.gameObject);
+                }
+            }
         }
-        return false;
+
+        // 2. Second priority: Exact case-insensitive match
+        foreach (var obj in allObjects)
+        {
+            if (string.Equals(obj.name, compName, StringComparison.OrdinalIgnoreCase))
+                return obj;
+        }
+
+        // 3. Third priority: Suffix/prefix match (e.g. glTF importer appends suffixes)
+        string cleanComp = CleanComponentName(compName);
+        foreach (var obj in allObjects)
+        {
+            string cleanObj = CleanComponentName(obj.name);
+            if (string.Equals(cleanObj, cleanComp, StringComparison.OrdinalIgnoreCase))
+                return obj;
+        }
+
+        // 4. Fourth priority: Loose containment
+        foreach (var obj in allObjects)
+        {
+            if (obj.name.ToLower().Contains(compName.ToLower()) || compName.ToLower().Contains(obj.name.ToLower()))
+                return obj;
+        }
+
+        return null;
+    }
+
+    private string CleanComponentName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "";
+        string clean = name;
+        string[] noise = { "_mesh", "_node", "_primitive", "_instance" };
+        foreach (var n in noise)
+        {
+            int idx = clean.ToLower().IndexOf(n);
+            if (idx > 0) clean = clean.Substring(0, idx);
+        }
+        int dotIdx = clean.IndexOf('.');
+        if (dotIdx > 0) clean = clean.Substring(0, dotIdx);
+        return clean.Trim().ToLower();
     }
 
     IEnumerator PollingLoop()
@@ -312,7 +387,7 @@ public class AASActuatorController : MonoBehaviour
         return false;
     }
 
-    void Update()
+    void FixedUpdate()
     {
         if (!isInitialized) return;
         foreach (var b in bindings) {
@@ -322,24 +397,31 @@ public class AASActuatorController : MonoBehaviour
             if (isBlocked && b.currentState) continue; // Skip movement
             
             switch (b.type) {
-                case "TranslateContinuous": if (b.currentState) b.target.transform.Translate(b.axis * b.speed * Time.deltaTime, Space.Self); break;
+                case "TranslateContinuous": 
+                    if (b.currentState) b.target.transform.Translate(b.axis * b.speed * Time.fixedDeltaTime, Space.Self); 
+                    break;
                 case "RotateContinuous": 
                     if (b.currentState) {
-                        // Use Rotate with Space.Self to ensure it rotates around its own axis 
-                        // regardless of parent rotation or local scale.
-                        b.target.transform.Rotate(b.axis, b.speed * Time.deltaTime * 200f, Space.Self); 
+                        b.target.transform.Rotate(b.axis, b.speed * Time.fixedDeltaTime * 200f, Space.Self); 
                     }
                     break;
                 case "TranslateFixed":
                     Vector3 targetPos = b.initialPosition + (b.axis * (b.currentState ? b.limitMax : b.limitMin));
-                    b.target.transform.localPosition = Vector3.Lerp(b.target.transform.localPosition, targetPos, Time.deltaTime * b.speed * 5f);
+                    b.target.transform.localPosition = Vector3.Lerp(b.target.transform.localPosition, targetPos, Time.fixedDeltaTime * b.speed * 5f);
                     break;
                 case "RotateHinge":
                     float targetAngle = b.currentState ? b.limitMax : b.limitMin;
                     Quaternion targetRot = b.initialRotation * Quaternion.AngleAxis(targetAngle, b.axis);
-                    b.target.transform.localRotation = Quaternion.Slerp(b.target.transform.localRotation, targetRot, Time.deltaTime * b.speed * 5f);
+                    b.target.transform.localRotation = Quaternion.Slerp(b.target.transform.localRotation, targetRot, Time.fixedDeltaTime * b.speed * 5f);
                     break;
             }
+        }
+
+        // Keep last positions updated for product physics delta tracking
+        foreach (var b in bindings) {
+            if (b.target == null) continue;
+            b.lastPosition = b.target.transform.position;
+            b.lastRotation = b.target.transform.rotation;
         }
     }
 
