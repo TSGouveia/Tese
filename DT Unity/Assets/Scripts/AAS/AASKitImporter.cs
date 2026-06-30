@@ -109,7 +109,7 @@ public class AASKitImporter : MonoBehaviour
                 components[compName] = compObj;
                 parentMap[compName] = parentName;
 
-                Debug.Log($"[AASKitImporter] 🔎 Component '{compName}': Pos=({pos.x}, {pos.y}, {pos.z}), Rot=({rot.x}, {rot.y}, {rot.z}), Scale=({scale.x}, {scale.y}, {scale.z}), wasPreExisting={wasPreExisting}");
+                // Debug.Log($"[AASKitImporter] 🔎 Component '{compName}': Pos=({pos.x}, {pos.y}, {pos.z}), Rot=({rot.x}, {rot.y}, {rot.z}), Scale=({scale.x}, {scale.y}, {scale.z}), wasPreExisting={wasPreExisting}");
 
                 if (!wasPreExisting)
                 {
@@ -118,11 +118,11 @@ public class AASKitImporter : MonoBehaviour
                     compObj.transform.localPosition = new Vector3(pos.x, pos.y, -pos.z);
                     compObj.transform.localEulerAngles = new Vector3(rot.x, rot.y + 180f, rot.z);
                     compObj.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
-                    Debug.Log($"[AASKitImporter] 📐 Applied transform to '{compName}': localPosition={compObj.transform.localPosition}, localEulerAngles={compObj.transform.localEulerAngles}");
+                    // Debug.Log($"[AASKitImporter] 📐 Applied transform to '{compName}': localPosition={compObj.transform.localPosition}, localEulerAngles={compObj.transform.localEulerAngles}");
                 }
                 else 
                 {
-                    Debug.Log($"[AASKitImporter] 🧊 Found '{compName}' inside GLB. Preserving Blender transform and hierarchy.");
+                    // Debug.Log($"[AASKitImporter] 🧊 Found '{compName}' inside GLB. Preserving Blender transform and hierarchy.");
                 }
 
                 if (!string.IsNullOrEmpty(meshFile) && !wasPreExisting)
@@ -208,15 +208,15 @@ public class AASKitImporter : MonoBehaviour
                 if (child.transform.parent != targetParent && !currentParentIsKitPart && !isAlreadyDescendant)
                 {
                     child.transform.SetParent(targetParent, true);
-                    Debug.Log($"[AASKitImporter] 🔗 SetParent for {kvp.Key} to {targetParent.name} (New Root/Manual Parent)");
+                    // Debug.Log($"[AASKitImporter] 🔗 SetParent for {kvp.Key} to {targetParent.name} (New Root/Manual Parent)");
                 }
                 else if (isAlreadyDescendant && child.transform.parent != targetParent)
                 {
-                    Debug.Log($"[AASKitImporter] 🧬 Preserving nested Blender hierarchy for {kvp.Key} (already descendant of {targetParent.name})");
+                    // Debug.Log($"[AASKitImporter] 🧬 Preserving nested Blender hierarchy for {kvp.Key} (already descendant of {targetParent.name})");
                 }
                 else if (currentParentIsKitPart && child.transform.parent != targetParent)
                 {
-                    Debug.Log($"[AASKitImporter] 🧬 Preserving functional Blender hierarchy for {kvp.Key} (Parent: {child.transform.parent.name})");
+                    // Debug.Log($"[AASKitImporter] 🧬 Preserving functional Blender hierarchy for {kvp.Key} (Parent: {child.transform.parent.name})");
                 }
             }
 
@@ -241,7 +241,7 @@ public class AASKitImporter : MonoBehaviour
                     }
                     rb.isKinematic = false;
                     rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
-                    rb.constraints = RigidbodyConstraints.FreezeRotation;
+                    rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
                     Debug.Log($"[AASKitImporter] 📦 Activated Dynamic Product physics for '{compName}'.");
                 }
             }
@@ -260,7 +260,7 @@ public class AASKitImporter : MonoBehaviour
         // Process this node
         Vector3 localScale = root.localScale;
         
-        Debug.Log($"[AASKitImporter] 🧼 NormalizeHierarchy checking '{root.name}': localPosition={root.localPosition}, localEulerAngles={root.localEulerAngles}, localScale={localScale}");
+        // Debug.Log($"[AASKitImporter] 🧼 NormalizeHierarchy checking '{root.name}': localPosition={root.localPosition}, localEulerAngles={root.localEulerAngles}, localScale={localScale}");
 
         // 1. Bake any mesh on THIS specific node using its local scale
         BakeMeshesOnObject(root.gameObject, localScale);
@@ -281,7 +281,7 @@ public class AASKitImporter : MonoBehaviour
             // Re-attach children (Unity calculates new local scales/positions)
             foreach (var c in children) c.SetParent(root, true);
             
-            Debug.Log($"[AASKitImporter] 🧼 Normalized scale for node: {root.name}. Post-normalization localEulerAngles={root.localEulerAngles}");
+            // Debug.Log($"[AASKitImporter] 🧼 Normalized scale for node: {root.name}. Post-normalization localEulerAngles={root.localEulerAngles}");
         }
 
         // 3. Recurse to children (they might now have new local scales inherited from step 2)

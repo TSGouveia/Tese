@@ -101,231 +101,316 @@ public class BaSyxManager : MonoBehaviour
     {
         string robotName = string.IsNullOrEmpty(shell.idShort) ? "UnknownRobot" : shell.idShort;
         string robotPath = Path.Combine(baseCachePath, robotName);
-        Directory.CreateDirectory(robotPath);
 
-        if ((shell.submodelDescriptors == null || shell.submodelDescriptors.Count == 0) && !string.IsNullOrEmpty(shell.id))
+        try
         {
-            string detailUrl = $"{registryUrl}/{Base64Url(shell.id)}";
-            UnityWebRequest detReq = UnityWebRequest.Get(detailUrl);
-            yield return detReq.SendWebRequest();
-            if (detReq.result == UnityWebRequest.Result.Success)
+            try
             {
-                var detailed = JsonConvert.DeserializeObject<AasDescriptor>(detReq.downloadHandler.text);
-                if (detailed != null && detailed.submodelDescriptors != null)
-                    shell.submodelDescriptors = detailed.submodelDescriptors;
+                Directory.CreateDirectory(robotPath);
             }
-        }
-
-        string geoSubmodelId = null;
-        string posSubmodelId = null;
-        string telSubmodelId = null;
-        string visSubmodelId = null;
-        string pinSubmodelId = null;
-        string behSubmodelId = null;
-
-        if (shell.submodelDescriptors != null)
-        {
-            foreach (var sm in shell.submodelDescriptors)
+            catch (Exception e)
             {
-                if (sm == null) continue;
-                if (sm.idShort == "GeometryData") geoSubmodelId = sm.id;
-                if (sm.idShort == "PositionData") posSubmodelId = sm.id;
-                if (sm.idShort == "TelemetryData") telSubmodelId = sm.id;
-                if (sm.idShort == "VisualStructure") visSubmodelId = sm.id;
-                if (sm.idShort == "VirtualPins") pinSubmodelId = sm.id;
-                if (sm.idShort == "BehaviorMapping") behSubmodelId = sm.id;
+                Debug.LogError($"[BaSyx] Failed to create directory {robotPath}: {e.Message}");
             }
-        }
 
-        if ((geoSubmodelId == null || telSubmodelId == null) && visSubmodelId == null && !string.IsNullOrEmpty(shell.id))
-        {
-            string repoShellUrl = $"{aasServerUrl}/shells/{Base64Url(shell.id)}";
-            UnityWebRequest repoReq = UnityWebRequest.Get(repoShellUrl);
-            yield return repoReq.SendWebRequest();
-
-            if (repoReq.result == UnityWebRequest.Result.Success)
+            if ((shell.submodelDescriptors == null || shell.submodelDescriptors.Count == 0) && !string.IsNullOrEmpty(shell.id))
             {
-                var repoAas = JsonConvert.DeserializeObject<AasRepositoryModel>(repoReq.downloadHandler.text);
-                if (repoAas != null && repoAas.submodels != null)
+                string detailUrl = $"{registryUrl}/{Base64Url(shell.id)}";
+                UnityWebRequest detReq = UnityWebRequest.Get(detailUrl);
+                yield return detReq.SendWebRequest();
+                if (detReq.result == UnityWebRequest.Result.Success)
                 {
-                    foreach (var smRef in repoAas.submodels)
+                    try
                     {
-                        if (smRef.keys == null || smRef.keys.Count == 0) continue;
-                        string smId = smRef.keys[0].value;
-                        string smMetaUrl = $"{aasServerUrl}/submodels/{Base64Url(smId)}";
-                        UnityWebRequest smReq = UnityWebRequest.Get(smMetaUrl);
-                        yield return smReq.SendWebRequest();
+                        var detailed = JsonConvert.DeserializeObject<AasDescriptor>(detReq.downloadHandler.text);
+                        if (detailed != null && detailed.submodelDescriptors != null)
+                            shell.submodelDescriptors = detailed.submodelDescriptors;
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"[BaSyx] JSON Deserialization error for detailed shell: {e.Message}");
+                    }
+                }
+            }
 
-                        if (smReq.result == UnityWebRequest.Result.Success)
+            string geoSubmodelId = null;
+            string posSubmodelId = null;
+            string telSubmodelId = null;
+            string visSubmodelId = null;
+            string pinSubmodelId = null;
+            string behSubmodelId = null;
+
+            if (shell.submodelDescriptors != null)
+            {
+                foreach (var sm in shell.submodelDescriptors)
+                {
+                    if (sm == null) continue;
+                    if (sm.idShort == "GeometryData") geoSubmodelId = sm.id;
+                    if (sm.idShort == "PositionData") posSubmodelId = sm.id;
+                    if (sm.idShort == "TelemetryData") telSubmodelId = sm.id;
+                    if (sm.idShort == "VisualStructure") visSubmodelId = sm.id;
+                    if (sm.idShort == "VirtualPins") pinSubmodelId = sm.id;
+                    if (sm.idShort == "BehaviorMapping") behSubmodelId = sm.id;
+                }
+            }
+
+            if ((geoSubmodelId == null || telSubmodelId == null) && visSubmodelId == null && !string.IsNullOrEmpty(shell.id))
+            {
+                string repoShellUrl = $"{aasServerUrl}/shells/{Base64Url(shell.id)}";
+                UnityWebRequest repoReq = UnityWebRequest.Get(repoShellUrl);
+                yield return repoReq.SendWebRequest();
+
+                if (repoReq.result == UnityWebRequest.Result.Success)
+                {
+                    AasRepositoryModel repoAas = null;
+                    try
+                    {
+                        repoAas = JsonConvert.DeserializeObject<AasRepositoryModel>(repoReq.downloadHandler.text);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"[BaSyx] JSON Deserialization error for repo shell: {e.Message}");
+                    }
+
+                    if (repoAas != null && repoAas.submodels != null)
+                    {
+                        foreach (var smRef in repoAas.submodels)
                         {
-                            var smDesc = JsonConvert.DeserializeObject<SubmodelDescriptor>(smReq.downloadHandler.text);
-                            if (smDesc != null)
+                            if (smRef.keys == null || smRef.keys.Count == 0) continue;
+                            string smId = smRef.keys[0].value;
+                            string smMetaUrl = $"{aasServerUrl}/submodels/{Base64Url(smId)}";
+                            UnityWebRequest smReq = UnityWebRequest.Get(smMetaUrl);
+                            yield return smReq.SendWebRequest();
+
+                            if (smReq.result == UnityWebRequest.Result.Success)
                             {
-                                if (smDesc.idShort == "GeometryData") geoSubmodelId = smDesc.id;
-                                if (smDesc.idShort == "PositionData") posSubmodelId = smDesc.id;
-                                if (smDesc.idShort == "TelemetryData") telSubmodelId = smDesc.id;
-                                if (smDesc.idShort == "VisualStructure") visSubmodelId = smDesc.id;
-                                if (smDesc.idShort == "VirtualPins") pinSubmodelId = smDesc.id;
-                                if (smDesc.idShort == "BehaviorMapping") behSubmodelId = smDesc.id;
+                                SubmodelDescriptor smDesc = null;
+                                try
+                                {
+                                    smDesc = JsonConvert.DeserializeObject<SubmodelDescriptor>(smReq.downloadHandler.text);
+                                }
+                                catch (Exception e)
+                                {
+                                    Debug.LogError($"[BaSyx] JSON Deserialization error for submodel: {e.Message}");
+                                }
+
+                                if (smDesc != null)
+                                {
+                                    if (smDesc.idShort == "GeometryData") geoSubmodelId = smDesc.id;
+                                    if (smDesc.idShort == "PositionData") posSubmodelId = smDesc.id;
+                                    if (smDesc.idShort == "TelemetryData") telSubmodelId = smDesc.id;
+                                    if (smDesc.idShort == "VisualStructure") visSubmodelId = smDesc.id;
+                                    if (smDesc.idShort == "VirtualPins") pinSubmodelId = smDesc.id;
+                                    if (smDesc.idShort == "BehaviorMapping") behSubmodelId = smDesc.id;
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        if (geoSubmodelId == null && visSubmodelId == null) 
-        { 
-            pendingRobotIds.Remove(shell.id); 
-            pendingRobotDynamics.Remove(shell.id); 
-            yield break; 
-        }
-
-        // --- DETERMINE DYNAMIC PROPERTY ---
-        bool isDynamic = false;
-        string elementsJson = null;
-
-        if (visSubmodelId != null)
-        {
-            string elementsUrl = $"{aasServerUrl}/submodels/{Base64Url(visSubmodelId)}/submodel-elements?level=deep";
-            UnityWebRequest req = UnityWebRequest.Get(elementsUrl);
-            yield return req.SendWebRequest();
-            
-            if (req.result == UnityWebRequest.Result.Success)
-            {
-                elementsJson = req.downloadHandler.text;
-                isDynamic = CheckIsDynamicFromJson(elementsJson);
+            if (geoSubmodelId == null && visSubmodelId == null) 
+            { 
+                pendingRobotIds.Remove(shell.id); 
+                pendingRobotDynamics.Remove(shell.id); 
+                yield break; 
             }
-        }
-        
-        pendingRobotDynamics[shell.id] = isDynamic;
 
-        // If it is dynamic, wait for all non-dynamic/static ones to finish spawning
-        if (isDynamic)
-        {
-            Debug.Log($"[BaSyx] ⏳ Kit '{robotName}' is DYNAMIC. Waiting for all non-dynamic/static kits to spawn...");
-            while (true)
+            // --- DETERMINE DYNAMIC PROPERTY ---
+            bool isDynamic = false;
+            string elementsJson = null;
+
+            if (visSubmodelId != null)
             {
-                bool anyStaticPending = false;
-                foreach (var kvp in pendingRobotDynamics)
-                {
-                    if (kvp.Key == shell.id) continue;
-                    if (kvp.Value == false || kvp.Value == null)
-                    {
-                        anyStaticPending = true;
-                        break;
-                    }
-                }
-                if (!anyStaticPending) break;
-                yield return new WaitForSeconds(0.2f);
-            }
-            Debug.Log($"[BaSyx] 🚀 Spawning dynamic kit '{robotName}' now.");
-        }
-
-        // 1. PRIORITIZE URDF (GeometryData)
-        if (geoSubmodelId != null)
-        {
-            Debug.Log($"[BaSyx] 📥 Downloading assets for {robotName} (URDF)...");
-            yield return StartCoroutine(DownloadRecursive(geoSubmodelId, robotPath));
-
-            string urdfFile = FindUrdfFile(robotPath);
-            if (urdfFile != null)
-            {
-                var importResult = AASUrdfImporter.Import(urdfFile, robotName);
-                GameObject robotObj = importResult?.root;
-
-                if (robotObj != null)
-                {
-                    PrepareRobot(robotObj, urdfFile);
-                    GameObject container = GameObject.Find("AAS_Robots_Container");
-                    if (container == null) container = new GameObject("AAS_Robots_Container");
-                    robotObj.transform.SetParent(container.transform, false);
-                    robotObj.transform.localScale = Vector3.one * globalScale;
-
-                    var jointInitList = new List<AASRobotSync.JointInitData>();
-                    foreach (var jData in importResult.joints)
-                    {
-                        jointInitList.Add(new AASRobotSync.JointInitData {
-                            name = jData.name,
-                            transform = jData.anchor.transform,
-                            axis = jData.axis
-                        });
-                    }
-
-                    instantiatedRobots[shell.id] = robotObj;
-                    
-                    if (RobotCameraManager.Instance != null) RobotCameraManager.Instance.AddTarget(robotObj.transform);
-                    if (posSubmodelId != null) StartCoroutine(SyncPositionLoop(posSubmodelId, robotObj));
-                    
-                    // Joint Telemetry Sync
-                    if (telSubmodelId != null)
-                    {
-                        var sync = robotObj.AddComponent<AASRobotSync>();
-                        sync.SetJointMap(jointInitList);
-                        sync.Init(telSubmodelId, aasServerUrl);
-                    }
-
-                    // Virtual IO Sync (for Kits)
-                    if (pinSubmodelId != null && behSubmodelId != null)
-                    {
-                        var components = new Dictionary<string, GameObject>();
-                        foreach (Transform t in robotObj.GetComponentsInChildren<Transform>()) components[t.name] = t.gameObject;
-
-                        var actuatorCtrl = robotObj.AddComponent<AASActuatorController>();
-                        actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, components);
-
-                        var sensorCtrl = robotObj.AddComponent<AASSensorController>();
-                        sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, components);
-                    }
-
-                    Debug.Log($"[BaSyx] ✅ Robot/Kit {robotName} prepared via URDF.");
-                    pendingRobotIds.Remove(shell.id);
-                    pendingRobotDynamics.Remove(shell.id);
-                    yield break;
-                }
-            }
-        }
-
-        // 2. FALLBACK to Kit (VisualStructure)
-        if (visSubmodelId != null)
-        {
-            Debug.Log($"[BaSyx] 📥 Downloading assets for Kit {robotName} (VisualStructure)...");
-            yield return StartCoroutine(DownloadRecursive(visSubmodelId, robotPath));
-            
-            if (!string.IsNullOrEmpty(elementsJson))
-            {
-                // Async GLB Import
-                var task = AASKitImporter.ImportWithMetadataAsync(elementsJson, robotPath, robotName);
-                yield return new WaitUntil(() => task.IsCompleted);
-                var importData = task.Result;
+                string elementsUrl = $"{aasServerUrl}/submodels/{Base64Url(visSubmodelId)}/submodel-elements?level=deep";
+                UnityWebRequest req = UnityWebRequest.Get(elementsUrl);
+                yield return req.SendWebRequest();
                 
-                GameObject kitObj = importData?.root;
-                if (kitObj != null)
+                if (req.result == UnityWebRequest.Result.Success)
                 {
-                    GameObject container = GameObject.Find("AAS_Robots_Container");
-                    if (container == null) container = new GameObject("AAS_Robots_Container");
-                    kitObj.transform.SetParent(container.transform, false);
-                    kitObj.transform.localScale = Vector3.one * globalScale;
+                    elementsJson = req.downloadHandler.text;
+                    isDynamic = CheckIsDynamicFromJson(elementsJson);
+                }
+            }
+            
+            pendingRobotDynamics[shell.id] = isDynamic;
 
-                    instantiatedRobots[shell.id] = kitObj;
-                    if (RobotCameraManager.Instance != null) RobotCameraManager.Instance.AddTarget(kitObj.transform);
-                    
-                    if (pinSubmodelId != null && behSubmodelId != null)
+            // If it is dynamic, wait for all non-dynamic/static ones to finish spawning
+            if (isDynamic)
+            {
+                Debug.Log($"[BaSyx] ⏳ Kit '{robotName}' is DYNAMIC. Waiting for all non-dynamic/static kits to spawn...");
+                while (true)
+                {
+                    bool anyStaticPending = false;
+                    foreach (var kvp in pendingRobotDynamics)
                     {
-                        var actuatorCtrl = kitObj.AddComponent<AASActuatorController>();
-                        actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+                        if (kvp.Key == shell.id) continue;
+                        if (kvp.Value == false || kvp.Value == null)
+                        {
+                            anyStaticPending = true;
+                            break;
+                        }
+                    }
+                    if (!anyStaticPending) break;
+                    yield return new WaitForSeconds(0.2f);
+                }
+                Debug.Log($"[BaSyx] 🚀 Spawning dynamic kit '{robotName}' now.");
+            }
 
-                        var sensorCtrl = kitObj.AddComponent<AASSensorController>();
-                        sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+            // 1. PRIORITIZE URDF (GeometryData)
+            if (geoSubmodelId != null)
+            {
+                Debug.Log($"[BaSyx] 📥 Downloading assets for {robotName} (URDF)...");
+                yield return StartCoroutine(DownloadRecursive(geoSubmodelId, robotPath));
+
+                string urdfFile = FindUrdfFile(robotPath);
+                if (urdfFile != null)
+                {
+                    AASUrdfImporter.ImportResult importResult = null;
+                    try
+                    {
+                        importResult = AASUrdfImporter.Import(urdfFile, robotName);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"[BaSyx] Error importing URDF: {e.Message}");
+                    }
+
+                    if (importResult != null && importResult.root != null)
+                    {
+                        GameObject robotObj = importResult.root;
+                        try
+                        {
+                            PrepareRobot(robotObj, urdfFile);
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogError($"[BaSyx] Error preparing URDF robot: {e.Message}");
+                        }
+
+                        GameObject container = GameObject.Find("AAS_Robots_Container");
+                        if (container == null) container = new GameObject("AAS_Robots_Container");
+                        robotObj.transform.SetParent(container.transform, false);
+                        robotObj.transform.localScale = Vector3.one * globalScale;
+
+                        var jointInitList = new List<AASRobotSync.JointInitData>();
+                        foreach (var jData in importResult.joints)
+                        {
+                            jointInitList.Add(new AASRobotSync.JointInitData {
+                                name = jData.name,
+                                transform = jData.anchor.transform,
+                                axis = jData.axis
+                            });
+                        }
+
+                        instantiatedRobots[shell.id] = robotObj;
+                        
+                        if (RobotCameraManager.Instance != null) RobotCameraManager.Instance.AddTarget(robotObj.transform);
+                        if (posSubmodelId != null) StartCoroutine(SyncPositionLoop(posSubmodelId, robotObj));
+                        
+                        // Joint Telemetry Sync
+                        if (telSubmodelId != null)
+                        {
+                            try
+                            {
+                                var sync = robotObj.AddComponent<AASRobotSync>();
+                                sync.SetJointMap(jointInitList);
+                                sync.Init(telSubmodelId, aasServerUrl);
+                            }
+                            catch (Exception e)
+                            {
+                                Debug.LogError($"[BaSyx] Error adding AASRobotSync: {e.Message}");
+                            }
+                        }
+
+                        // Virtual IO Sync (for Kits)
+                        if (pinSubmodelId != null && behSubmodelId != null)
+                        {
+                            try
+                            {
+                                var components = new Dictionary<string, GameObject>();
+                                foreach (Transform t in robotObj.GetComponentsInChildren<Transform>()) components[t.name] = t.gameObject;
+
+                                var actuatorCtrl = robotObj.AddComponent<AASActuatorController>();
+                                actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, components);
+
+                                var sensorCtrl = robotObj.AddComponent<AASSensorController>();
+                                sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, components);
+                            }
+                            catch (Exception e)
+                            {
+                                Debug.LogError($"[BaSyx] Error initializing URDF actuator/sensor controllers: {e.Message}");
+                            }
+                        }
+
+                        Debug.Log($"[BaSyx] ✅ Robot/Kit {robotName} prepared via URDF.");
+                        pendingRobotIds.Remove(shell.id);
+                        pendingRobotDynamics.Remove(shell.id);
+                        yield break;
+                    }
+                }
+            }
+
+            // 2. FALLBACK to Kit (VisualStructure)
+            if (visSubmodelId != null)
+            {
+                Debug.Log($"[BaSyx] 📥 Downloading assets for Kit {robotName} (VisualStructure)...");
+                yield return StartCoroutine(DownloadRecursive(visSubmodelId, robotPath));
+                
+                if (!string.IsNullOrEmpty(elementsJson))
+                {
+                    // Async GLB Import
+                    var task = AASKitImporter.ImportWithMetadataAsync(elementsJson, robotPath, robotName);
+                    yield return new WaitUntil(() => task.IsCompleted);
+                    
+                    AASKitImporter.KitImportData importData = null;
+                    try
+                    {
+                        importData = task.Result;
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"[BaSyx] Error importing GLB kit: {e.Message}");
                     }
                     
-                    Debug.Log($"[BaSyx] ✅ Kit {robotName} prepared via glTF (Native).");
-                    StartCoroutine(SyncKitLoop(shell.id, visSubmodelId, pinSubmodelId, behSubmodelId, robotPath, robotName, elementsJson));
+                    if (importData != null && importData.root != null)
+                    {
+                        GameObject kitObj = importData.root;
+                        GameObject container = GameObject.Find("AAS_Robots_Container");
+                        if (container == null) container = new GameObject("AAS_Robots_Container");
+                        kitObj.transform.SetParent(container.transform, false);
+                        kitObj.transform.localScale = Vector3.one * globalScale;
+
+                        instantiatedRobots[shell.id] = kitObj;
+                        if (RobotCameraManager.Instance != null) RobotCameraManager.Instance.AddTarget(kitObj.transform);
+                        
+                        if (pinSubmodelId != null && behSubmodelId != null)
+                        {
+                            try
+                            {
+                                var actuatorCtrl = kitObj.AddComponent<AASActuatorController>();
+                                actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+
+                                var sensorCtrl = kitObj.AddComponent<AASSensorController>();
+                                sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+                            }
+                            catch (Exception e)
+                            {
+                                Debug.LogError($"[BaSyx] Error initializing GLB actuator/sensor controllers: {e.Message}");
+                            }
+                        }
+                        
+                        Debug.Log($"[BaSyx] ✅ Kit {robotName} prepared via glTF (Native).");
+                        StartCoroutine(SyncKitLoop(shell.id, visSubmodelId, pinSubmodelId, behSubmodelId, robotPath, robotName, elementsJson));
+                    }
                 }
             }
         }
-        pendingRobotIds.Remove(shell.id);
-        pendingRobotDynamics.Remove(shell.id);
+        finally
+        {
+            pendingRobotIds.Remove(shell.id);
+            pendingRobotDynamics.Remove(shell.id);
+        }
     }
 
     IEnumerator DownloadRecursive(string submodelId, string targetDir)
@@ -378,7 +463,15 @@ public class BaSyxManager : MonoBehaviour
             cleanPath = cleanPath.Replace("\\", "/").TrimStart('/');
             string dest = Path.Combine(targetDir, cleanPath);
             string dir = Path.GetDirectoryName(dest);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            try
+            {
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[BaSyx] Failed to create subdirectory {dir}: {e.Message}");
+                continue;
+            }
 
             string downloadUrl = $"{aasServerUrl}/submodels/{Base64Url(submodelId)}/submodel-elements/{idShortPath}/attachment";
             Debug.Log($"[BaSyx] 📥 Downloading: {idShortPath} -> {cleanPath}");
@@ -389,7 +482,14 @@ public class BaSyxManager : MonoBehaviour
             if (dl.result == UnityWebRequest.Result.Success) {
                 byte[] data = dl.downloadHandler.data;
                 if (data != null && data.Length > 0) {
-                    File.WriteAllBytes(dest, data);
+                    try
+                    {
+                        File.WriteAllBytes(dest, data);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"[BaSyx] Failed to write downloaded file {dest}: {e.Message}");
+                    }
                 } else {
                     Debug.LogWarning($"[BaSyx] ⚠️ Downloaded {idShortPath} but content was empty.");
                 }

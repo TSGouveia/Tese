@@ -31,6 +31,9 @@ public class AASActuatorController : MonoBehaviour
         public Vector3 lastPosition;
         public Quaternion lastRotation;
         
+        public Vector3 deltaPosition;
+        public Quaternion deltaRotation = Quaternion.identity;
+        
         public string stopSensorComponent;
         public AASSensorController.SensorPhysicsProxy linkedSensor;
     }
@@ -61,6 +64,7 @@ public class AASActuatorController : MonoBehaviour
             public List<ActuatorBinding> bindings;
         }
         private Dictionary<GameObject, ContactInfo> activeContacts = new Dictionary<GameObject, ContactInfo>();
+        private int logThrottle = 0;
 
         void Awake() { rb = GetComponent<Rigidbody>(); }
 
@@ -81,28 +85,61 @@ public class AASActuatorController : MonoBehaviour
             Quaternion deltaRotation = Quaternion.identity;
             List<Vector3> candidateVelocities = new List<Vector3>();
 
-            foreach (var contact in activeContacts.Values) {
-                foreach (var b in contact.bindings) {
-                    if (b.target == null) continue;
+            foreach (var kvp in activeContacts) {
+                GameObject root = kvp.Key;
+                ContactInfo contact = kvp.Value;
+                
+                Vector3 combinedDeltaPos = Vector3.zero;
+                Quaternion combinedDeltaRot = Quaternion.identity;
+                bool isConveyor = false;
+                Vector3 conveyorAxis = Vector3.forward;
+                float conveyorSpeed = 0f;
+                bool conveyorState = false;
+                AASSensorController.SensorPhysicsProxy conveyorSensor = null;
 
-                    // 1. Calculate physical translation/rotation delta of the platform itself
-                    Vector3 dPos = b.target.transform.position - b.lastPosition;
-                    Quaternion dRot = b.target.transform.rotation * Quaternion.Inverse(b.lastRotation);
+                Transform curr = root.transform;
+                bool foundBinding = false;
+                while (curr != null) {
+                    var matches = contact.bindings.Where(b => b.target == curr.gameObject).ToList();
+                    if (matches.Count > 0) {
+                        foreach (var b in matches) {
+                            combinedDeltaPos += b.deltaPosition;
+                            combinedDeltaRot = b.deltaRotation * combinedDeltaRot;
+                            
+                            if (b.type == "Conveyor") {
+                                isConveyor = true;
+                                conveyorAxis = b.axis;
+                                if (b.currentState || conveyorSpeed == 0f) {
+                                    conveyorSpeed = b.speed;
+                                    conveyorState = b.currentState;
+                                    conveyorSensor = b.linkedSensor;
+                                }
+                            }
+                        }
+                        foundBinding = true;
+                        break; // Stop climbing the hierarchy once we found matches for this level
+                    }
+                    curr = curr.parent;
+                }
 
-                    deltaTranslation += dPos;
-                    deltaRotation = dRot * deltaRotation;
+                if (foundBinding) {
+                    deltaTranslation += combinedDeltaPos;
+                    deltaRotation = combinedDeltaRot * deltaRotation;
 
-                    // 2. Standard linear conveyor surface movement (simulated belt speed)
-                    if (b.type == "Conveyor") {
-                        Vector3 worldDir = b.target.transform.TransformDirection(b.axis);
-                        bool isBlocked = b.linkedSensor != null && b.linkedSensor.binding.lastState;
-                        Vector3 vel = (b.currentState && !isBlocked) ? (worldDir * b.speed) : Vector3.zero;
+                    if (isConveyor) {
+                        Vector3 worldDir = curr.gameObject.transform.TransformDirection(conveyorAxis);
+                        bool isBlocked = conveyorSensor != null && conveyorSensor.binding.lastState;
+                        Vector3 vel = (conveyorState && !isBlocked) ? (worldDir * conveyorSpeed) : Vector3.zero;
                         candidateVelocities.Add(vel);
                     }
                 }
             }
 
-            // Apply platform delta translation & rotation to the product
+            Vector3 targetPosition = rb.position;
+            Quaternion targetRotation = rb.rotation;
+            bool hasMovement = false;
+
+            // Apply platform translation & rotation delta
             if (deltaTranslation.sqrMagnitude > 0.0001f || Quaternion.Angle(deltaRotation, Quaternion.identity) > 0.01f) {
                 Vector3 pivot = rb.position;
                 var firstContact = activeContacts.Keys.FirstOrDefault();
@@ -114,8 +151,9 @@ public class AASActuatorController : MonoBehaviour
                 Vector3 rotatedPos = deltaRotation * relativeToPivot;
                 Vector3 rotDisplacement = rotatedPos - relativeToPivot;
 
-                rb.position += deltaTranslation + rotDisplacement;
-                rb.rotation = deltaRotation * rb.rotation;
+                targetPosition += deltaTranslation + rotDisplacement;
+                targetRotation = deltaRotation * targetRotation;
+                hasMovement = true;
             }
 
             // Apply conveyor surface belt speed
@@ -142,15 +180,38 @@ public class AASActuatorController : MonoBehaviour
                 }
             }
 
-            Vector3 finalVel = new Vector3(targetVel.x, rb.linearVelocity.y, targetVel.z);
-            if (rb.IsSleeping()) rb.WakeUp();
-            rb.linearDamping = 0;
-
-            if (finalVel.sqrMagnitude > 0.001f) {
-                rb.MovePosition(rb.position + finalVel * Time.fixedDeltaTime);
+            if (targetVel.sqrMagnitude > 0.001f) {
+                Vector3 finalVel = new Vector3(targetVel.x, rb.linearVelocity.y, targetVel.z);
+                if (rb.IsSleeping()) rb.WakeUp();
+                rb.linearDamping = 0;
+                
+                targetPosition += finalVel * Time.fixedDeltaTime;
+                hasMovement = true;
             } else {
                 rb.linearVelocity = new Vector3(0, rb.linearVelocity.y, 0);
             }
+
+            if (hasMovement) {
+                logThrottle++;
+                if (logThrottle % 10 == 0) {
+                    Debug.Log($"[ConveyorPhysics] Moving product '{gameObject.name}' (Contacts={activeContacts.Count}):\n" +
+                              $"  - deltaTranslation: {deltaTranslation}\n" +
+                              $"  - deltaRotation (Euler): {deltaRotation.eulerAngles}\n" +
+                              $"  - targetVel: {targetVel}\n" +
+                              $"  - rb.rotation before: {rb.rotation.eulerAngles}\n" +
+                              $"  - Moving to Position: {targetPosition}, Rotation: {targetRotation.eulerAngles}");
+                }
+                rb.MovePosition(targetPosition);
+                rb.MoveRotation(targetRotation);
+                
+                // Clear physics angular velocity during kinematic sweep to prevent force buildup
+                rb.angularVelocity = Vector3.zero;
+            } else {
+                logThrottle = 0;
+                // Stopped: zero out angular velocity to completely eliminate rotation drift/creep from collisions
+                rb.angularVelocity = Vector3.zero;
+            }
+
             foreach (var col in GetComponentsInChildren<Collider>()) col.contactOffset = 0.001f;
         }
     }
@@ -393,27 +454,40 @@ public class AASActuatorController : MonoBehaviour
         foreach (var b in bindings) {
             if (b.target == null) continue;
             
-            bool isBlocked = IsBlockedBySensor(b);
-            if (isBlocked && b.currentState) continue; // Skip movement
+            Vector3 posBefore = b.target.transform.position;
+            Quaternion rotBefore = b.target.transform.rotation;
             
-            switch (b.type) {
-                case "TranslateContinuous": 
-                    if (b.currentState) b.target.transform.Translate(b.axis * b.speed * Time.fixedDeltaTime, Space.Self); 
-                    break;
-                case "RotateContinuous": 
-                    if (b.currentState) {
-                        b.target.transform.Rotate(b.axis, b.speed * Time.fixedDeltaTime * 200f, Space.Self); 
-                    }
-                    break;
-                case "TranslateFixed":
-                    Vector3 targetPos = b.initialPosition + (b.axis * (b.currentState ? b.limitMax : b.limitMin));
-                    b.target.transform.localPosition = Vector3.Lerp(b.target.transform.localPosition, targetPos, Time.fixedDeltaTime * b.speed * 5f);
-                    break;
-                case "RotateHinge":
-                    float targetAngle = b.currentState ? b.limitMax : b.limitMin;
-                    Quaternion targetRot = b.initialRotation * Quaternion.AngleAxis(targetAngle, b.axis);
-                    b.target.transform.localRotation = Quaternion.Slerp(b.target.transform.localRotation, targetRot, Time.fixedDeltaTime * b.speed * 5f);
-                    break;
+            bool isBlocked = IsBlockedBySensor(b);
+            if (!(isBlocked && b.currentState)) {
+                switch (b.type) {
+                    case "TranslateContinuous": 
+                        if (b.currentState) b.target.transform.Translate(b.axis * b.speed * Time.fixedDeltaTime, Space.Self); 
+                        break;
+                    case "RotateContinuous": 
+                        if (b.currentState) {
+                            b.target.transform.Rotate(b.axis, b.speed * Time.fixedDeltaTime * 200f, Space.Self); 
+                        }
+                        break;
+                    case "TranslateFixed":
+                        Vector3 targetPos = b.initialPosition + (b.axis * (b.currentState ? b.limitMax : b.limitMin));
+                        b.target.transform.localPosition = Vector3.Lerp(b.target.transform.localPosition, targetPos, Time.fixedDeltaTime * b.speed * 5f);
+                        break;
+                    case "RotateHinge":
+                        float targetAngle = b.currentState ? b.limitMax : b.limitMin;
+                        Quaternion targetRot = b.initialRotation * Quaternion.AngleAxis(targetAngle, b.axis);
+                        b.target.transform.localRotation = Quaternion.Slerp(b.target.transform.localRotation, targetRot, Time.fixedDeltaTime * b.speed * 5f);
+                        break;
+                }
+            }
+            
+            b.deltaPosition = b.target.transform.position - posBefore;
+            b.deltaRotation = b.target.transform.rotation * Quaternion.Inverse(rotBefore);
+            
+            if (b.deltaPosition.sqrMagnitude < 1e-8f) {
+                b.deltaPosition = Vector3.zero;
+            }
+            if (Quaternion.Angle(b.deltaRotation, Quaternion.identity) < 0.005f) {
+                b.deltaRotation = Quaternion.identity;
             }
         }
 
