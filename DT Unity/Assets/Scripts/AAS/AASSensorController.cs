@@ -42,20 +42,7 @@ public class AASSensorController : MonoBehaviour
         UnityWebRequest req = UnityWebRequest.Get(behaviorUrl + "?level=deep");
         yield return req.SendWebRequest();
 
-        // Pass 1: Global cleanup - Hide ALL meshes named "TriggerZone" across all instantiated models
-        // This ensures duplicated static meshes are always hidden regardless of active sensor bindings.
-        foreach (var kvp in componentMap)
-        {
-            var allTransforms = kvp.Value.GetComponentsInChildren<Transform>(true);
-            foreach (var t in allTransforms)
-            {
-                if (t.name.Contains("TriggerZone"))
-                {
-                    var renderer = t.GetComponent<Renderer>();
-                    if (renderer != null) renderer.enabled = false;
-                }
-            }
-        }
+
 
         if (req.result == UnityWebRequest.Result.Success)
         {
@@ -108,25 +95,7 @@ public class AASSensorController : MonoBehaviour
 
                     if (!string.IsNullOrEmpty(compName))
                     {
-                        GameObject target = null;
-                        
-                        // First, check if there's an exact match in the component map
-                        if (DirectTargetMatch(componentMap, compName, out target)) {
-                            // target found
-                        } else {
-                            // If not, search across ALL imported components for this child (e.g., "TriggerZone")
-                            foreach (var rootObj in componentMap.Values)
-                            {
-                                var allTransforms = rootObj.GetComponentsInChildren<Transform>(true);
-                                foreach(var t in allTransforms) {
-                                    if(t.name == compName) {
-                                        target = t.gameObject;
-                                        break;
-                                    }
-                                }
-                                if (target != null) break;
-                            }
-                        }
+                        GameObject target = FindTargetComponent(componentMap, compName);
 
                         if (target != null && (type == "TriggerZone" || type == "ContactSensor"))
                         {
@@ -170,10 +139,13 @@ public class AASSensorController : MonoBehaviour
                                 }
                             }
 
-                            // Auto-hide or show the sensor mesh based on visibility
-                            foreach (var renderer in target.GetComponentsInChildren<Renderer>())
+                            // Auto-hide or show the sensor mesh based on visibility if explicitly defined in AAS
+                            if (visibleParam.HasValue)
                             {
-                                renderer.enabled = binding.visible;
+                                foreach (var renderer in target.GetComponentsInChildren<Renderer>())
+                                {
+                                    renderer.enabled = visibleParam.Value;
+                                }
                             }
 
                             Debug.Log($"[Sensor] 👁️ Configured {pinId} on {compName} (Filter: {filter})");
@@ -188,13 +160,67 @@ public class AASSensorController : MonoBehaviour
         }
     }
 
-    private bool DirectTargetMatch(Dictionary<string, GameObject> map, string name, out GameObject target) {
-        if (map.TryGetValue(name, out target)) return true;
-        foreach (var kvp in map) {
-            Transform child = kvp.Value.transform.Find(name);
-            if (child != null) { target = child.gameObject; return true; }
+    private GameObject FindTargetComponent(Dictionary<string, GameObject> map, string compName)
+    {
+        if (string.IsNullOrEmpty(compName)) return null;
+
+        // 1. First priority: Exact case-sensitive match in map
+        if (map.TryGetValue(compName, out GameObject directTarget)) return directTarget;
+
+        // Collect all GameObjects and their child transforms
+        List<GameObject> allObjects = new List<GameObject>();
+        foreach (var rootObj in map.Values)
+        {
+            if (rootObj == null) continue;
+            if (!allObjects.Contains(rootObj)) allObjects.Add(rootObj);
+            foreach (Transform t in rootObj.GetComponentsInChildren<Transform>(true))
+            {
+                if (t != null && !allObjects.Contains(t.gameObject))
+                {
+                    allObjects.Add(t.gameObject);
+                }
+            }
         }
-        return false;
+
+        // 2. Second priority: Exact case-insensitive match
+        foreach (var obj in allObjects)
+        {
+            if (string.Equals(obj.name, compName, StringComparison.OrdinalIgnoreCase))
+                return obj;
+        }
+
+        // 3. Third priority: Suffix/prefix match (e.g. glTF importer appends suffixes)
+        string cleanComp = CleanComponentName(compName);
+        foreach (var obj in allObjects)
+        {
+            string cleanObj = CleanComponentName(obj.name);
+            if (string.Equals(cleanObj, cleanComp, StringComparison.OrdinalIgnoreCase))
+                return obj;
+        }
+
+        // 4. Fourth priority: Loose containment
+        foreach (var obj in allObjects)
+        {
+            if (obj.name.ToLower().Contains(compName.ToLower()) || compName.ToLower().Contains(obj.name.ToLower()))
+                return obj;
+        }
+
+        return null;
+    }
+
+    private string CleanComponentName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "";
+        string clean = name;
+        string[] noise = { "_mesh", "_node", "_primitive", "_instance" };
+        foreach (var n in noise)
+        {
+            int idx = clean.ToLower().IndexOf(n);
+            if (idx > 0) clean = clean.Substring(0, idx);
+        }
+        int dotIdx = clean.IndexOf('.');
+        if (dotIdx > 0) clean = clean.Substring(0, dotIdx);
+        return clean.Trim().ToLower();
     }
 
     IEnumerator UpdateAASPin(SensorBinding binding, bool state)
@@ -210,8 +236,8 @@ public class AASSensorController : MonoBehaviour
             GameObject product = GameObject.Find(binding.snapTarget);
             if (product != null)
             {
-                // Mapping SnapPosition (Z-up) to Unity (Y-up)
-                Vector3 unityPos = new Vector3(binding.snapPosition.x, binding.snapPosition.z, binding.snapPosition.y);
+                // AAS layout is already Y-up (matching Python preview)
+                Vector3 unityPos = new Vector3(binding.snapPosition.x, binding.snapPosition.y, -binding.snapPosition.z);
                 product.transform.localPosition = unityPos;
                 
                 // Reset velocity to avoid physical "bouncing" after teleport

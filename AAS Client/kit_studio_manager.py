@@ -51,6 +51,9 @@ class KitStudioManager:
                 comp_coll.value.add(model.File(id_short="Mesh", content_type="application/octet-stream", value=mesh_filename))
             comp_coll.value.add(model.Property(id_short="Parent", value_type=model.datatypes.String, value=comp.get("parent", "")))
             
+            is_dynamic = comp.get("dynamic", False)
+            comp_coll.value.add(model.Property(id_short="DynamicObject", value_type=model.datatypes.Boolean, value=is_dynamic))
+            
             transform_coll = model.SubmodelElementCollection(id_short="Transform")
             pos = comp.get("position", [0,0,0])
             rot = comp.get("rotation", [0,0,0])
