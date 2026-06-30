@@ -320,9 +320,9 @@ class ConveyorWizard(QMainWindow):
         self.page2 = QWidget(); l2 = QVBoxLayout(self.page2); info_group = QGroupBox("System Info"); ifl = QFormLayout(info_group)
         self.edit_kit_name = QLineEdit("ConveyorKit"); self.edit_aas_id = QLineEdit("Conveyor_01"); self.edit_desc = QLineEdit("Standard Conveyor System")
         self.edit_aas_id.textChanged.connect(self.update_validation_ui)
-        self.check_is_product = QCheckBox("Is Dynamic Product (adds Rigidbody/Physics in Unity)")
+        self.check_is_dynamic = QCheckBox("Is Dynamic (adds Rigidbody/Physics in Unity)")
         ifl.addRow("Kit Name:", self.edit_kit_name); ifl.addRow("AAS ID:", self.edit_aas_id); ifl.addRow("Description:", self.edit_desc)
-        ifl.addRow("", self.check_is_product)
+        ifl.addRow("", self.check_is_dynamic)
         
         trans_group = QGroupBox("System Transform"); tfl = QFormLayout(trans_group)
         self.sys_pos = [QDoubleSpinBox() for _ in range(3)]; self.sys_rot = [QDoubleSpinBox() for _ in range(3)]; self.sys_scale = [QDoubleSpinBox() for _ in range(3)]
@@ -575,7 +575,6 @@ class ConveyorWizard(QMainWindow):
                     "kit_name": kit_name,
                     "aas_id": kit_name,
                     "description": description,
-                    "is_product": is_dynamic,
                     "dynamic": is_dynamic,
                     "pos": pos_val,
                     "rot": rot_val,
@@ -1023,7 +1022,7 @@ class ConveyorWizard(QMainWindow):
                             mesh_href = sel.get("value")
                         elif sel["idShort"] == "DynamicObject" and sel["modelType"] == "Property":
                             is_dyn = str(sel.get("value", "False")).lower() == "true"
-                            self.check_is_product.setChecked(is_dyn)
+                            self.check_is_dynamic.setChecked(is_dyn)
 
             # Behavior
             for w in list(self.actuator_widgets): self.remove_actuator(w)
@@ -1097,7 +1096,7 @@ class ConveyorWizard(QMainWindow):
             "kit_name": self.edit_kit_name.text(),
             "aas_id": self.edit_aas_id.text(),
             "description": self.edit_desc.text(),
-            "is_product": self.check_is_product.isChecked(),
+            "dynamic": self.check_is_dynamic.isChecked(),
             "glb_path": self.glb_path,
             "pos": [self.sys_pos[i].value() for i in range(3)],
             "rot": [self.sys_rot[i].value() for i in range(3)],
@@ -1106,18 +1105,43 @@ class ConveyorWizard(QMainWindow):
             "sensors": [w.get_data() for w in self.sensor_widgets]
         }
 
-    def restore_wizard_state(self, state):
+    def restore_wizard_state(self, state, config_dir=None):
         self.glb_path = state.get("glb_path")
+        
+        components = state.get("components", [])
+        if components:
+            comp = components[0]
+            pos = comp.get("position", [0.0, 0.0, 0.0])
+            rot = comp.get("rotation", [0.0, 0.0, 0.0])
+            scale = comp.get("scale", [1.0, 1.0, 1.0])
+            is_dynamic = comp.get("dynamic", state.get("dynamic", False))
+            actuators = comp.get("actuators", [])
+            sensors = comp.get("sensors", [])
+            mesh_name = comp.get("mesh")
+            if mesh_name and not self.glb_path:
+                if config_dir:
+                    candidate = os.path.join(config_dir, mesh_name)
+                    if os.path.exists(candidate):
+                        self.glb_path = candidate
+                if not self.glb_path and os.path.exists(mesh_name):
+                    self.glb_path = os.path.abspath(mesh_name)
+        else:
+            pos = state.get("pos", state.get("position", [0.0, 0.0, 0.0]))
+            rot = state.get("rot", state.get("rotation", [0.0, 0.0, 0.0]))
+            scale = state.get("scale", [1.0, 1.0, 1.0])
+            is_dynamic = state.get("dynamic", False)
+            actuators = state.get("actuators", [])
+            sensors = state.get("sensors", [])
+
         self.lbl_glb_path.setText(os.path.basename(self.glb_path) if self.glb_path else "No file selected")
         if self.glb_path and os.path.exists(self.glb_path):
             self.load_model(self.glb_path)
+
         self.edit_kit_name.setText(state.get("kit_name", ""))
         self.edit_aas_id.setText(state.get("aas_id", ""))
         self.edit_desc.setText(state.get("description", ""))
-        self.check_is_product.setChecked(state.get("is_product", False))
-        pos = state.get("pos", [0, 0, 0])
-        rot = state.get("rot", [0, 0, 0])
-        scale = state.get("scale", [1, 1, 1])
+        self.check_is_dynamic.setChecked(is_dynamic)
+
         for i in range(3):
             self.sys_pos[i].setValue(pos[i])
             self.sys_rot[i].setValue(rot[i])
@@ -1126,7 +1150,7 @@ class ConveyorWizard(QMainWindow):
         for w in list(self.actuator_widgets): self.remove_actuator(w)
         for w in list(self.sensor_widgets): self.remove_sensor(w)
         
-        for act in state.get("actuators", []):
+        for act in actuators:
             self.add_actuator(); w = self.actuator_widgets[-1]
             w.edit_pin.setText(act.get("pin_id", ""))
             w.edit_node.setText(act.get("node", ""))
@@ -1138,7 +1162,7 @@ class ConveyorWizard(QMainWindow):
             w.spin_speed.setValue(act.get("speed", 1.0))
             w.check_visible.setChecked(act.get("visible", True))
             
-        for sns in state.get("sensors", []):
+        for sns in sensors:
             self.add_sensor(); w = self.sensor_widgets[-1]
             w.edit_pin.setText(sns.get("pin_id", ""))
             w.edit_node.setText(sns.get("node", ""))
@@ -1149,9 +1173,11 @@ class ConveyorWizard(QMainWindow):
             
         self.update_all_actuator_dropdowns()
 
-        for i, act in enumerate(state.get("actuators", [])):
+        for i, act in enumerate(actuators):
             if i < len(self.actuator_widgets) and "stop_sensor" in act:
                 self.actuator_widgets[i].combo_stop_sens.setCurrentText(act["stop_sensor"])
+
+
 
     def reset_wizard(self):
         # 1. Clear GLB model path
@@ -1162,7 +1188,7 @@ class ConveyorWizard(QMainWindow):
         self.edit_kit_name.setText("ConveyorKit")
         self.edit_aas_id.setText("Conveyor_01")
         self.edit_desc.setText("Standard Conveyor System")
-        self.check_is_product.setChecked(False)
+        self.check_is_dynamic.setChecked(False)
         
         # 3. Reset transforms
         for i in range(3):
@@ -1315,10 +1341,26 @@ class ConveyorWizard(QMainWindow):
         self.btn_next.setText("Deploy to AAS" if idx == self.stack.count() - 1 else "Next →"); self.update_json_preview()
             
     def update_json_preview(self):
-        self.config_data["kit_name"] = self.edit_kit_name.text(); self.config_data["aas_id"] = self.edit_aas_id.text(); self.config_data["description"] = self.edit_desc.text()
-        comp_name = "Product_ConveyorSystem" if self.check_is_product.isChecked() else "ConveyorSystem"
-        comp = {"name": comp_name, "mesh": os.path.basename(self.glb_path) if self.glb_path else "", "parent": None, "position": [s.value() for s in self.sys_pos], "rotation": [s.value() for s in self.sys_rot], "scale": [s.value() for s in self.sys_scale], "dynamic": self.check_is_product.isChecked(), "actuators": [w.get_data() for w in self.actuator_widgets], "sensors": [w.get_data() for w in self.sensor_widgets]}
-        self.config_data["components"] = [comp]; self.json_preview.setText(json.dumps(self.config_data, indent=2))
+        self.config_data = {
+            "kit_name": self.edit_kit_name.text(),
+            "aas_id": self.edit_aas_id.text(),
+            "description": self.edit_desc.text()
+        }
+        
+        comp_name = "Product_ConveyorSystem" if self.check_is_dynamic.isChecked() else "ConveyorSystem"
+        comp = {
+            "name": comp_name,
+            "mesh": os.path.basename(self.glb_path) if self.glb_path else "",
+            "parent": None,
+            "position": [s.value() for s in self.sys_pos],
+            "rotation": [s.value() for s in self.sys_rot],
+            "scale": [s.value() for s in self.sys_scale],
+            "dynamic": self.check_is_dynamic.isChecked(),
+            "actuators": [w.get_data() for w in self.actuator_widgets],
+            "sensors": [w.get_data() for w in self.sensor_widgets]
+        }
+        self.config_data["components"] = [comp]
+        self.json_preview.setText(json.dumps(self.config_data, indent=2))
 
     def deploy_to_aas(self):
         self.update_json_preview()
@@ -1337,7 +1379,7 @@ class ConveyorWizard(QMainWindow):
                 cc = model.SubmodelElementCollection(id_short=sanitize_aas_id(c["name"])); mf = c.get("mesh", "")
                 if mf: cc.value.add(model.File(id_short="Mesh", content_type="application/octet-stream", value=mf))
                 cc.value.add(model.Property(id_short="Parent", value_type=model.datatypes.String, value=c.get("parent", "")))
-                is_prod = c.get("dynamic", False) or (c["name"] == "Product_ConveyorSystem") or self.check_is_product.isChecked()
+                is_prod = c.get("dynamic", False) or (c["name"] == "Product_ConveyorSystem") or self.check_is_dynamic.isChecked()
                 cc.value.add(model.Property(id_short="DynamicObject", value_type=model.datatypes.Boolean, value=is_prod))
                 tc = model.SubmodelElementCollection(id_short="Transform"); ps = c.get("position", [0,0,0]); rt = c.get("rotation", [0,0,0]); sc = c.get("scale", [1,1,1])
                 for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Pos{a}", value_type=model.datatypes.Double, value=float(ps[i])))
