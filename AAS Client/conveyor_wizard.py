@@ -177,6 +177,8 @@ class SensorWidget(QGroupBox):
         self.check_visible = QCheckBox("Visible Trigger Zone")
         self.check_visible.setChecked(False)
         self.check_active_low = QCheckBox("Active Low")
+        self.check_snap = QCheckBox("Snap Product to Sensor Center")
+        self.check_snap.setChecked(False)
         
         self.combo_behavior = QComboBox(); self.combo_behavior.addItems(["TriggerZone", "Presence", "Proximity"])
         self.edit_filter = QLineEdit("Metal")
@@ -187,6 +189,7 @@ class SensorWidget(QGroupBox):
         layout.addRow("Target Filter:", self.edit_filter)
         layout.addRow(self.check_visible)
         layout.addRow(self.check_active_low)
+        layout.addRow(self.check_snap)
         
         btn_del = QPushButton("Delete")
         btn_del.setStyleSheet("background-color: #a93226;")
@@ -221,7 +224,15 @@ class SensorWidget(QGroupBox):
         self.edit_node.setText(name)
 
     def get_data(self):
-        return { "pin_id": self.edit_pin.text(), "node": self.edit_node.text(), "behavior": self.combo_behavior.currentText(), "target_filter": self.edit_filter.text(), "visible": self.check_visible.isChecked(), "active_low": self.check_active_low.isChecked() }
+        return { 
+            "pin_id": self.edit_pin.text(), 
+            "node": self.edit_node.text(), 
+            "behavior": self.combo_behavior.currentText(), 
+            "target_filter": self.edit_filter.text(), 
+            "visible": self.check_visible.isChecked(), 
+            "active_low": self.check_active_low.isChecked(),
+            "snap_product": self.check_snap.isChecked()
+        }
 
 class ConveyorWizard(QMainWindow):
     def __init__(self):
@@ -543,7 +554,8 @@ class ConveyorWizard(QMainWindow):
                             "pin_id": pin_id, "node": node, "behavior": b_type,
                             "target_filter": params.get("TargetFilter", "Metal"),
                             "visible": str(params.get("Visible", "False")).lower() == "true",
-                            "active_low": str(params.get("ActiveLow", "False")).lower() == "true"
+                            "active_low": str(params.get("ActiveLow", "False")).lower() == "true",
+                            "snap_product": "SnapTarget" in params
                         }
                         sensors.append(sens_data)
 
@@ -1052,6 +1064,7 @@ class ConveyorWizard(QMainWindow):
                         w.edit_filter.setText(params.get("TargetFilter", "Metal"))
                         w.check_visible.setChecked(str(params.get("Visible", "False")).lower() == "true")
                         w.check_active_low.setChecked(str(params.get("ActiveLow", "False")).lower() == "true")
+                        w.check_snap.setChecked("SnapTarget" in params)
             self.update_all_actuator_dropdowns()
             
             # Mesh Download
@@ -1170,6 +1183,7 @@ class ConveyorWizard(QMainWindow):
             w.edit_filter.setText(sns.get("target_filter", "Metal"))
             w.check_visible.setChecked(sns.get("visible", False))
             w.check_active_low.setChecked(sns.get("active_low", False))
+            w.check_snap.setChecked(sns.get("snap_product", False))
             
         self.update_all_actuator_dropdowns()
 
@@ -1407,6 +1421,7 @@ class ConveyorWizard(QMainWindow):
                     if "target_filter" in sns: pc.value.add(model.Property(id_short="TargetFilter", value_type=model.datatypes.String, value=sns["target_filter"]))
                     if "visible" in sns: pc.value.add(model.Property(id_short="Visible", value_type=model.datatypes.Boolean, value=bool(sns["visible"])))
                     if "active_low" in sns: pc.value.add(model.Property(id_short="ActiveLow", value_type=model.datatypes.Boolean, value=bool(sns["active_low"])))
+                    if sns.get("snap_product"): pc.value.add(model.Property(id_short="SnapTarget", value_type=model.datatypes.String, value="Product_ConveyorSystem"))
                     bc.value.add(pc); bm.submodel_element.add(bc)
             shell.submodel.add(model.ModelReference.from_referable(vs)); shell.submodel.add(model.ModelReference.from_referable(vp)); shell.submodel.add(model.ModelReference.from_referable(bm))
             obj_store = model.DictObjectStore(); obj_store.add(shell); obj_store.add(vs); obj_store.add(vp); obj_store.add(bm); fr = RobustFileRepo()
