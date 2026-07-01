@@ -108,8 +108,8 @@ public class AASActuatorController : MonoBehaviour
                             
                             if (b.type == "Conveyor") {
                                 isConveyor = true;
-                                conveyorAxis = b.axis;
                                 if (b.currentState || conveyorSpeed == 0f) {
+                                    conveyorAxis = b.axis;
                                     conveyorSpeed = b.speed;
                                     conveyorState = b.currentState;
                                     conveyorSensor = b.linkedSensor;
@@ -128,7 +128,7 @@ public class AASActuatorController : MonoBehaviour
 
                     if (isConveyor) {
                         Vector3 worldDir = curr.gameObject.transform.TransformDirection(conveyorAxis);
-                        bool isBlocked = conveyorSensor != null && conveyorSensor.binding.lastState;
+                        bool isBlocked = conveyorSensor != null && (conveyorSensor.binding.activeLow ? !conveyorSensor.binding.lastState : conveyorSensor.binding.lastState);
                         Vector3 vel = (conveyorState && !isBlocked) ? (worldDir * conveyorSpeed) : Vector3.zero;
                         candidateVelocities.Add(vel);
                     }
@@ -184,6 +184,7 @@ public class AASActuatorController : MonoBehaviour
                 Vector3 finalVel = new Vector3(targetVel.x, rb.linearVelocity.y, targetVel.z);
                 if (rb.IsSleeping()) rb.WakeUp();
                 rb.linearDamping = 0;
+                rb.linearVelocity = finalVel;
                 
                 targetPosition += finalVel * Time.fixedDeltaTime;
                 hasMovement = true;
@@ -194,7 +195,8 @@ public class AASActuatorController : MonoBehaviour
             if (hasMovement) {
                 logThrottle++;
                 if (logThrottle % 10 == 0) {
-                    Debug.Log($"[ConveyorPhysics] Moving product '{gameObject.name}' (Contacts={activeContacts.Count}):\n" +
+                    string contactNames = string.Join(", ", activeContacts.Keys.Select(k => k.name));
+                    Debug.Log($"[ConveyorPhysics] Moving product '{gameObject.name}' (Contacts={activeContacts.Count} [{contactNames}]):\n" +
                               $"  - deltaTranslation: {deltaTranslation}\n" +
                               $"  - deltaRotation (Euler): {deltaRotation.eulerAngles}\n" +
                               $"  - targetVel: {targetVel}\n" +

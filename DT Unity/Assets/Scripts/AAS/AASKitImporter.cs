@@ -242,6 +242,13 @@ public class AASKitImporter : MonoBehaviour
                     rb.isKinematic = false;
                     rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
                     rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+                    
+                    // Assign No Friction material to all colliders of this dynamic product to prevent getting stuck on vertical seam steps
+                    foreach (var col in compObj.GetComponentsInChildren<Collider>())
+                    {
+                        col.sharedMaterial = NoFrictionMaterial;
+                    }
+                    
                     Debug.Log($"[AASKitImporter] 📦 Activated Dynamic Product physics for '{compName}'.");
                 }
             }
@@ -366,5 +373,20 @@ public class AASKitImporter : MonoBehaviour
         if (float.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out float res))
             return res;
         return 0f;
+    }
+
+    private static PhysicsMaterial _noFrictionMaterial;
+    private static PhysicsMaterial NoFrictionMaterial {
+        get {
+            if (_noFrictionMaterial == null) {
+                _noFrictionMaterial = new PhysicsMaterial("NoFrictionProduct") {
+                    dynamicFriction = 0f,
+                    staticFriction = 0f,
+                    frictionCombine = PhysicsMaterialCombine.Minimum,
+                    bounceCombine = PhysicsMaterialCombine.Minimum
+                };
+            }
+            return _noFrictionMaterial;
+        }
     }
 }

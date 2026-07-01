@@ -25,6 +25,7 @@ public class AASSensorController : MonoBehaviour
         public string snapTarget;
         public Vector3 snapPosition;
         public bool hasSnap;
+        public float lastSnapTime = 0f; // Cooldown timer to prevent infinite re-snaps
     }
 
     private Dictionary<string, SensorBinding> componentToSensor = new Dictionary<string, SensorBinding>();
@@ -115,7 +116,7 @@ public class AASSensorController : MonoBehaviour
                             // Setup Unity Physics Proxy
                             var proxy = target.AddComponent<SensorPhysicsProxy>();
                             proxy.binding = binding;
-                            proxy.onStateChange += (state) => StartCoroutine(UpdateAASPin(binding, state));
+                            proxy.onStateChange += (state, isOverlapping, sensorObj) => StartCoroutine(UpdateAASPin(binding, state, isOverlapping, sensorObj));
 
                             // IMPORTANT: Sensors need a Rigidbody (Kinematic) to guarantee trigger events
                             if (target.GetComponent<Rigidbody>() == null) {
@@ -223,32 +224,19 @@ public class AASSensorController : MonoBehaviour
         return clean.Trim().ToLower();
     }
 
-    IEnumerator UpdateAASPin(SensorBinding binding, bool state)
+    IEnumerator UpdateAASPin(SensorBinding binding, bool state, bool isOverlapping, GameObject sensorObj)
     {
         string pinId = binding.pinId;
         Debug.Log($"[Sensor] 📡 Updating {pinId} to {state}");
 
         // --- SNAP / TELEPORT LOGIC ---
-        // If the sensor real signal becomes TRUE and has a Snap configuration,
-        // we force the target object to the specified position.
-        if (state && binding.hasSnap && !string.IsNullOrEmpty(binding.snapTarget))
+        // If the sensor has a Snap configuration and the product is physically entering (isOverlapping is true),
+        // we start a coroutine to snap it after a 0.3s delay.
+        // Includes a 1.5s cooldown to prevent infinite snapping while a conveyor is running
+        if (isOverlapping && binding.hasSnap && (UnityEngine.Time.time - binding.lastSnapTime > 1.5f))
         {
-            GameObject product = GameObject.Find(binding.snapTarget);
-            if (product != null)
-            {
-                // AAS layout is already Y-up (matching Python preview)
-                Vector3 unityPos = new Vector3(binding.snapPosition.x, binding.snapPosition.y, -binding.snapPosition.z);
-                product.transform.localPosition = unityPos;
-                
-                // Reset velocity to avoid physical "bouncing" after teleport
-                var rb = product.GetComponent<Rigidbody>();
-                if (rb != null) {
-                    rb.linearVelocity = Vector3.zero;
-                    rb.angularVelocity = Vector3.zero;
-                }
-                
-                Debug.Log($"[Sensor] ⚡ SNAP! Teleported {binding.snapTarget} to {unityPos} via {pinId}");
-            }
+            binding.lastSnapTime = UnityEngine.Time.time;
+            StartCoroutine(SnapWithDelayRoutine(binding, sensorObj, pinId));
         }
 
         // BaSyx 2.0 requires dot notation for nested elements inside collections
@@ -269,11 +257,72 @@ public class AASSensorController : MonoBehaviour
         }
     }
 
+    IEnumerator SnapWithDelayRoutine(SensorBinding binding, GameObject sensorObj, string pinId)
+    {
+        // Wait for 0.3 seconds to let Python turn off the conveyor and let the product settle
+        yield return new WaitForSeconds(0.3f);
+
+        GameObject product = null;
+        Rigidbody rb = null;
+
+        var rbs = FindObjectsByType<Rigidbody>(FindObjectsSortMode.None);
+        foreach (var r in rbs)
+        {
+            if (!r.isKinematic)
+            {
+                rb = r;
+                product = r.gameObject;
+                break;
+            }
+        }
+
+        if (product == null && !string.IsNullOrEmpty(binding.snapTarget))
+        {
+            product = GameObject.Find(binding.snapTarget);
+            if (product != null)
+            {
+                rb = product.GetComponent<Rigidbody>();
+            }
+        }
+
+        if (product != null)
+        {
+            Vector3 unityPos;
+            if (binding.snapPosition.sqrMagnitude < 0.0001f)
+            {
+                unityPos = new Vector3(sensorObj.transform.position.x, product.transform.position.y, sensorObj.transform.position.z);
+            }
+            else
+            {
+                unityPos = new Vector3(binding.snapPosition.x, binding.snapPosition.y, -binding.snapPosition.z);
+            }
+            
+            float dist = Vector3.Distance(product.transform.position, unityPos);
+            float angle = Quaternion.Angle(product.transform.rotation, Quaternion.Euler(0, sensorObj.transform.eulerAngles.y, 0));
+            
+            if (dist > 0.02f || angle > 2f)
+            {
+                product.transform.position = unityPos;
+                
+                // Also align rotation to match the sensor's orientation (along the conveyor axis)
+                product.transform.rotation = Quaternion.Euler(0, sensorObj.transform.eulerAngles.y, 0);
+                
+                // Reset velocity to avoid physical "bouncing" after teleport
+                if (rb != null) {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
+                
+                Debug.Log($"[Sensor] ⚡ DELAYED SNAP! Teleported dynamic product '{product.name}' to {unityPos} via {pinId} (Dist={dist:F4}, Angle={angle:F2}º)");
+            }
+        }
+    }
+
     // Helper class to be attached to each sensor component
     public class SensorPhysicsProxy : MonoBehaviour
     {
         public SensorBinding binding;
-        public Action<bool> onStateChange;
+        public Action<bool, bool, GameObject> onStateChange;
         public HashSet<Collider> touching = new HashSet<Collider>();
 
         void Start() {
@@ -353,7 +402,7 @@ public class AASSensorController : MonoBehaviour
             if (force || newState != binding.lastState)
             {
                 binding.lastState = newState;
-                onStateChange?.Invoke(newState);
+                onStateChange?.Invoke(newState, isOverlapping, this.gameObject);
             }
         }
     }
