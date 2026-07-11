@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTreeWidget, QTreeWidgetItem, QCheckBox, 
                              QDoubleSpinBox, QComboBox, QMessageBox, QTextEdit,
                              QGroupBox, QScrollArea, QDialog, QDialogButtonBox,
-                             QSplitter, QListWidget, QListWidgetItem)
+                             QSplitter, QListWidget, QListWidgetItem, QInputDialog)
 from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QColor, QFont
 
@@ -234,11 +234,52 @@ class SensorWidget(QGroupBox):
             "snap_product": self.check_snap.isChecked()
         }
 
+class TriggerRow(QWidget):
+    def __init__(self, parent_wizard, sensor_list, initial_sensor="", initial_value=True, on_delete=None, on_changed=None):
+        super().__init__()
+        self.on_changed = on_changed
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 2, 0, 2)
+        layout.setSpacing(5)
+        
+        self.combo_sensor = QComboBox()
+        self.combo_sensor.addItems(sensor_list)
+        if initial_sensor in sensor_list:
+            self.combo_sensor.setCurrentText(initial_sensor)
+        
+        self.combo_value = QComboBox()
+        self.combo_value.addItems(["true", "false"])
+        self.combo_value.setCurrentText("true" if initial_value else "false")
+        
+        btn_del = QPushButton("❌")
+        btn_del.setFixedWidth(30)
+        btn_del.setStyleSheet("background-color: #a93226; padding: 2px;")
+        if on_delete:
+            btn_del.clicked.connect(on_delete)
+            
+        layout.addWidget(self.combo_sensor, 2)
+        layout.addWidget(self.combo_value, 1)
+        layout.addWidget(btn_del)
+        
+        self.combo_sensor.currentTextChanged.connect(self._trigger_change)
+        self.combo_value.currentTextChanged.connect(self._trigger_change)
+        
+    def _trigger_change(self):
+        if self.on_changed:
+            self.on_changed()
+            
+    def get_data(self):
+        return {
+            "sensor": self.combo_sensor.currentText(),
+            "value": self.combo_value.currentText() == "true"
+        }
+
 class ConveyorWizard(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Conveyor Wizard")
         self.config_data = {"kit_name": "", "aas_id": "", "description": "", "components": []}
+        self.logic_rules = {"start": [], "sequences": []}
         self.glb_path = None; self.meshes = {}; self.actors = {}; self.actuator_widgets = []; self.sensor_widgets = []; 
         self.current_config_widget = None
         self.apply_styles(); self.setup_ui()
@@ -267,7 +308,7 @@ class ConveyorWizard(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         
         self.wizard_panel = QWidget(); self.wizard_panel.setMinimumWidth(400); self.wizard_layout = QVBoxLayout(self.wizard_panel)
-        self.step_label = QLabel("Step 1 of 5: Model Selection"); self.step_label.setStyleSheet("font-size: 20px; color: #007acc; margin-bottom: 5px;")
+        self.step_label = QLabel("Step 1 of 6: Model Selection"); self.step_label.setStyleSheet("font-size: 20px; color: #007acc; margin-bottom: 5px;")
         self.wizard_layout.addWidget(self.step_label); self.stack = QStackedWidget(); self.wizard_layout.addWidget(self.stack); self.setup_steps()
         
         self.lbl_global_error = QLabel(VALIDATION_MSG); self.lbl_global_error.setStyleSheet("color: #e74c3c; font-weight: bold; background-color: #2d1e1e; padding: 10px; border-radius: 4px;")
@@ -353,8 +394,573 @@ class ConveyorWizard(QMainWindow):
         self.page4 = QWidget(); l4 = QVBoxLayout(self.page4); self.scroll_act = QScrollArea(); self.scroll_act.setWidgetResizable(True); self.act_container = QWidget(); self.act_layout = QVBoxLayout(self.act_container); self.scroll_act.setWidget(self.act_container)
         l4.addWidget(self.scroll_act); ba = QPushButton("➕ Add Actuator"); ba.clicked.connect(self.add_actuator); l4.addWidget(ba); self.stack.addWidget(self.page4)
         
-        # P5: Preview
-        self.page5 = QWidget(); l5 = QVBoxLayout(self.page5); self.json_preview = QTextEdit(); self.json_preview.setReadOnly(True); l5.addWidget(self.json_preview); self.stack.addWidget(self.page5)
+        # P5: Control Logic
+        self.page5 = QWidget()
+        self.setup_control_logic_page()
+        self.stack.addWidget(self.page5)
+        
+        # P6: Preview
+        self.page6 = QWidget()
+        l6 = QVBoxLayout(self.page6)
+        self.json_preview = QTextEdit()
+        self.json_preview.setReadOnly(True)
+        l6.addWidget(self.json_preview)
+        self.stack.addWidget(self.page6)
+
+    def setup_control_logic_page(self):
+        l5 = QVBoxLayout(self.page5)
+        l5.setContentsMargins(10, 10, 10, 10)
+        l5.setSpacing(10)
+        
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        l5.addWidget(splitter)
+        
+        # Panel A: Left (Sequences List)
+        panel_a = QGroupBox("Sequences")
+        layout_a = QVBoxLayout(panel_a)
+        layout_a.setContentsMargins(10, 15, 10, 10)
+        self.list_sequences = QListWidget()
+        self.list_sequences.addItem("Start Sequence")
+        layout_a.addWidget(self.list_sequences)
+        
+        btn_layout_a = QHBoxLayout()
+        self.btn_add_seq = QPushButton("Add Sequence")
+        self.btn_del_seq = QPushButton("Delete Sequence")
+        self.btn_del_seq.setStyleSheet("background-color: #a93226;")
+        btn_layout_a.addWidget(self.btn_add_seq)
+        btn_layout_a.addWidget(self.btn_del_seq)
+        layout_a.addLayout(btn_layout_a)
+        
+        # Panel B: Middle (Trigger Conditions)
+        self.group_triggers = QGroupBox("Trigger Conditions")
+        layout_b = QVBoxLayout(self.group_triggers)
+        layout_b.setContentsMargins(10, 15, 10, 10)
+        
+        op_layout = QHBoxLayout()
+        op_layout.addWidget(QLabel("Operator:"))
+        self.combo_trigger_op = QComboBox()
+        self.combo_trigger_op.addItems(["AND", "OR"])
+        op_layout.addWidget(self.combo_trigger_op)
+        op_layout.addStretch()
+        layout_b.addLayout(op_layout)
+        
+        self.scroll_triggers = QScrollArea()
+        self.scroll_triggers.setWidgetResizable(True)
+        self.triggers_container = QWidget()
+        self.triggers_layout = QVBoxLayout(self.triggers_container)
+        self.triggers_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.triggers_layout.setContentsMargins(0, 0, 0, 0)
+        self.triggers_layout.setSpacing(5)
+        self.scroll_triggers.setWidget(self.triggers_container)
+        layout_b.addWidget(self.scroll_triggers)
+        
+        self.btn_add_trigger = QPushButton("➕ Add Trigger Condition")
+        layout_b.addWidget(self.btn_add_trigger)
+        
+        # Panel C: Right (Sequence Steps)
+        self.group_steps = QGroupBox("Sequence Steps")
+        layout_c = QVBoxLayout(self.group_steps)
+        layout_c.setContentsMargins(10, 15, 10, 10)
+        
+        self.list_steps = QListWidget()
+        layout_c.addWidget(self.list_steps)
+        
+        btn_add_step_layout = QHBoxLayout()
+        self.btn_add_set_act = QPushButton("Add Set Actuator")
+        self.btn_add_wait_until = QPushButton("Add Wait Until")
+        self.btn_add_wait_time = QPushButton("Add Wait Time")
+        btn_add_step_layout.addWidget(self.btn_add_set_act)
+        btn_add_step_layout.addWidget(self.btn_add_wait_until)
+        btn_add_step_layout.addWidget(self.btn_add_wait_time)
+        layout_c.addLayout(btn_add_step_layout)
+        
+        btn_control_layout = QHBoxLayout()
+        self.btn_move_up = QPushButton("Move Up")
+        self.btn_move_down = QPushButton("Move Down")
+        self.btn_delete_step = QPushButton("Delete Step")
+        self.btn_delete_step.setStyleSheet("background-color: #a93226;")
+        btn_control_layout.addWidget(self.btn_move_up)
+        btn_control_layout.addWidget(self.btn_move_down)
+        btn_control_layout.addWidget(self.btn_delete_step)
+        layout_c.addLayout(btn_control_layout)
+        
+        # Bottom Edit Pane
+        self.group_step_edit = QGroupBox("Edit Selected Step")
+        self.step_edit_layout = QVBoxLayout(self.group_step_edit)
+        self.step_edit_layout.setContentsMargins(10, 15, 10, 10)
+        self.step_edit_stack = QStackedWidget()
+        self.step_edit_layout.addWidget(self.step_edit_stack)
+        layout_c.addWidget(self.group_step_edit)
+        
+        # Add to splitter
+        splitter.addWidget(panel_a)
+        splitter.addWidget(self.group_triggers)
+        splitter.addWidget(self.group_steps)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 2)
+        
+        # Step Edit Stack Pages
+        # Page 0: Empty
+        page_empty = QWidget()
+        layout_empty = QVBoxLayout(page_empty)
+        lbl_empty = QLabel("Select a step to edit properties")
+        lbl_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout_empty.addWidget(lbl_empty)
+        self.step_edit_stack.addWidget(page_empty)
+        
+        # Page 1: set_actuator
+        page_actuator = QWidget()
+        layout_actuator = QFormLayout(page_actuator)
+        layout_actuator.setContentsMargins(0, 0, 0, 0)
+        layout_actuator.setSpacing(5)
+        self.edit_step_actuator_combo = QComboBox()
+        self.edit_step_actuator_val = QCheckBox("Active / On")
+        layout_actuator.addRow("Actuator:", self.edit_step_actuator_combo)
+        layout_actuator.addRow("Target State:", self.edit_step_actuator_val)
+        self.step_edit_stack.addWidget(page_actuator)
+        
+        # Page 2: wait_time
+        page_time = QWidget()
+        layout_time = QFormLayout(page_time)
+        layout_time.setContentsMargins(0, 0, 0, 0)
+        layout_time.setSpacing(5)
+        self.edit_step_wait_time_spin = QDoubleSpinBox()
+        self.edit_step_wait_time_spin.setRange(0.0, 3600.0)
+        self.edit_step_wait_time_spin.setSingleStep(0.1)
+        self.edit_step_wait_time_spin.setSuffix(" seconds")
+        self.edit_step_wait_time_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+        layout_time.addRow("Delay:", self.edit_step_wait_time_spin)
+        self.step_edit_stack.addWidget(page_time)
+        
+        # Page 3: wait_until
+        page_until = QWidget()
+        layout_until = QVBoxLayout(page_until)
+        layout_until.setContentsMargins(0, 0, 0, 0)
+        layout_until.setSpacing(5)
+        
+        until_op_layout = QHBoxLayout()
+        until_op_layout.addWidget(QLabel("Operator:"))
+        self.edit_step_wait_until_op = QComboBox()
+        self.edit_step_wait_until_op.addItems(["AND", "OR"])
+        until_op_layout.addWidget(self.edit_step_wait_until_op)
+        until_op_layout.addStretch()
+        layout_until.addLayout(until_op_layout)
+        
+        self.scroll_step_wait_until = QScrollArea()
+        self.scroll_step_wait_until.setWidgetResizable(True)
+        self.scroll_step_wait_until.setMinimumHeight(100)
+        self.step_wait_until_container = QWidget()
+        self.step_wait_until_layout = QVBoxLayout(self.step_wait_until_container)
+        self.step_wait_until_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.step_wait_until_layout.setContentsMargins(0, 0, 0, 0)
+        self.step_wait_until_layout.setSpacing(5)
+        self.scroll_step_wait_until.setWidget(self.step_wait_until_container)
+        layout_until.addWidget(self.scroll_step_wait_until)
+        
+        self.btn_add_step_wait_until_cond = QPushButton("➕ Add Sensor Condition")
+        layout_until.addWidget(self.btn_add_step_wait_until_cond)
+        self.step_edit_stack.addWidget(page_until)
+        
+        # Connections
+        self.list_sequences.currentRowChanged.connect(self.on_sequence_selected)
+        self.btn_add_seq.clicked.connect(self.add_sequence)
+        self.btn_del_seq.clicked.connect(self.delete_sequence)
+        
+        self.combo_trigger_op.currentTextChanged.connect(self.save_trigger_changes)
+        self.btn_add_trigger.clicked.connect(self.add_trigger_condition)
+        
+        self.list_steps.currentRowChanged.connect(self.update_step_edit_pane)
+        self.btn_add_set_act.clicked.connect(self.add_set_actuator_step)
+        self.btn_add_wait_time.clicked.connect(self.add_wait_time_step)
+        self.btn_add_wait_until.clicked.connect(self.add_wait_until_step)
+        
+        self.btn_move_up.clicked.connect(self.move_step_up)
+        self.btn_move_down.clicked.connect(self.move_step_down)
+        self.btn_delete_step.clicked.connect(self.delete_step)
+        
+        self.edit_step_actuator_combo.currentTextChanged.connect(self.save_current_step_changes)
+        self.edit_step_actuator_val.toggled.connect(self.save_current_step_changes)
+        self.edit_step_wait_time_spin.valueChanged.connect(self.save_current_step_changes)
+        self.edit_step_wait_until_op.currentTextChanged.connect(self.save_current_step_changes)
+        self.btn_add_step_wait_until_cond.clicked.connect(self.add_step_condition)
+        
+        # Initialize visibility & status
+        self.group_triggers.setVisible(False)
+        self.btn_del_seq.setEnabled(False)
+        self.step_edit_stack.setCurrentIndex(0)
+
+    def refresh_logic_dropdowns(self):
+        sensors = [sw.edit_pin.text() for sw in self.sensor_widgets if sw.edit_pin.text()]
+        actuators = [aw.edit_pin.text() for aw in self.actuator_widgets if aw.edit_pin.text()]
+        
+        # Update sequence triggers
+        for i in range(self.triggers_layout.count()):
+            w = self.triggers_layout.itemAt(i).widget()
+            if isinstance(w, TriggerRow):
+                curr_text = w.combo_sensor.currentText()
+                w.combo_sensor.blockSignals(True)
+                w.combo_sensor.clear()
+                w.combo_sensor.addItems(sensors)
+                w.combo_sensor.setCurrentText(curr_text)
+                w.combo_sensor.blockSignals(False)
+                
+        # Update step actuator dropdown
+        curr_act = self.edit_step_actuator_combo.currentText()
+        self.edit_step_actuator_combo.blockSignals(True)
+        self.edit_step_actuator_combo.clear()
+        self.edit_step_actuator_combo.addItems(actuators)
+        self.edit_step_actuator_combo.setCurrentText(curr_act)
+        self.edit_step_actuator_combo.blockSignals(False)
+        
+        # Update step wait_until sensor dropdowns
+        for i in range(self.step_wait_until_layout.count()):
+            w = self.step_wait_until_layout.itemAt(i).widget()
+            if isinstance(w, TriggerRow):
+                curr_text = w.combo_sensor.currentText()
+                w.combo_sensor.blockSignals(True)
+                w.combo_sensor.clear()
+                w.combo_sensor.addItems(sensors)
+                w.combo_sensor.setCurrentText(curr_text)
+                w.combo_sensor.blockSignals(False)
+
+    def get_current_steps_list(self):
+        row = self.list_sequences.currentRow()
+        if row == 0:
+            return self.logic_rules["start"]
+        elif row > 0 and (row - 1) < len(self.logic_rules["sequences"]):
+            return self.logic_rules["sequences"][row - 1]["steps"]
+        return None
+
+    def refresh_steps_list(self):
+        self.list_steps.blockSignals(True)
+        self.list_steps.clear()
+        steps = self.get_current_steps_list()
+        if steps is not None:
+            for step in steps:
+                text = self.get_step_display_text(step)
+                self.list_steps.addItem(text)
+        self.list_steps.blockSignals(False)
+        self.update_step_edit_pane()
+
+    def get_step_display_text(self, step):
+        t = step.get("type")
+        if t == "set_actuator":
+            act = step.get("actuator", "None")
+            val = step.get("value", False)
+            return f"Set Actuator: {act} -> {val}"
+        elif t == "wait_time":
+            val = step.get("seconds", 0.0)
+            return f"Wait Time: {val}s"
+        elif t == "wait_until":
+            op = step.get("operator", "AND")
+            conds = step.get("conditions", [])
+            cond_str = ", ".join([f"{c.get('sensor')}=={c.get('value')}" for c in conds])
+            return f"Wait Until: {op} ({cond_str})"
+        return "Unknown Step"
+
+    def block_step_edit_signals(self, block):
+        self.edit_step_actuator_combo.blockSignals(block)
+        self.edit_step_actuator_val.blockSignals(block)
+        self.edit_step_wait_time_spin.blockSignals(block)
+        self.edit_step_wait_until_op.blockSignals(block)
+
+    def update_step_edit_pane(self):
+        step_row = self.list_steps.currentRow()
+        steps = self.get_current_steps_list()
+        
+        if steps is None or step_row < 0 or step_row >= len(steps):
+            self.step_edit_stack.setCurrentIndex(0)
+            return
+            
+        step = steps[step_row]
+        t = step.get("type")
+        
+        self.block_step_edit_signals(True)
+        
+        if t == "set_actuator":
+            self.step_edit_stack.setCurrentIndex(1)
+            self.edit_step_actuator_combo.clear()
+            actuators = [aw.edit_pin.text() for aw in self.actuator_widgets if aw.edit_pin.text()]
+            self.edit_step_actuator_combo.addItems(actuators)
+            self.edit_step_actuator_combo.setCurrentText(step.get("actuator", ""))
+            self.edit_step_actuator_val.setChecked(bool(step.get("value", False)))
+            
+        elif t == "wait_time":
+            self.step_edit_stack.setCurrentIndex(2)
+            self.edit_step_wait_time_spin.setValue(float(step.get("seconds", 0.0)))
+            
+        elif t == "wait_until":
+            self.step_edit_stack.setCurrentIndex(3)
+            self.edit_step_wait_until_op.setCurrentText(step.get("operator", "AND"))
+            while self.step_wait_until_layout.count() > 0:
+                child = self.step_wait_until_layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+                    
+            sensors = [sw.edit_pin.text() for sw in self.sensor_widgets if sw.edit_pin.text()]
+            for cond in step.get("conditions", []):
+                row_widget = TriggerRow(
+                    self,
+                    sensors,
+                    initial_sensor=cond.get("sensor", ""),
+                    initial_value=cond.get("value", True),
+                    on_delete=lambda w=None: self.delete_step_condition(row_widget),
+                    on_changed=self.save_current_step_changes
+                )
+                self.step_wait_until_layout.addWidget(row_widget)
+                
+        else:
+            self.step_edit_stack.setCurrentIndex(0)
+            
+        self.block_step_edit_signals(False)
+
+    def delete_step_condition(self, row_widget):
+        row_widget.deleteLater()
+        QTimer.singleShot(50, self.save_current_step_changes)
+
+    def save_current_step_changes(self):
+        step_row = self.list_steps.currentRow()
+        steps = self.get_current_steps_list()
+        
+        if steps is None or step_row < 0 or step_row >= len(steps):
+            return
+            
+        step = steps[step_row]
+        t = step.get("type")
+        
+        if t == "set_actuator":
+            step["actuator"] = self.edit_step_actuator_combo.currentText()
+            step["value"] = self.edit_step_actuator_val.isChecked()
+        elif t == "wait_time":
+            step["seconds"] = self.edit_step_wait_time_spin.value()
+        elif t == "wait_until":
+            step["operator"] = self.edit_step_wait_until_op.currentText()
+            conds = []
+            for i in range(self.step_wait_until_layout.count()):
+                w = self.step_wait_until_layout.itemAt(i).widget()
+                if isinstance(w, TriggerRow):
+                    conds.append(w.get_data())
+            step["conditions"] = conds
+            
+        self.list_steps.item(step_row).setText(self.get_step_display_text(step))
+        self.update_json_preview()
+
+    def save_trigger_changes(self):
+        row = self.list_sequences.currentRow()
+        if row <= 0:
+            return
+            
+        seq_idx = row - 1
+        if seq_idx < 0 or seq_idx >= len(self.logic_rules["sequences"]):
+            return
+            
+        seq = self.logic_rules["sequences"][seq_idx]
+        if "trigger" not in seq or not isinstance(seq["trigger"], dict):
+            seq["trigger"] = {"operator": "AND", "conditions": []}
+            
+        seq["trigger"]["operator"] = self.combo_trigger_op.currentText()
+        
+        triggers = []
+        for i in range(self.triggers_layout.count()):
+            w = self.triggers_layout.itemAt(i).widget()
+            if isinstance(w, TriggerRow):
+                triggers.append(w.get_data())
+        seq["trigger"]["conditions"] = triggers
+        
+        self.update_json_preview()
+
+    def add_trigger_condition(self):
+        row = self.list_sequences.currentRow()
+        if row <= 0:
+            return
+            
+        sensors = [sw.edit_pin.text() for sw in self.sensor_widgets if sw.edit_pin.text()]
+        row_widget = TriggerRow(
+            self,
+            sensors,
+            initial_sensor="",
+            initial_value=True,
+            on_delete=lambda w=None: self.delete_trigger_condition(row_widget),
+            on_changed=self.save_trigger_changes
+        )
+        self.triggers_layout.addWidget(row_widget)
+        self.save_trigger_changes()
+        
+    def delete_trigger_condition(self, row_widget):
+        row_widget.deleteLater()
+        QTimer.singleShot(50, self.save_trigger_changes)
+
+    def on_sequence_selected(self, row):
+        self.save_current_step_changes()
+        
+        if row == 0:
+            self.group_triggers.setVisible(False)
+            self.refresh_steps_list()
+        elif row > 0 and (row - 1) < len(self.logic_rules["sequences"]):
+            self.group_triggers.setVisible(True)
+            seq = self.logic_rules["sequences"][row - 1]
+            if "trigger" not in seq or not isinstance(seq["trigger"], dict):
+                seq["trigger"] = {"operator": "AND", "conditions": []}
+            
+            self.combo_trigger_op.blockSignals(True)
+            self.combo_trigger_op.setCurrentText(seq["trigger"].get("operator", "AND"))
+            self.combo_trigger_op.blockSignals(False)
+            
+            while self.triggers_layout.count() > 0:
+                child = self.triggers_layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+                    
+            sensors = [sw.edit_pin.text() for sw in self.sensor_widgets if sw.edit_pin.text()]
+            for cond in seq["trigger"].get("conditions", []):
+                row_widget = TriggerRow(
+                    self,
+                    sensors,
+                    initial_sensor=cond.get("sensor", ""),
+                    initial_value=cond.get("value", True),
+                    on_delete=lambda w=None: self.delete_trigger_condition(row_widget),
+                    on_changed=self.save_trigger_changes
+                )
+                self.triggers_layout.addWidget(row_widget)
+                
+            self.refresh_steps_list()
+        else:
+            self.group_triggers.setVisible(False)
+            self.list_steps.clear()
+            self.step_edit_stack.setCurrentIndex(0)
+            
+        self.btn_del_seq.setEnabled(row > 0)
+
+    def add_sequence(self):
+        name, ok = QInputDialog.getText(self, "Add Sequence", "Enter sequence name:")
+        if ok and name.strip():
+            name = name.strip()
+            existing = ["Start Sequence"] + [s["name"] for s in self.logic_rules["sequences"]]
+            if name in existing:
+                QMessageBox.warning(self, "Warning", "A sequence with this name already exists.")
+                return
+            
+            self.logic_rules["sequences"].append({
+                "name": name,
+                "trigger": {"operator": "AND", "conditions": []},
+                "steps": []
+            })
+            self.list_sequences.addItem(name)
+            self.list_sequences.setCurrentRow(self.list_sequences.count() - 1)
+            self.update_json_preview()
+
+    def delete_sequence(self):
+        row = self.list_sequences.currentRow()
+        if row <= 0:
+            QMessageBox.warning(self, "Warning", "Cannot delete the permanent Start Sequence.")
+            return
+            
+        seq_idx = row - 1
+        reply = QMessageBox.question(
+            self, "Confirm Delete",
+            f"Are you sure you want to delete sequence '{self.logic_rules['sequences'][seq_idx]['name']}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            del self.logic_rules["sequences"][seq_idx]
+            self.list_sequences.takeItem(row)
+            self.list_sequences.setCurrentRow(row - 1)
+            self.update_json_preview()
+
+    def add_set_actuator_step(self):
+        steps = self.get_current_steps_list()
+        if steps is not None:
+            actuators = [aw.edit_pin.text() for aw in self.actuator_widgets if aw.edit_pin.text()]
+            act = actuators[0] if actuators else ""
+            steps.append({
+                "type": "set_actuator",
+                "actuator": act,
+                "value": False
+            })
+            self.refresh_steps_list()
+            self.list_steps.setCurrentRow(len(steps) - 1)
+            self.update_json_preview()
+
+    def add_wait_time_step(self):
+        steps = self.get_current_steps_list()
+        if steps is not None:
+            steps.append({
+                "type": "wait_time",
+                "seconds": 1.0
+            })
+            self.refresh_steps_list()
+            self.list_steps.setCurrentRow(len(steps) - 1)
+            self.update_json_preview()
+
+    def add_wait_until_step(self):
+        steps = self.get_current_steps_list()
+        if steps is not None:
+            steps.append({
+                "type": "wait_until",
+                "operator": "AND",
+                "conditions": []
+            })
+            self.refresh_steps_list()
+            self.list_steps.setCurrentRow(len(steps) - 1)
+            self.update_json_preview()
+
+    def add_step_condition(self):
+        step_row = self.list_steps.currentRow()
+        steps = self.get_current_steps_list()
+        if steps is None or step_row < 0 or step_row >= len(steps):
+            return
+        step = steps[step_row]
+        if step.get("type") != "wait_until":
+            return
+            
+        sensors = [sw.edit_pin.text() for sw in self.sensor_widgets if sw.edit_pin.text()]
+        row_widget = TriggerRow(
+            self,
+            sensors,
+            initial_sensor="",
+            initial_value=True,
+            on_delete=lambda w=None: self.delete_step_condition(row_widget),
+            on_changed=self.save_current_step_changes
+        )
+        self.step_wait_until_layout.addWidget(row_widget)
+        self.save_current_step_changes()
+
+    def move_step_up(self):
+        step_row = self.list_steps.currentRow()
+        steps = self.get_current_steps_list()
+        if steps is not None and step_row > 0:
+            steps[step_row], steps[step_row - 1] = steps[step_row - 1], steps[step_row]
+            self.refresh_steps_list()
+            self.list_steps.setCurrentRow(step_row - 1)
+            self.update_json_preview()
+
+    def move_step_down(self):
+        step_row = self.list_steps.currentRow()
+        steps = self.get_current_steps_list()
+        if steps is not None and 0 <= step_row < len(steps) - 1:
+            steps[step_row], steps[step_row + 1] = steps[step_row + 1], steps[step_row]
+            self.refresh_steps_list()
+            self.list_steps.setCurrentRow(step_row + 1)
+            self.update_json_preview()
+
+    def delete_step(self):
+        step_row = self.list_steps.currentRow()
+        steps = self.get_current_steps_list()
+        if steps is not None and 0 <= step_row < len(steps):
+            reply = QMessageBox.question(
+                self, "Confirm Delete",
+                "Are you sure you want to delete this step?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                del steps[step_row]
+                self.refresh_steps_list()
+                if step_row < len(steps):
+                    self.list_steps.setCurrentRow(step_row)
+                elif len(steps) > 0:
+                    self.list_steps.setCurrentRow(len(steps) - 1)
+                self.update_json_preview()
 
     def manage_deployed_aas(self):
         try:
@@ -1115,7 +1721,8 @@ class ConveyorWizard(QMainWindow):
             "rot": [self.sys_rot[i].value() for i in range(3)],
             "scale": [self.sys_scale[i].value() for i in range(3)],
             "actuators": [w.get_data() for w in self.actuator_widgets],
-            "sensors": [w.get_data() for w in self.sensor_widgets]
+            "sensors": [w.get_data() for w in self.sensor_widgets],
+            "control_logic": self.logic_rules
         }
 
     def restore_wizard_state(self, state, config_dir=None):
@@ -1191,7 +1798,16 @@ class ConveyorWizard(QMainWindow):
             if i < len(self.actuator_widgets) and "stop_sensor" in act:
                 self.actuator_widgets[i].combo_stop_sens.setCurrentText(act["stop_sensor"])
 
-
+        # Restore logic rules
+        self.logic_rules = state.get("control_logic", {"start": [], "sequences": []})
+        self.list_sequences.blockSignals(True)
+        self.list_sequences.clear()
+        self.list_sequences.addItem("Start Sequence")
+        for seq in self.logic_rules.get("sequences", []):
+            self.list_sequences.addItem(seq.get("name", "Custom Sequence"))
+        self.list_sequences.setCurrentRow(0)
+        self.list_sequences.blockSignals(False)
+        self.on_sequence_selected(0)
 
     def reset_wizard(self):
         # 1. Clear GLB model path
@@ -1222,6 +1838,15 @@ class ConveyorWizard(QMainWindow):
         self.meshes = {}
         self.actors = {}
         
+        # Reset control logic
+        self.logic_rules = {"start": [], "sequences": []}
+        self.list_sequences.blockSignals(True)
+        self.list_sequences.clear()
+        self.list_sequences.addItem("Start Sequence")
+        self.list_sequences.setCurrentRow(0)
+        self.list_sequences.blockSignals(False)
+        self.on_sequence_selected(0)
+
         # 6. Update UI
         self.update_validation_ui()
 
@@ -1345,20 +1970,25 @@ class ConveyorWizard(QMainWindow):
         idx = self.stack.currentIndex(); self.stack.setCurrentIndex(idx - 1); self.update_nav()
     def update_nav(self):
         idx = self.stack.currentIndex(); self.btn_prev.setEnabled(idx > 0)
-        titles = ["Model Selection", "Basic Info & Transform", "Configure Sensors", "Configure Actuators", "Review & Deploy"]
-        self.step_label.setText(f"Step {idx+1} of 5: {titles[idx]}")
-        if idx != 4:
+        titles = ["Model Selection", "Basic Info & Transform", "Configure Sensors", "Configure Actuators", "Control Logic", "Review & Deploy"]
+        self.step_label.setText(f"Step {idx+1} of 6: {titles[idx]}")
+        if idx != 5:
             for w in self.actuator_widgets:
                 if w.arrow: self.plotter.remove_actor(w.arrow); w.arrow = None
-        elif idx == 4:
+        elif idx == 5:
             for w in self.actuator_widgets: w.update_visuals()
+            
+        if idx == 4:
+            self.refresh_logic_dropdowns()
+            
         self.btn_next.setText("Deploy to AAS" if idx == self.stack.count() - 1 else "Next →"); self.update_json_preview()
             
     def update_json_preview(self):
         self.config_data = {
             "kit_name": self.edit_kit_name.text(),
             "aas_id": self.edit_aas_id.text(),
-            "description": self.edit_desc.text()
+            "description": self.edit_desc.text(),
+            "control_logic": self.logic_rules
         }
         
         comp_name = "Product_ConveyorSystem" if self.check_is_dynamic.isChecked() else "ConveyorSystem"
