@@ -1672,6 +1672,30 @@ class ConveyorWizard(QMainWindow):
                         w.check_active_low.setChecked(str(params.get("ActiveLow", "False")).lower() == "true")
                         w.check_snap.setChecked("SnapTarget" in params)
             self.update_all_actuator_dropdowns()
+
+            # Control Logic
+            logic_data = next((v for k,v in submodels_data.items() if "ControlLogic" in k or "Logic" in k), None)
+            self.logic_rules = {"start": [], "sequences": []}
+            if logic_data:
+                for el in logic_data.get("submodelElements", []):
+                    if el["idShort"] == "Rules":
+                        rules_json_str = el.get("value", "")
+                        if rules_json_str:
+                            try:
+                                loaded_rules = json.loads(rules_json_str)
+                                if isinstance(loaded_rules, dict):
+                                    self.logic_rules = loaded_rules
+                            except Exception:
+                                traceback.print_exc()
+
+            self.list_sequences.blockSignals(True)
+            self.list_sequences.clear()
+            self.list_sequences.addItem("Start Sequence")
+            for seq in self.logic_rules.get("sequences", []):
+                self.list_sequences.addItem(seq.get("name", "Custom Sequence"))
+            self.list_sequences.setCurrentRow(0)
+            self.list_sequences.blockSignals(False)
+            self.on_sequence_selected(0)
             
             # Mesh Download
             if mesh_href:
@@ -2017,6 +2041,8 @@ class ConveyorWizard(QMainWindow):
             vs = model.Submodel(id_=f"https://acplt.org/Submodels/Visual_{kfn}", id_short="VisualStructure")
             vp = model.Submodel(id_=f"https://acplt.org/Submodels/Pins_{kfn}", id_short="VirtualPins")
             bm = model.Submodel(id_=f"https://acplt.org/Submodels/Behavior_{kfn}", id_short="BehaviorMapping")
+            cl = model.Submodel(id_=f"https://acplt.org/Submodels/ControlLogic_{kfn}", id_short="ControlLogic")
+            cl.submodel_element.add(model.Property(id_short="Rules", value_type=model.datatypes.String, value=json.dumps(self.logic_rules)))
             ic = model.SubmodelElementCollection(id_short="Inputs"); oc = model.SubmodelElementCollection(id_short="Outputs")
             vp.submodel_element.add(ic); vp.submodel_element.add(oc)
             for c in self.config_data["components"]:
@@ -2053,8 +2079,8 @@ class ConveyorWizard(QMainWindow):
                     if "active_low" in sns: pc.value.add(model.Property(id_short="ActiveLow", value_type=model.datatypes.Boolean, value=bool(sns["active_low"])))
                     if sns.get("snap_product"): pc.value.add(model.Property(id_short="SnapTarget", value_type=model.datatypes.String, value="Product_ConveyorSystem"))
                     bc.value.add(pc); bm.submodel_element.add(bc)
-            shell.submodel.add(model.ModelReference.from_referable(vs)); shell.submodel.add(model.ModelReference.from_referable(vp)); shell.submodel.add(model.ModelReference.from_referable(bm))
-            obj_store = model.DictObjectStore(); obj_store.add(shell); obj_store.add(vs); obj_store.add(vp); obj_store.add(bm); fr = RobustFileRepo()
+            shell.submodel.add(model.ModelReference.from_referable(vs)); shell.submodel.add(model.ModelReference.from_referable(vp)); shell.submodel.add(model.ModelReference.from_referable(bm)); shell.submodel.add(model.ModelReference.from_referable(cl))
+            obj_store = model.DictObjectStore(); obj_store.add(shell); obj_store.add(vs); obj_store.add(vp); obj_store.add(bm); obj_store.add(cl); fr = RobustFileRepo()
             import tempfile
             import time
             bd = os.path.dirname(self.glb_path)
@@ -2075,7 +2101,7 @@ class ConveyorWizard(QMainWindow):
                             with open(lp, 'rb') as tf:
                                 co = tf.read()
                             ap = posixpath.normpath(posixpath.join("/aasx/kit", rp)); fr.add_file(ap, co)
-            for sm in [vs, vp, bm]:
+            for sm in [vs, vp, bm, cl]:
                 for el in sm.submodel_element:
                     if isinstance(el, model.File) and el.value and not el.value.startswith("/aasx/"): el.value = posixpath.normpath(posixpath.join("/aasx/kit", el.value))
                     elif isinstance(el, model.SubmodelElementCollection):
@@ -2108,7 +2134,7 @@ class ConveyorWizard(QMainWindow):
                     with open(out, 'rb') as f:
                         res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
                     if res.status_code in [200, 201, 204]:
-                        requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                        requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, cl]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
                         while QApplication.overrideCursor() is not None:
                             QApplication.restoreOverrideCursor()
                         QMessageBox.information(self, "Success", f"AAS Kit deployed (overwritten) successfully!")
@@ -2120,7 +2146,7 @@ class ConveyorWizard(QMainWindow):
                 else:
                     return
             elif res.status_code in [200, 201, 204]:
-                requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, cl]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
                 QMessageBox.information(self, "Success", f"AAS Kit deployed successfully!")

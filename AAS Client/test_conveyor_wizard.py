@@ -122,5 +122,111 @@ class TestConveyorWizard(unittest.TestCase):
                 window.plotter.close()
             window.close()
 
+    def test_aas_generation_and_cloning(self):
+        from unittest.mock import patch, MagicMock
+        import base64
+        window = ConveyorWizard()
+        try:
+            window.glb_path = "dummy.glb"
+            window.edit_kit_name.setText("TestKit")
+            window.edit_aas_id.setText("Test_01")
+            window.logic_rules = {
+                "start": [{"type": "wait_time", "seconds": 2.5}],
+                "sequences": [{"name": "Seq1", "trigger": {"operator": "AND", "conditions": []}, "steps": []}]
+            }
+
+            # 1. Test deployment (which generates the AASX file and registers descriptors)
+            with patch('requests.post') as mock_post, \
+                 patch('requests.get') as mock_get, \
+                 patch('builtins.open', create=True) as mock_open, \
+                 patch('os.walk') as mock_walk, \
+                 patch('os.makedirs') as mock_makedirs, \
+                 patch('basyx.aas.adapter.aasx.AASXWriter') as mock_writer:
+                
+                mock_walk.return_value = [("C:\\Users\\LazyT\\Desktop\\Tese\\AAS Client", [], ["dummy.glb"])]
+                mock_res = MagicMock()
+                mock_res.status_code = 201
+                mock_post.return_value = mock_res
+                
+                window.deploy_to_aas()
+                
+                self.assertTrue(mock_post.called)
+                
+            # 2. Test clone parsing (load_cloned_aas)
+            shell_desc = {"id": "https://acplt.org/AAS_TestKit", "idShort": "Test_01"}
+            
+            shell_response = MagicMock()
+            shell_response.status_code = 200
+            shell_response.json.return_value = {
+                "id": "https://acplt.org/AAS_TestKit",
+                "idShort": "Test_01",
+                "submodels": [
+                    {"keys": [{"value": "https://acplt.org/Submodels/Visual_TestKit"}]},
+                    {"keys": [{"value": "https://acplt.org/Submodels/Behavior_TestKit"}]},
+                    {"keys": [{"value": "https://acplt.org/Submodels/ControlLogic_TestKit"}]}
+                ]
+            }
+            
+            vis_sm_response = MagicMock()
+            vis_sm_response.status_code = 200
+            vis_sm_response.json.return_value = {
+                "id": "https://acplt.org/Submodels/Visual_TestKit",
+                "idShort": "VisualStructure",
+                "submodelElements": []
+            }
+            
+            beh_sm_response = MagicMock()
+            beh_sm_response.status_code = 200
+            beh_sm_response.json.return_value = {
+                "id": "https://acplt.org/Submodels/Behavior_TestKit",
+                "idShort": "BehaviorMapping",
+                "submodelElements": []
+            }
+            
+            cl_sm_response = MagicMock()
+            cl_sm_response.status_code = 200
+            cl_sm_response.json.return_value = {
+                "id": "https://acplt.org/Submodels/ControlLogic_TestKit",
+                "idShort": "ControlLogic",
+                "submodelElements": [
+                    {
+                        "idShort": "Rules",
+                        "modelType": "Property",
+                        "value": '{"start": [{"type": "wait_time", "seconds": 2.5}], "sequences": [{"name": "Seq1", "trigger": {"operator": "AND", "conditions": []}, "steps": []}]}'
+                    }
+                ]
+            }
+            
+            def get_side_effect(url, **kwargs):
+                if "shells/" in url:
+                    return shell_response
+                
+                def is_encoded_in_url(val):
+                    encoded = base64.urlsafe_b64encode(val.encode()).decode().rstrip("=")
+                    return encoded in url
+                    
+                if is_encoded_in_url("https://acplt.org/Submodels/Visual_TestKit"):
+                    return vis_sm_response
+                elif is_encoded_in_url("https://acplt.org/Submodels/Behavior_TestKit"):
+                    return beh_sm_response
+                elif is_encoded_in_url("https://acplt.org/Submodels/ControlLogic_TestKit"):
+                    return cl_sm_response
+                return MagicMock(status_code=404)
+                
+            with patch('requests.get', side_effect=get_side_effect) as mock_get_clone:
+                window.load_cloned_aas(shell_desc)
+                
+                # Check that logic_rules were successfully parsed from the ControlLogic submodel
+                self.assertEqual(window.logic_rules["start"][0]["seconds"], 2.5)
+                self.assertEqual(window.logic_rules["sequences"][0]["name"], "Seq1")
+                # Check that UI list_sequences is updated
+                self.assertEqual(window.list_sequences.count(), 2)
+                self.assertEqual(window.list_sequences.item(1).text(), "Seq1")
+
+        finally:
+            if hasattr(window, 'plotter'):
+                window.plotter.close()
+            window.close()
+
 if __name__ == "__main__":
     unittest.main()
