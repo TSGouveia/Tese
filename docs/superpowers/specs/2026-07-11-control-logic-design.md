@@ -106,10 +106,20 @@ We add a new page `self.page5` inside `conveyor_wizard.py` right before the Prev
 
 ---
 
-## 4. Unity Rule Engine (`AASRuleEngine.cs`)
-A new script in Unity attached to the root of the imported AAS GameObjects:
+## 4. Unity Rule Engine (`AASRuleEngine.cs` & `IAASDriver`)
+A new script in Unity attached to the root of the imported AAS GameObjects, along with an interface abstraction to support multiple communication protocols (Modbus, OPC UA, MQTT) in the future:
 
-### 4.1 Execution Logic
+### 4.1 Abstraction Interface (`IAASDriver`)
+```csharp
+public interface IAASDriver
+{
+    void WriteActuator(string pinId, bool value);
+    bool ReadSensor(string pinId);
+}
+```
+For now, we will implement `AASHttpDriver` which queries `AASSensorController` and sends PUT requests via HTTP. In the future, this can be swapped with other drivers.
+
+### 4.2 Execution Logic
 1. **Initialize**:
    - Queries the kit's `ControlLogic` submodel to fetch the `Rules` JSON property.
    - Restores/deserializes the JSON structure.
@@ -119,9 +129,9 @@ A new script in Unity attached to the root of the imported AAS GameObjects:
    - Every `0.1s` (or frame), checks all sequences in `sequences`.
    - If a sequence is NOT currently running, and its `trigger` conditions are satisfied, it is marked as running and executes its `steps` in a Unity **Coroutine**.
 4. **Step Coroutine Actions**:
-   - `set_actuator`: Updates the target actuator pin value on BaSyx (via `PUT` request).
+   - `set_actuator`: Updates the target actuator pin value using `IAASDriver.WriteActuator`.
    - `wait_time`: `yield return new WaitForSeconds(seconds)`.
-   - `wait_until`: Polls sensor states from the local `AASSensorController` cache, yielding until the specified boolean conditions (AND/OR) are met.
+   - `wait_until`: Polls sensor states using `IAASDriver.ReadSensor` from the local cache, yielding until the specified boolean conditions (AND/OR) are met.
    - Once all steps complete, marks the sequence as inactive/idle so it can trigger again.
 
 ---
