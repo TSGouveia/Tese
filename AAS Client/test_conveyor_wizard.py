@@ -228,5 +228,26 @@ class TestConveyorWizard(unittest.TestCase):
                 window.plotter.close()
             window.close()
 
+    def test_rules_editor_dialog_init(self):
+        from conveyor_wizard import AASRulesEditorDialog
+        from unittest.mock import patch, MagicMock
+        
+        with patch('requests.get') as mock_get:
+            mock_res = MagicMock()
+            mock_res.status_code = 200
+            mock_res.json.return_value = {"result": [
+                {"id": "https://acplt.org/AAS_TestKit", "idShort": "TestKit"}
+            ]}
+            mock_get.return_value = mock_res
+            
+            dlg = AASRulesEditorDialog()
+            try:
+                self.assertEqual(dlg.combo_aas.count(), 1)
+                self.assertEqual(dlg.combo_aas.itemText(0), "TestKit (https://acplt.org/AAS_TestKit)")
+                self.assertEqual(dlg.list_sequences.count(), 1)
+                self.assertEqual(dlg.list_sequences.item(0).text(), "Start Sequence")
+            finally:
+                dlg.close()
+
 if __name__ == "__main__":
     unittest.main()
