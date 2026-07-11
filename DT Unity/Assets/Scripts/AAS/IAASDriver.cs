@@ -4,11 +4,12 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
+using Newtonsoft.Json.Linq;
 
 public interface IAASDriver
 {
-    void WriteActuator(string pinId, bool value);
-    bool ReadSensor(string pinId);
+    void WriteActuator(string kitId, string pinId, bool value);
+    bool ReadSensor(string kitId, string pinId);
 }
 
 public class AASHttpDriver : IAASDriver
@@ -30,75 +31,116 @@ public class AASHttpDriver : IAASDriver
         this.virtualPinsSubmodelId = virtualPinsSubmodelId;
     }
 
-    public void WriteActuator(string pinId, bool value)
+    public void WriteActuator(string kitId, string pinId, bool value)
     {
-        if (actuatorController != null && actuatorController.bindings != null)
+        GameObject kitGo = FindKitGameObject(kitId);
+        if (kitGo != null)
         {
-            var binding = actuatorController.bindings.Find(b => b.pinId == pinId);
-            if (binding != null)
+            var actCtrl = kitGo.GetComponent<AASActuatorController>();
+            if (actCtrl != null && actCtrl.bindings != null)
             {
-                binding.currentState = value;
+                var binding = actCtrl.bindings.Find(b => b.pinId == pinId);
+                if (binding != null)
+                {
+                    binding.currentState = value;
+                }
+                else
+                {
+                    Debug.LogWarning($"[AASHttpDriver] Actuator with pinId '{pinId}' not found in bindings of kit '{kitId}'.");
+                }
             }
             else
             {
-                Debug.LogWarning($"[AASHttpDriver] Actuator with pinId '{pinId}' not found in bindings.");
+                Debug.LogWarning($"[AASHttpDriver] AASActuatorController not found or bindings null on kit '{kitId}'.");
             }
         }
         else
         {
-            Debug.LogWarning("[AASHttpDriver] ActuatorController or its bindings list is null.");
+            Debug.LogWarning($"[AASHttpDriver] Kit GameObject '{kitId}' not found in scene for WriteActuator.");
         }
 
         // Send asynchronous HTTP PUT request
-        StaticCoroutineRunner.Start(UpdateActuatorAAS(pinId, value));
+        StaticCoroutineRunner.Start(UpdateActuatorAAS(kitId, pinId, value));
     }
 
-    public bool ReadSensor(string pinId)
+    public bool ReadSensor(string kitId, string pinId)
     {
-        // 1. Try to find it in the sensorController via reflection (private componentToSensor dictionary)
-        if (sensorController != null)
+        GameObject kitGo = FindKitGameObject(kitId);
+        if (kitGo != null)
         {
-            try
+            var proxies = kitGo.GetComponentsInChildren<AASSensorController.SensorPhysicsProxy>(true);
+            foreach (var proxy in proxies)
             {
-                var field = typeof(AASSensorController).GetField("componentToSensor", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (field != null)
+                if (proxy != null && proxy.binding != null && proxy.binding.pinId == pinId)
                 {
-                    var dict = field.GetValue(sensorController) as Dictionary<string, AASSensorController.SensorBinding>;
-                    if (dict != null)
+                    return proxy.binding.lastState;
+                }
+            }
+        }
+
+        // Fallback: If not found locally in the scene, perform synchronous HTTP GET request
+        return ReadSensorFromAAS(kitId, pinId);
+    }
+
+    private GameObject FindKitGameObject(string kitId)
+    {
+        if (string.IsNullOrEmpty(kitId)) return null;
+
+        // Try exact match first
+        GameObject exact = GameObject.Find(kitId);
+        if (exact != null) return exact;
+
+        // Try case-insensitive search
+        var allGo = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+        foreach (var go in allGo)
+        {
+            if (go != null && go.name.IndexOf(kitId, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return go;
+            }
+        }
+        return null;
+    }
+
+    private bool ReadSensorFromAAS(string kitId, string pinId)
+    {
+        string base64SubmodelId = Base64Url("https://acplt.org/Submodels/Pins_" + kitId);
+        string url = $"{baseRepoUrl}/submodels/{base64SubmodelId}/submodel-elements/Outputs.{pinId}";
+        try
+        {
+            var request = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(url);
+            request.Method = "GET";
+            request.Timeout = 2000; // 2 seconds
+            using (var response = (System.Net.HttpWebResponse)request.GetResponse())
+            {
+                using (var stream = response.GetResponseStream())
+                {
+                    using (var reader = new System.IO.StreamReader(stream))
                     {
-                        foreach (var kvp in dict.Values)
+                        string json = reader.ReadToEnd();
+                        JObject obj = JObject.Parse(json);
+                        string valStr = obj["value"]?.ToString();
+                        if (bool.TryParse(valStr, out bool result))
                         {
-                            if (kvp != null && kvp.pinId == pinId)
-                            {
-                                return kvp.lastState;
-                            }
+                            return result;
                         }
+                        if (valStr == "1") return true;
+                        if (valStr == "0") return false;
+                        if (string.Equals(valStr, "true", StringComparison.OrdinalIgnoreCase)) return true;
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[AASHttpDriver] Reflection failed: {ex.Message}");
-            }
         }
-
-        // 2. Fallback: Search the scene for SensorPhysicsProxy with matching pinId
-        var proxies = UnityEngine.Object.FindObjectsByType<AASSensorController.SensorPhysicsProxy>(FindObjectsSortMode.None);
-        foreach (var proxy in proxies)
+        catch (Exception ex)
         {
-            if (proxy != null && proxy.binding != null && proxy.binding.pinId == pinId)
-            {
-                return proxy.binding.lastState;
-            }
+            Debug.LogWarning($"[AASHttpDriver] Synchronous HTTP GET failed for sensor '{pinId}' on kit '{kitId}' (URL: {url}): {ex.Message}");
         }
-
-        Debug.LogWarning($"[AASHttpDriver] Sensor with pinId '{pinId}' not found!");
         return false;
     }
 
-    private IEnumerator UpdateActuatorAAS(string pinId, bool value)
+    private IEnumerator UpdateActuatorAAS(string kitId, string pinId, bool value)
     {
-        string base64SubmodelId = Base64Url(virtualPinsSubmodelId);
+        string base64SubmodelId = Base64Url("https://acplt.org/Submodels/Pins_" + kitId);
         string url = $"{baseRepoUrl}/submodels/{base64SubmodelId}/submodel-elements/Inputs.{pinId}";
         string json = $"{{\"idShort\":\"{pinId}\",\"modelType\":\"Property\",\"valueType\":\"xs:boolean\",\"value\":\"{value.ToString().ToLower()}\"}}";
 
@@ -113,7 +155,7 @@ public class AASHttpDriver : IAASDriver
             yield return req.SendWebRequest();
             if (req.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogWarning($"[AASHttpDriver] ❌ Failed to write actuator {pinId}: {req.error} (URL: {url})");
+                Debug.LogWarning($"[AASHttpDriver] ❌ Failed to write actuator {pinId} on kit {kitId}: {req.error} (URL: {url})");
             }
         }
     }

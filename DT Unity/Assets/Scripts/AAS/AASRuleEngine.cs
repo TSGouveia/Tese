@@ -110,8 +110,13 @@ public class AASRuleEngine : MonoBehaviour
         foreach (JObject cond in conditions)
         {
             string sensor = cond["sensor"]?.ToString();
+            string kit = cond["kit"]?.ToString();
+            if (string.IsNullOrEmpty(kit))
+            {
+                kit = GetLocalKitName();
+            }
             bool targetVal = cond["value"]?.ToObject<bool>() ?? true;
-            bool actualVal = driver.ReadSensor(sensor);
+            bool actualVal = driver.ReadSensor(kit, sensor);
 
             bool matches = (actualVal == targetVal);
             andResult &= matches;
@@ -132,9 +137,14 @@ public class AASRuleEngine : MonoBehaviour
             if (type == "set_actuator")
             {
                 string actuator = step["actuator"]?.ToString();
+                string kit = step["kit"]?.ToString();
+                if (string.IsNullOrEmpty(kit))
+                {
+                    kit = GetLocalKitName();
+                }
                 bool value = step["value"]?.ToObject<bool>() ?? false;
-                driver.WriteActuator(actuator, value);
-                Debug.Log($"[RuleEngine] [{seqName}] Action: Set actuator '{actuator}' to {value}");
+                driver.WriteActuator(kit, actuator, value);
+                Debug.Log($"[RuleEngine] [{seqName}] Action: Set actuator '{actuator}' on kit '{kit}' to {value}");
             }
             else if (type == "wait_time")
             {
@@ -154,7 +164,12 @@ public class AASRuleEngine : MonoBehaviour
                     if (!string.IsNullOrEmpty(sensor))
                     {
                         bool targetVal = step["value"]?.ToObject<bool>() ?? true;
-                        conditions = new JArray(new JObject { { "sensor", sensor }, { "value", targetVal } });
+                        string kit = step["kit"]?.ToString();
+                        if (string.IsNullOrEmpty(kit))
+                        {
+                            kit = GetLocalKitName();
+                        }
+                        conditions = new JArray(new JObject { { "sensor", sensor }, { "value", targetVal }, { "kit", kit } });
                     }
                 }
 
@@ -170,8 +185,13 @@ public class AASRuleEngine : MonoBehaviour
                         foreach (JObject cond in conditions)
                         {
                             string sensor = cond["sensor"]?.ToString();
+                            string kit = cond["kit"]?.ToString();
+                            if (string.IsNullOrEmpty(kit))
+                            {
+                                kit = GetLocalKitName();
+                            }
                             bool targetVal = cond["value"]?.ToObject<bool>() ?? true;
-                            bool actualVal = driver.ReadSensor(sensor);
+                            bool actualVal = driver.ReadSensor(kit, sensor);
                             bool matches = (actualVal == targetVal);
                             
                             andResult &= matches;
@@ -187,6 +207,16 @@ public class AASRuleEngine : MonoBehaviour
 
         Debug.Log($"[RuleEngine] ✅ Sequence complete: '{seqName}'");
         activeSequences.Remove(seqName);
+    }
+
+    private string GetLocalKitName()
+    {
+        string name = gameObject.name;
+        if (name.EndsWith("(Clone)"))
+        {
+            name = name.Substring(0, name.Length - 7).Trim();
+        }
+        return name;
     }
 
     private string Base64Url(string i)
