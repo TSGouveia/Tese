@@ -139,6 +139,7 @@ public class BaSyxManager : MonoBehaviour
             string visSubmodelId = null;
             string pinSubmodelId = null;
             string behSubmodelId = null;
+            string controlLogicSubmodelId = null;
 
             if (shell.submodelDescriptors != null)
             {
@@ -151,6 +152,7 @@ public class BaSyxManager : MonoBehaviour
                     if (sm.idShort == "VisualStructure") visSubmodelId = sm.id;
                     if (sm.idShort == "VirtualPins") pinSubmodelId = sm.id;
                     if (sm.idShort == "BehaviorMapping") behSubmodelId = sm.id;
+                    if (sm.idShort == "ControlLogic") controlLogicSubmodelId = sm.id;
                 }
             }
 
@@ -202,6 +204,7 @@ public class BaSyxManager : MonoBehaviour
                                     if (smDesc.idShort == "VisualStructure") visSubmodelId = smDesc.id;
                                     if (smDesc.idShort == "VirtualPins") pinSubmodelId = smDesc.id;
                                     if (smDesc.idShort == "BehaviorMapping") behSubmodelId = smDesc.id;
+                                    if (smDesc.idShort == "ControlLogic") controlLogicSubmodelId = smDesc.id;
                                 }
                             }
                         }
@@ -336,6 +339,14 @@ public class BaSyxManager : MonoBehaviour
 
                                 var sensorCtrl = robotObj.AddComponent<AASSensorController>();
                                 sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, components);
+
+                                if (controlLogicSubmodelId != null)
+                                {
+                                    var engine = robotObj.AddComponent<AASRuleEngine>();
+                                    var driver = new AASHttpDriver(sensorCtrl, actuatorCtrl, aasServerUrl, pinSubmodelId);
+                                    engine.Init(aasServerUrl, controlLogicSubmodelId, driver);
+                                    Debug.Log($"[BaSyx] Rule engine attached to URDF kit '{robotName}'");
+                                }
                             }
                             catch (Exception e)
                             {
@@ -393,6 +404,14 @@ public class BaSyxManager : MonoBehaviour
 
                                 var sensorCtrl = kitObj.AddComponent<AASSensorController>();
                                 sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+
+                                if (controlLogicSubmodelId != null)
+                                {
+                                    var engine = kitObj.AddComponent<AASRuleEngine>();
+                                    var driver = new AASHttpDriver(sensorCtrl, actuatorCtrl, aasServerUrl, pinSubmodelId);
+                                    engine.Init(aasServerUrl, controlLogicSubmodelId, driver);
+                                    Debug.Log($"[BaSyx] Rule engine attached to native GLB kit '{robotName}'");
+                                }
                             }
                             catch (Exception e)
                             {
@@ -401,7 +420,7 @@ public class BaSyxManager : MonoBehaviour
                         }
                         
                         Debug.Log($"[BaSyx] ✅ Kit {robotName} prepared via glTF (Native).");
-                        StartCoroutine(SyncKitLoop(shell.id, visSubmodelId, pinSubmodelId, behSubmodelId, robotPath, robotName, elementsJson));
+                        StartCoroutine(SyncKitLoop(shell.id, visSubmodelId, pinSubmodelId, behSubmodelId, controlLogicSubmodelId, robotPath, robotName, elementsJson));
                     }
                 }
             }
@@ -743,7 +762,7 @@ public class BaSyxManager : MonoBehaviour
         return fs.OrderByDescending(f => f.Contains("robot")).ThenByDescending(f => f.EndsWith(".urdf", StringComparison.OrdinalIgnoreCase)).First();
     }
 
-    IEnumerator SyncKitLoop(string shellId, string visSubmodelId, string pinSubmodelId, string behSubmodelId, string robotPath, string robotName, string initialJson)
+    IEnumerator SyncKitLoop(string shellId, string visSubmodelId, string pinSubmodelId, string behSubmodelId, string controlLogicSubmodelId, string robotPath, string robotName, string initialJson)
     {
         string lastJson = initialJson;
         string elementsUrl = $"{aasServerUrl}/submodels/{Base64Url(visSubmodelId)}/submodel-elements?level=deep";
@@ -799,6 +818,14 @@ public class BaSyxManager : MonoBehaviour
                             
                             var sensorCtrl = newKit.AddComponent<AASSensorController>();
                             sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+
+                            if (controlLogicSubmodelId != null)
+                            {
+                                var engine = newKit.AddComponent<AASRuleEngine>();
+                                var driver = new AASHttpDriver(sensorCtrl, actuatorCtrl, aasServerUrl, pinSubmodelId);
+                                engine.Init(aasServerUrl, controlLogicSubmodelId, driver);
+                                Debug.Log($"[BaSyx] Rule engine re-attached to hot-reloaded kit '{robotName}'");
+                            }
                         }
                         
                         Debug.Log($"[BaSyx] 🔄 Hot-reload complete for Kit '{robotName}'.");
