@@ -26,6 +26,13 @@ public class BaSyxManager : MonoBehaviour
     private Dictionary<string, GameObject> instantiatedRobots = new Dictionary<string, GameObject>();
     private HashSet<string> pendingRobotIds = new HashSet<string>();
     private Dictionary<string, bool?> pendingRobotDynamics = new Dictionary<string, bool?>();
+    private Dictionary<string, string> kitIdToPinsSubmodelId = new Dictionary<string, string>();
+
+    public string GetVirtualPinsSubmodelId(string kitIdShort)
+    {
+        if (kitIdToPinsSubmodelId.TryGetValue(kitIdShort, out string smId)) return smId;
+        return "https://acplt.org/Submodels/Pins_" + kitIdShort; // fallback standard pattern
+    }
 
     public class MaterialData
     {
@@ -210,6 +217,29 @@ public class BaSyxManager : MonoBehaviour
                         }
                     }
                 }
+            }
+
+            if (pinSubmodelId != null && !string.IsNullOrEmpty(shell.idShort))
+            {
+                kitIdToPinsSubmodelId[shell.idShort] = pinSubmodelId;
+            }
+
+            if (geoSubmodelId == null && visSubmodelId == null && controlLogicSubmodelId != null)
+            {
+                GameObject logicalGo = new GameObject("LogicalAAS_" + shell.idShort);
+                GameObject container = GameObject.Find("AAS_Robots_Container");
+                if (container == null) container = new GameObject("AAS_Robots_Container");
+                logicalGo.transform.SetParent(container.transform, false);
+
+                var engine = logicalGo.AddComponent<AASRuleEngine>();
+                var driver = new AASHttpDriver(null, null, aasServerUrl, GetVirtualPinsSubmodelId(shell.idShort));
+                engine.Init(aasServerUrl, controlLogicSubmodelId, driver);
+                Debug.Log($"[BaSyx] Prepared Purely Logical AAS (no GLB): '{shell.idShort}' with AASRuleEngine attached.");
+
+                instantiatedRobots[shell.id] = logicalGo;
+                pendingRobotIds.Remove(shell.id);
+                pendingRobotDynamics.Remove(shell.id);
+                yield break;
             }
 
             if (geoSubmodelId == null && visSubmodelId == null) 
