@@ -27,6 +27,16 @@ from PyQt6.QtGui import QColor, QFont
 
 import basyx.aas.model as model
 import basyx.aas.adapter.aasx as aasx
+import xml.etree.ElementTree as ET
+from create_robotic_arm import (
+    XacroResolver,
+    DependencyManager,
+    DependencyDialog,
+    XacroArgsDialog,
+    expand_xacro_final,
+    URDF,
+    AssetManager
+)
 
 # =================================================================
 # AAS UTILITIES
@@ -323,6 +333,13 @@ class ConveyorWizard(QMainWindow):
         self.logic_rules = {"start": [], "sequences": []}
         self.glb_path = None; self.meshes = {}; self.actors = {}; self.actuator_widgets = []; self.sensor_widgets = []; 
         self.current_config_widget = None
+        self.model_type = "GLB"
+        self.robot = None
+        self.current_urdf_xml = ""
+        self.current_urdf_path = ""
+        self.current_urdf_tree = None
+        self.files_to_upload = {}
+        self.current_robot_root = ""
         self.apply_styles(); self.setup_ui()
         self.showMaximized()
         
@@ -402,6 +419,10 @@ class ConveyorWizard(QMainWindow):
         
         bl = QVBoxLayout(); bl.setSpacing(10); bl.setContentsMargins(50, 0, 50, 0)
         self.btn_select_glb = QPushButton("Select GLB File"); self.btn_select_glb.setMinimumHeight(55); self.btn_select_glb.clicked.connect(self.browse_glb)
+        self.btn_select_urdf = QPushButton("Select URDF / Xacro Folder")
+        self.btn_select_urdf.setMinimumHeight(55)
+        self.btn_select_urdf.setStyleSheet("background-color: #2980b9;")
+        self.btn_select_urdf.clicked.connect(self.browse_urdf)
         self.btn_manage_aas = QPushButton("Manage Deployed AAS"); self.btn_manage_aas.setMinimumHeight(55); self.btn_manage_aas.setStyleSheet("background-color: #27ae60;")
         self.btn_manage_aas.clicked.connect(self.manage_deployed_aas)
         self.btn_preview_layout = QPushButton("Preview Deployed Layout"); self.btn_preview_layout.setMinimumHeight(55); self.btn_preview_layout.setStyleSheet("background-color: #8e44ad;")
@@ -412,7 +433,7 @@ class ConveyorWizard(QMainWindow):
         self.btn_program_rules.setStyleSheet("background-color: #d35400; color: white; font-weight: bold;")
         self.btn_program_rules.clicked.connect(self.open_program_rules_dialog)
         
-        bl.addWidget(self.btn_select_glb); bl.addWidget(self.btn_manage_aas); bl.addWidget(self.btn_preview_layout); bl.addWidget(self.btn_program_rules)
+        bl.addWidget(self.btn_select_glb); bl.addWidget(self.btn_select_urdf); bl.addWidget(self.btn_manage_aas); bl.addWidget(self.btn_preview_layout); bl.addWidget(self.btn_program_rules)
         
         self.lbl_glb_path = QLabel("No file selected")
         l1.addWidget(il); l1.addLayout(bl); l1.addWidget(self.lbl_glb_path); self.stack.addWidget(self.page1)
@@ -2046,13 +2067,309 @@ class ConveyorWizard(QMainWindow):
 
     def get_node_family(self, name):
         f = {name}
-        if hasattr(self, 'scene_graph'):
+        if self.model_type == "URDF" and self.robot:
+            link_children = {}
+            for j in self.robot.joints:
+                if j.parent not in link_children:
+                    link_children[j.parent] = []
+                link_children[j.parent].append((j, j.child))
+            
+            visited = set()
+            def collect(n):
+                if n in visited: return
+                visited.add(n)
+                f.add(n)
+                if n in link_children:
+                    for joint, child in link_children[n]:
+                        collect(joint.name)
+                        collect(child)
+            collect(name)
+        elif hasattr(self, 'scene_graph'):
             for c in self.scene_graph.transforms.children.get(name, []): f.update(self.get_node_family(c))
         return f
     def browse_glb(self):
         p, _ = QFileDialog.getOpenFileName(self, "Select GLB", "", "GLB Files (*.glb)")
         if p: 
             self.glb_path = p; self.lbl_glb_path.setText(os.path.basename(p)); self.load_model(p)
+            
+    def browse_urdf(self):
+        path = QFileDialog.getExistingDirectory(self, "Select URDF / Xacro Folder")
+        if not path:
+            return
+        self.current_robot_root = os.path.abspath(path).replace('\\', '/')
+        self.resolver = XacroResolver(self.current_robot_root)
+        
+        candidates = []
+        for full_path in self.resolver.file_map.values():
+            if full_path.startswith(self.current_robot_root):
+                if full_path.lower().endswith('.urdf') or full_path.lower().endswith('.urdf.xacro'):
+                    candidates.append(full_path)
+        candidates = sorted(list(set(candidates)))
+        
+        if not candidates: 
+            return QMessageBox.warning(self, "Error", "No URDF/Xacro found in the selected directory!")
+        
+        target = candidates[0]
+        if len(candidates) > 1:
+            item, ok = QInputDialog.getItem(self, "Choose Entry URDF/Xacro", "Primary File?", [os.path.basename(c) for c in candidates], 0, False)
+            if ok:
+                target = [c for c in candidates if os.path.basename(c) == item][0]
+            else:
+                return
+        
+        try:
+            mappings = {"ur_type": "ur3e", "name": "ur"} # Defaults
+            
+            if target.lower().endswith('.xacro'):
+                print("[LOAD] Verifying dependencies...")
+                while True:
+                    missing = DependencyManager.check_recursive_xacro(target, self.resolver)
+                    if missing:
+                        print(f"   [LOAD] Found {len(missing)} missing includes.")
+                        if DependencyDialog(missing, self.resolver, self).exec() == QDialog.DialogCode.Accepted:
+                            continue # Check again after adding folder
+                        else:
+                            return # User cancelled
+                    break
+                
+                with open(target, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    is_pure_macro = "<xacro:macro" in content and "<link" not in content and "<joint" not in content
+                    if is_pure_macro and not re.search(r'<xacro:[^m][^a][^c][^r][^o]', content):
+                        print("[LOAD] WARNING: Selected file appears to be a Macro library, not a Robot assembly.")
+                        res = QMessageBox.question(self, "Macro File Detected", 
+                            "This file seems to contain only Macro definitions, not a full Robot.\n\n"
+                            "Are you sure you want to proceed? (It might result in an empty visualization)",
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                        if res == QMessageBox.StandardButton.No:
+                            return
+
+                print("[LOAD] Scanning for used Xacro arguments...")
+                args = DependencyManager.scan_xacro_args(target, self.resolver)
+                if args:
+                    dlg = XacroArgsDialog(args, self)
+                    if dlg.exec() == QDialog.DialogCode.Accepted:
+                        mappings.update(dlg.results)
+                    else:
+                        return
+                
+                print("[LOAD] Expanding Xacro...")
+                xml_text = expand_xacro_final(target, mappings, self.resolver)
+            else:
+                with open(target, 'r', encoding='utf-8') as f:
+                    xml_text = f.read()
+
+            self.current_urdf_xml = xml_text
+            self.current_urdf_path = target
+            root = ET.fromstring(xml_text.strip())
+            
+            # URDF Post-processing
+            if 'name' not in root.attrib:
+                root.set('name', os.path.basename(target).split('.')[0])
+            for trans in root.findall(".//transmission"):
+                root.remove(trans)
+            
+            print("[LOAD] Resolving mesh paths in URDF...")
+            for m_tag in root.findall(".//mesh"):
+                fn = m_tag.get("filename")
+                real = self.resolver.resolve(fn)
+                if real:
+                    m_tag.set("filename", real)
+            
+            temp = os.path.join(self.current_robot_root, "_compiled.urdf")
+            with open(temp, "w", encoding='utf-8') as f:
+                f.write(ET.tostring(root, encoding='unicode'))
+            
+            self.current_urdf_tree = root
+            
+            try:
+                print("[LOAD] Parsing final URDF...")
+                self.robot = URDF.load(temp)
+            except ValueError as ve:
+                if "Link" in str(ve):
+                    QMessageBox.warning(self, "Empty Robot", 
+                        "The resulting URDF contains no Links.\n\n"
+                        "Please verify if you selected the correct entry file (e.g., 'ur.urdf.xacro' instead of 'ur_macro.xacro').")
+                else:
+                    QMessageBox.warning(self, "Load Failed", f"ValueError loading robot:\n{str(ve)}")
+                return
+            except Exception as e:
+                QMessageBox.critical(self, "Load Failed", f"Critical error while loading robot:\n{str(e)}")
+                traceback.print_exc()
+                return
+
+            self.model_type = "URDF"
+            self.glb_path = temp
+            self.lbl_glb_path.setText(f"URDF: {self.robot.name} ({os.path.basename(target)})")
+            
+            # Compile files list to upload
+            manager = AssetManager(self.current_robot_root)
+            for elem in root.iter():
+                for attr, val in elem.attrib.items():
+                    if val and any(ext in val.lower() for ext in manager.exts):
+                        manager.collect(val, self.resolver)
+            self.files_to_upload = manager.files_to_upload
+            
+            # Rebuild PyVista visualization
+            self._build_urdf_view()
+            
+        except Exception as e:
+            print(f"[LOAD] ERROR: {e}")
+            traceback.print_exc()
+            QMessageBox.critical(self, "Load Failed", f"Critical error while loading robot:\n{str(e)}")
+
+    def _build_urdf_view(self):
+        print("[VIEW] Building URDF 3D visualization...")
+        self.plotter.clear()
+        self.meshes = {}
+        self.actors = {}
+        self.node_tree.clear()
+        self.plotter.camera.up = (0, 0, 1)
+        self.plotter.add_axes(color='white')
+        self.plotter.enable_eye_dome_lighting()
+        self.plotter.enable_shadows()
+        self.kill_overlays()
+        
+        try:
+            fk = self.robot.visual_geometry_fk()
+        except Exception as e:
+            print(f"[VIEW] Error calculating FK: {e}")
+            return
+
+        geom_to_link = {}
+        geom_to_visual = {}
+        for l in self.robot.links:
+            for v in l.visuals:
+                if v.geometry:
+                    geom_to_link[v.geometry] = l.name
+                    geom_to_visual[v.geometry] = v
+
+        link_to_trimeshes = {}
+        link_to_colors = {}
+
+        for geom, transform in fk.items():
+            link_name = geom_to_link.get(geom, "unnamed")
+            visual_obj = geom_to_visual.get(geom, None)
+            g_type = type(geom).__name__
+            
+            meshes = None
+            try:
+                meshes = geom.meshes
+            except Exception as e:
+                print(f"[VIEW] Warning: urdfpy failed to provide meshes for {g_type} ({link_name}): {e}")
+
+            if meshes is None or len(meshes) == 0:
+                # Primitives fallback
+                if g_type == 'Cylinder':
+                    try:
+                        meshes = [trimesh.creation.cylinder(radius=geom.radius, height=geom.length)]
+                    except Exception as e:
+                        print(f"[VIEW] Cylinder fallback failed: {e}")
+                elif g_type == 'Box':
+                    try:
+                        meshes = [trimesh.creation.box(extents=geom.size)]
+                    except Exception as e:
+                        print(f"[VIEW] Box fallback failed: {e}")
+                elif g_type == 'Sphere':
+                    try:
+                        meshes = [trimesh.creation.sphere(radius=geom.radius)]
+                    except Exception as e:
+                        print(f"[VIEW] Sphere fallback failed: {e}")
+                elif g_type == 'Mesh':
+                    try:
+                        loaded = trimesh.load(geom.filename)
+                        if isinstance(loaded, trimesh.Scene):
+                            m = loaded.dump(concatenate=True)
+                        else:
+                            m = loaded
+                        if hasattr(geom, 'scale') and geom.scale is not None:
+                            m.apply_scale(geom.scale)
+                        meshes = [m]
+                    except Exception as e:
+                        print(f"[VIEW] Mesh fallback failed: {e}")
+
+            if meshes is None or len(meshes) == 0:
+                continue
+
+            col = [0.7, 0.7, 0.7]
+            if visual_obj and hasattr(visual_obj, 'material') and visual_obj.material and visual_obj.material.color is not None:
+                col = np.array(visual_obj.material.color[:3]).astype(float)
+                if col.max() > 1.01:
+                    col /= 255.0
+
+            scale_matrix = np.eye(4)
+            if hasattr(geom, 'scale') and geom.scale is not None:
+                s = geom.scale
+                scale_matrix = np.diag([s[0], s[1], s[2], 1.0])
+
+            total_transform = transform @ scale_matrix
+            for m in meshes:
+                if m is None:
+                    continue
+                extents = m.extents
+                if np.allclose(scale_matrix[:3, :3], np.eye(3)) and np.any(extents > 10.0):
+                    m.apply_scale(0.001)
+                
+                m_copy = m.copy()
+                m_copy.apply_transform(total_transform)
+                
+                if link_name not in link_to_trimeshes:
+                    link_to_trimeshes[link_name] = []
+                    link_to_colors[link_name] = []
+                link_to_trimeshes[link_name].append(m_copy)
+                link_to_colors[link_name].append(col)
+
+        for link_name, meshes_list in link_to_trimeshes.items():
+            if not meshes_list:
+                continue
+            
+            if len(meshes_list) > 1:
+                try:
+                    combined_trimesh = trimesh.util.concatenate(meshes_list)
+                except Exception as e:
+                    print(f"[VIEW] Concatenating trimeshes failed for {link_name}: {e}")
+                    combined_trimesh = meshes_list[0]
+            else:
+                combined_trimesh = meshes_list[0]
+            
+            faces = np.column_stack([np.full(len(combined_trimesh.faces), 3), combined_trimesh.faces]).astype(np.int32).flatten()
+            pv_mesh = pv.PolyData(combined_trimesh.vertices, faces)
+            col = link_to_colors[link_name][0]
+            
+            actor = self.plotter.add_mesh(pv_mesh, color=col, smooth_shading=True, specular=0.5, ambient=0.2)
+            self.meshes[link_name] = pv_mesh
+            self.actors[link_name] = actor
+
+        # Camera setup
+        base_pos = np.array([0.0, 0.0, 0.0])
+        self.plotter.camera.focal_point = base_pos
+        self.plotter.camera.position = base_pos + np.array([3.0, 3.1, 2.0]) 
+        self.plotter.camera.up = (0, 0, 1)
+        self.plotter.camera.reset_clipping_range()
+        self.plotter.render()
+
+        # Build QTreeWidget
+        link_children = {}
+        for j in self.robot.joints:
+            if j.parent not in link_children:
+                link_children[j.parent] = []
+            link_children[j.parent].append((j, j.child))
+            
+        def add_urdf_tree_node(link_name, parent_item):
+            link_item = QTreeWidgetItem(parent_item or self.node_tree, [link_name])
+            link_item.setForeground(0, QColor("#007acc"))
+            
+            if link_name in link_children:
+                for joint, child_link_name in link_children[link_name]:
+                    joint_item = QTreeWidgetItem(link_item, [joint.name])
+                    joint_item.setForeground(0, QColor("#e67e22"))
+                    add_urdf_tree_node(child_link_name, joint_item)
+                    
+            if parent_item is None:
+                link_item.setExpanded(True)
+
+        if self.robot.base_link:
+            add_urdf_tree_node(self.robot.base_link.name, None)
             
     def load_model(self, path):
         self.plotter.clear(); self.meshes = {}; self.actors = {}; self.node_tree.clear(); self.plotter.camera.up = (0, 1, 0)
@@ -2091,14 +2408,37 @@ class ConveyorWizard(QMainWindow):
 
     def next_step(self):
         idx = self.stack.currentIndex()
-        if idx < self.stack.count() - 1: self.stack.setCurrentIndex(idx + 1); self.update_nav()
-        else: self.deploy_to_aas()
+        if self.model_type == "URDF" and idx == 1:
+            self.stack.setCurrentIndex(5)
+            self.update_nav()
+        elif idx < self.stack.count() - 1:
+            self.stack.setCurrentIndex(idx + 1)
+            self.update_nav()
+        else:
+            self.deploy_to_aas()
+
     def prev_step(self):
-        idx = self.stack.currentIndex(); self.stack.setCurrentIndex(idx - 1); self.update_nav()
+        idx = self.stack.currentIndex()
+        if self.model_type == "URDF" and idx == 5:
+            self.stack.setCurrentIndex(1)
+            self.update_nav()
+        else:
+            self.stack.setCurrentIndex(idx - 1)
+            self.update_nav()
+
     def update_nav(self):
         idx = self.stack.currentIndex(); self.btn_prev.setEnabled(idx > 0)
-        titles = ["Model Selection", "Basic Info & Transform", "Configure Sensors", "Configure Actuators", "Control Logic", "Review & Deploy"]
-        self.step_label.setText(f"Step {idx+1} of 6: {titles[idx]}")
+        if self.model_type == "URDF":
+            urdf_steps = {
+                0: "Step 1 of 3: Model Selection",
+                1: "Step 2 of 3: Basic Info & Transform",
+                5: "Step 3 of 3: Review & Deploy"
+            }
+            self.step_label.setText(urdf_steps.get(idx, f"Step {idx+1} of 3"))
+        else:
+            titles = ["Model Selection", "Basic Info & Transform", "Configure Sensors", "Configure Actuators", "Control Logic", "Review & Deploy"]
+            self.step_label.setText(f"Step {idx+1} of 6: {titles[idx]}")
+            
         if idx != 5:
             for w in self.actuator_widgets:
                 if w.arrow: self.plotter.remove_actor(w.arrow); w.arrow = None
