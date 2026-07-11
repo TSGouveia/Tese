@@ -249,5 +249,79 @@ class TestConveyorWizard(unittest.TestCase):
             finally:
                 dlg.close()
 
+    def test_urdf_loading_and_deployment(self):
+        from unittest.mock import patch, MagicMock
+        window = ConveyorWizard()
+        try:
+            # Mock robot object from URDF.load
+            mock_joint = MagicMock()
+            mock_joint.name = "joint_1"
+            mock_joint.joint_type = "revolute"
+            mock_joint.parent = "link_parent"
+            mock_joint.child = "link_child"
+            mock_joint.limit = MagicMock(lower=-3.14, upper=3.14, velocity=1.5, effort=100.0)
+
+            mock_robot = MagicMock()
+            mock_robot.name = "TestURDFRobot"
+            mock_robot.joints = [mock_joint]
+            mock_robot.actuated_joints = [mock_joint]
+
+            window.robot = mock_robot
+            window.model_type = "URDF"
+            window.glb_path = "C:/path/to/_compiled.urdf"
+            window.current_robot_root = "C:/path/to"
+            window.current_urdf_path = "C:/path/to/robot.urdf"
+            window.current_urdf_tree = MagicMock()
+
+            window.edit_kit_name.setText("TestRobotKit")
+            window.edit_aas_id.setText("Robot_01")
+
+            # 1. Test update_json_preview with URDF
+            window.update_json_preview()
+            self.assertIn("robot_name", window.config_data)
+            self.assertEqual(window.config_data["robot_name"], "TestURDFRobot")
+            self.assertEqual(window.config_data["model_type"], "URDF")
+            self.assertEqual(len(window.config_data["joints"]), 1)
+            self.assertEqual(window.config_data["joints"][0]["name"], "joint_1")
+
+            # 2. Test Step Navigation Skipping
+            # Step 1 -> Step 2
+            window.stack.setCurrentIndex(0)
+            window.next_step()
+            self.assertEqual(window.stack.currentIndex(), 1)
+            # Step 2 -> Step 6 (Index 5)
+            window.next_step()
+            self.assertEqual(window.stack.currentIndex(), 5)
+            # Step 6 (Index 5) -> Step 2 (Index 1)
+            window.prev_step()
+            self.assertEqual(window.stack.currentIndex(), 1)
+
+            # 3. Test deploy_to_aas for URDF
+            with patch('requests.post') as mock_post, \
+                 patch('requests.get') as mock_get, \
+                 patch('builtins.open', create=True) as mock_open, \
+                 patch('os.makedirs') as mock_makedirs, \
+                 patch('xml.etree.ElementTree.ElementTree.write') as mock_et_write, \
+                 patch('conveyor_wizard.AssetManager') as mock_asset_manager_class, \
+                 patch('basyx.aas.adapter.aasx.AASXWriter') as mock_writer:
+                
+                mock_asset_manager = MagicMock()
+                mock_asset_manager.exts = ['.stl']
+                mock_asset_manager.files_to_upload = {"C:/path/to/mesh.stl": "mesh.stl"}
+                mock_asset_manager.files_to_upload = {"C:/path/to/mesh.stl": "mesh.stl"}
+                mock_asset_manager_class.return_value = mock_asset_manager
+                
+                mock_res = MagicMock()
+                mock_res.status_code = 201
+                mock_post.return_value = mock_res
+                
+                window.deploy_to_aas()
+                
+                self.assertTrue(mock_post.called)
+        finally:
+            if hasattr(window, 'plotter'):
+                window.plotter.close()
+            window.close()
+
 if __name__ == "__main__":
     unittest.main()

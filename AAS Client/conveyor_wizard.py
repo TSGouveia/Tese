@@ -2451,6 +2451,33 @@ class ConveyorWizard(QMainWindow):
         self.btn_next.setText("Deploy to AAS" if idx == self.stack.count() - 1 else "Next →"); self.update_json_preview()
             
     def update_json_preview(self):
+        if self.model_type == "URDF":
+            self.config_data = {
+                "robot_name": self.robot.name if (self.robot and self.robot.name) else "Unnamed Robot",
+                "aas_id": self.edit_aas_id.text(),
+                "description": self.edit_desc.text(),
+                "model_type": "URDF",
+                "position": [s.value() for s in self.sys_pos],
+                "rotation": [s.value() for s in self.sys_rot],
+                "scale": [s.value() for s in self.sys_scale],
+                "joints": [
+                    {
+                        "name": j.name,
+                        "type": j.joint_type,
+                        "parent": j.parent,
+                        "child": j.child,
+                        "limit": {
+                            "lower": j.limit.lower if j.limit else None,
+                            "upper": j.limit.upper if j.limit else None,
+                            "velocity": j.limit.velocity if j.limit else None,
+                            "effort": j.limit.effort if j.limit else None
+                        } if j.limit else None
+                    } for j in self.robot.joints
+                ] if self.robot else []
+            }
+            self.json_preview.setText(json.dumps(self.config_data, indent=2))
+            return
+
         self.config_data = {
             "kit_name": self.edit_kit_name.text(),
             "aas_id": self.edit_aas_id.text(),
@@ -2480,6 +2507,100 @@ class ConveyorWizard(QMainWindow):
         self.btn_next.setEnabled(False); self.btn_next.setText("Deploying...")
         try:
             kn = self.edit_kit_name.text(); aid = self.edit_aas_id.text(); kfn = sanitize_aas_id(kn)
+            if self.model_type == "URDF":
+                px, py, pz = [str(s.value()) for s in self.sys_pos]
+                units = "rad"
+                import copy
+                tree_copy = copy.deepcopy(self.current_urdf_tree)
+                manager = AssetManager(self.current_robot_root)
+                print(f"[DEPLOY] Starting asset collection from resolved URDF tree...")
+                for elem in tree_copy.iter():
+                    for attr, val in elem.attrib.items():
+                        if val and any(ext in val.lower() for ext in manager.exts):
+                            rel = manager.collect(val, self.resolver)
+                            if rel: elem.set(attr, rel)
+                urdf_filename = os.path.basename(self.current_urdf_path)
+                if urdf_filename.lower().endswith('.xacro'):
+                    urdf_filename = re.sub(r'\.xacro$', '', urdf_filename, flags=re.IGNORECASE)
+                if not urdf_filename.lower().endswith('.urdf'):
+                    urdf_filename += '.urdf'
+                urdf_rel_path = urdf_filename
+                urdf_bytes = io.BytesIO()
+                ET.ElementTree(tree_copy).write(urdf_bytes, encoding='utf-8', xml_declaration=True)
+                shell = model.AssetAdministrationShell(asset_information=model.AssetInformation(asset_kind=model.AssetKind.INSTANCE, global_asset_id=f"http://acplt.org/Assets/{kfn}"), id_=f"https://acplt.org/AAS_{kfn}", id_short=aid)
+                sm_geo = model.Submodel(id_=f"https://acplt.org/Submodels/Geo_{kfn}", id_short="GeometryData")
+                sm_pos = model.Submodel(id_=f"https://acplt.org/Submodels/Pos_{kfn}", id_short="PositionData")
+                sm_tel = model.Submodel(id_=f"https://acplt.org/Submodels/Tel_{kfn}", id_short="TelemetryData")
+                for ax, v in [('X', px), ('Y', py), ('Z', pz)]:
+                    sm_pos.submodel_element.add(model.Property(id_short=f"Pos_{ax}", value_type=model.datatypes.Double, value=float(v.replace(',', '.'))))
+                sm_tel.submodel_element.add(model.Property(id_short="JointUnits", value_type=model.datatypes.String, value=units))
+                joints_coll = model.SubmodelElementCollection(id_short="LiveJoints")
+                for j in self.robot.actuated_joints:
+                    joints_coll.value.add(model.Property(id_short=sanitize_aas_id(j.name), value_type=model.datatypes.Double, value=0.0))
+                sm_tel.submodel_element.add(joints_coll)
+                file_repo = RobustFileRepo()
+                aas_urdf_path = posixpath.normpath(posixpath.join("/aasx/robot", urdf_rel_path))
+                file_repo.add_file(aas_urdf_path, urdf_bytes.getvalue())
+                urdf_id = sanitize_aas_id("PATH_" + urdf_rel_path.replace("/", "_SL_").replace(".", "_DOT_").replace("-", "_DASH_"))
+                sm_geo.submodel_element.add(model.File(id_short=urdf_id[:100], value=aas_urdf_path, content_type="application/xml"))
+                for l_path, r_path in manager.files_to_upload.items():
+                    aas_path = posixpath.normpath(posixpath.join("/aasx/robot", r_path))
+                    if aas_path == aas_urdf_path: continue
+                    try:
+                        with open(l_path, 'rb') as f: file_repo.add_file(aas_path, f.read())
+                        pid = sanitize_aas_id("PATH_" + r_path.replace("/", "_SL_").replace(".", "_DOT_").replace("-", "_DASH_"))
+                        sm_geo.submodel_element.add(model.File(id_short=pid[:100], value=aas_path, content_type=mimetypes.guess_type(l_path)[0] or "application/octet-stream"))
+                    except Exception as e: pass
+                obj_store = model.DictObjectStore()
+                obj_store.add(shell); obj_store.add(sm_geo); obj_store.add(sm_pos); obj_store.add(sm_tel)
+                shell.submodel.add(model.ModelReference.from_referable(sm_geo))
+                shell.submodel.add(model.ModelReference.from_referable(sm_pos))
+                shell.submodel.add(model.ModelReference.from_referable(sm_tel))
+                os.makedirs("aasx_packages", exist_ok=True); out = os.path.join("aasx_packages", f"{kfn}_Twin.aasx")
+                with aasx.AASXWriter(out) as w: w.write_aas(shell.id, obj_store, file_repo, aid)
+                res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), open(out, 'rb'), 'application/octet-stream')}, timeout=10)
+                is_conflict = False
+                if res.status_code == 409:
+                    is_conflict = True
+                elif "Duplicate element id detected" in res.text or "CollidingIdentifierException" in res.text:
+                    is_conflict = True
+                if is_conflict:
+                    while QApplication.overrideCursor() is not None:
+                        QApplication.restoreOverrideCursor()
+                    reply = QMessageBox.question(
+                        self, "AAS Already Exists",
+                        f"An AAS with ID '{shell.id}' already exists. Would you like to overwrite it?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                        self.delete_aas_by_id(shell.id)
+                        time.sleep(0.5)
+                        with open(out, 'rb') as f:
+                            res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
+                        if res.status_code in [200, 201, 204]:
+                            requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [sm_geo, sm_pos, sm_tel]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                            while QApplication.overrideCursor() is not None:
+                                QApplication.restoreOverrideCursor()
+                            QMessageBox.information(self, "Success", f"AAS Robot deployed (overwritten) successfully!")
+                            self.reset_wizard()
+                            self.stack.setCurrentIndex(0)
+                            self.update_nav()
+                        else:
+                            raise Exception(f"Upload failed after overwrite: {res.text}")
+                    else:
+                        return
+                elif res.status_code in [200, 201, 204]:
+                    requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [sm_geo, sm_pos, sm_tel]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                    while QApplication.overrideCursor() is not None:
+                        QApplication.restoreOverrideCursor()
+                    QMessageBox.information(self, "Success", f"AAS Robot deployed successfully!")
+                    self.reset_wizard()
+                    self.stack.setCurrentIndex(0)
+                    self.update_nav()
+                else: raise Exception(f"Upload failed: {res.text}")
+                return
+
             shell = model.AssetAdministrationShell(asset_information=model.AssetInformation(asset_kind=model.AssetKind.INSTANCE, global_asset_id=f"http://acplt.org/Assets/{kfn}"), id_=f"https://acplt.org/AAS_{kfn}", id_short=aid)
             vs = model.Submodel(id_=f"https://acplt.org/Submodels/Visual_{kfn}", id_short="VisualStructure")
             vp = model.Submodel(id_=f"https://acplt.org/Submodels/Pins_{kfn}", id_short="VirtualPins")
