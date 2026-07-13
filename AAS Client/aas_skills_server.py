@@ -847,19 +847,7 @@ def run_menu(httpd):
             except KeyboardInterrupt:
                 console.print("\n[bold yellow]Continuous Auto Flow loop interrupted by user.[/bold yellow]")
         elif choice == "12":
-            console.print("[bold yellow]Starting Continuous Backwards Auto Flow loop. Press Ctrl+C to interrupt...[/bold yellow]")
-            try:
-                loop_count = 1
-                while True:
-                    console.print(f"\n[bold magenta]--- Cycle #{loop_count} ---[/bold magenta]")
-                    res = run_flow_to_f_backwards()
-                    if "aborted" in res or "failed" in res:
-                        console.print(f"[bold red]Loop stopped due to failure: {res}[/bold red]")
-                        break
-                    loop_count += 1
-                    time.sleep(1.0)
-            except KeyboardInterrupt:
-                console.print("\n[bold yellow]Continuous Backwards Auto Flow loop interrupted by user.[/bold yellow]")
+            run_flow_to_f_backwards()
         elif choice == "13":
             console.clear()
             console.print("[bold cyan]Querying AAS Virtual Pins...[/bold cyan]")

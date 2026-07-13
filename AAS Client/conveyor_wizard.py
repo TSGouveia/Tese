@@ -1,46 +1,426 @@
 import sys
 import os
+import collections
+import collections.abc
+import fractions
+import math
+
+# =================================================================
+# COMPATIBILITY PATCHES (Immediate)
+# =================================================================
+def apply_compatibility_patches():
+    """Applies patches for Python 3.10+ and older library versions."""
+    for name in ['Mapping', 'MutableMapping', 'Set', 'MutableSet', 'Iterable', 'MutableSequence', 'Sequence']:
+        if not hasattr(collections, name):
+            obj = getattr(collections.abc, name)
+            setattr(collections, name, obj)
+            if 'collections' in sys.modules:
+                setattr(sys.modules['collections'], name, obj)
+
+    if not hasattr(fractions, 'gcd'): fractions.gcd = math.gcd
+
+    try:
+        import numpy as np
+        np_patches = {'float': float, 'float_': np.float64, 'int': int, 'int_': np.int64, 'bool': bool}
+        for old_attr, replacement in np_patches.items():
+            if not hasattr(np, old_attr): setattr(np, old_attr, replacement)
+    except ImportError: pass
+
+    try:
+        import networkx.utils as nx_utils
+        import networkx as nx
+        nx.utils = nx_utils
+        import networkx.algorithms.bipartite
+        import networkx.generators.intersection
+    except: pass
+
+apply_compatibility_patches()
+
+from urdfpy import URDF
+
+import io
+import re
 import json
+import time
+import base64
+import hashlib
+import posixpath
+import mimetypes
+import traceback
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+
 import trimesh
 import numpy as np
 import pyvista as pv
 import requests
-import mimetypes
-import hashlib
-import posixpath
-import base64
-import io
-import re
-import traceback
-import time
-
+import xacro
+import xacro.substitution_args
 from pyvistaqt import BackgroundPlotter
+
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QLineEdit, 
                              QFileDialog, QStackedWidget, QFormLayout, 
                              QTreeWidget, QTreeWidgetItem, QCheckBox, 
                              QDoubleSpinBox, QComboBox, QMessageBox, QTextEdit,
                              QGroupBox, QScrollArea, QDialog, QDialogButtonBox,
-                             QSplitter, QListWidget, QListWidgetItem, QInputDialog)
+                             QSplitter, QListWidget, QListWidgetItem, QInputDialog,
+                             QGridLayout)
 from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QColor, QFont
 
 import basyx.aas.model as model
 import basyx.aas.adapter.aasx as aasx
-import xml.etree.ElementTree as ET
-from create_robotic_arm import (
-    XacroResolver,
-    DependencyManager,
-    DependencyDialog,
-    XacroArgsDialog,
-    expand_xacro_final,
-    URDF,
-    AssetManager
-)
+
+# =================================================================
+# XACRO RESOLVER & ENGINE
+# =================================================================
+class XacroResolver:
+    def __init__(self, root_path):
+        self.root_path = os.path.abspath(root_path).replace('\\', '/')
+        self.file_map = {} # full_path.lower() -> full_path
+        self.basename_map = {} # basename.lower() -> [full_paths]
+        print(f"[RESOLVER] Mapping: {self.root_path}")
+        self._index_directory(self.root_path)
+        
+        # Also index siblings of root_path to find other packages in the same workspace
+        parent = os.path.dirname(self.root_path)
+        if parent and os.path.isdir(parent):
+            print(f"[RESOLVER] Indexing sibling packages in: {parent}")
+            for d in os.listdir(parent):
+                d_path = os.path.join(parent, d)
+                if os.path.isdir(d_path) and d_path.replace('\\', '/') != self.root_path:
+                    self._index_directory(d_path)
+                    
+        print(f"[RESOLVER] {len(self.file_map)} entries mapped.")
+
+    def _index_directory(self, path):
+        for r, d, fs in os.walk(path):
+            for f in fs:
+                full_path = os.path.abspath(os.path.join(r, f)).replace('\\', '/')
+                self.file_map[full_path.lower()] = full_path
+                bn = f.lower()
+                if bn not in self.basename_map: self.basename_map[bn] = []
+                if full_path not in self.basename_map[bn]:
+                    self.basename_map[bn].append(full_path)
+
+    def add_search_path(self, new_path):
+        print(f"[RESOLVER] Adding search path: {new_path}")
+        old_count = len(self.file_map)
+        self._index_directory(new_path)
+        print(f"[RESOLVER] {len(self.file_map) - old_count} more files added.")
+
+    def resolve(self, path):
+        if not path: return None
+        p_orig = path
+        p_lower = path.lower().replace('\\', '/')
+        
+        # 1. Direct hit (absolute or relative to CWD)
+        if p_lower in self.file_map: 
+            return self.file_map[p_lower]
+        
+        # 2. Normalize (remove package:// and $(find ...))
+        # If it's JUST a $(find pkg), we want to find the package directory
+        if re.match(r'^\$\(find [^)]+\)$', path):
+            pkg_name = re.search(r'\$\(find ([^)]+)\)', path).group(1).lower()
+            # Try to find a directory with this name
+            for r, ds, fs in os.walk(self.root_path):
+                for d in ds:
+                    if d.lower() == pkg_name:
+                        return os.path.abspath(os.path.join(r, d)).replace('\\', '/')
+            return None
+
+        normalized = re.sub(r'\$\(find [^)]+\)', '', path.replace('package://', ''))
+        normalized = '/'.join([s for s in normalized.replace('\\', '/').split('/') if s and s != '.'])
+        norm_lower = normalized.lower()
+        
+        # 3. Best suffix match
+        best_match = None
+        max_score = -1
+        
+        bn = os.path.basename(normalized).lower()
+        candidates = self.basename_map.get(bn, [])
+        
+        for cand in candidates:
+            cand_lower = cand.lower()
+            if cand_lower.endswith(norm_lower):
+                score = len(norm_lower)
+                if score > max_score:
+                    max_score = score
+                    best_match = cand
+            else:
+                # Try partial suffix match (e.g. if package name is different)
+                parts = norm_lower.split('/')
+                for i in range(len(parts)-1, 0, -1):
+                    sub = '/'.join(parts[i:])
+                    if cand_lower.endswith(sub):
+                        score = len(sub)
+                        if score > max_score:
+                            max_score = score
+                            best_match = cand
+                        break
+        
+        if best_match:
+            return best_match
+            
+        return None
+
+_original_abs_filename_spec = None
+_original_parse = None
+_active_resolver = None
+
+def _ensure_xacro_patched():
+    global _original_abs_filename_spec, _original_parse
+    if _original_abs_filename_spec is not None: return
+    
+    _original_abs_filename_spec = xacro.abs_filename_spec
+    _original_parse = xacro.parse
+
+    def patched_abs_filename_spec(filename_spec):
+        if _active_resolver:
+            resolved = _active_resolver.resolve(filename_spec)
+            if resolved: return resolved
+        return _original_abs_filename_spec(filename_spec)
+
+    def patched_parse(inp, filename=None):
+        if inp is None and filename and _active_resolver:
+            resolved = _active_resolver.resolve(filename)
+            if resolved:
+                print(f"[XACRO-PATCH] Reading resolved file: {resolved}")
+                with open(resolved, 'r', encoding='utf-8') as f: content = f.read()
+                return minidom.parseString(content)
+        return _original_parse(inp, filename)
+
+    xacro.abs_filename_spec = patched_abs_filename_spec
+    xacro.parse = patched_parse
+
+    try:
+        xacro.substitution_args._eval_find = lambda pkg: ""
+        print("[XACRO-PATCH] Successfully patched xacro.substitution_args._eval_find")
+    except Exception as e:
+        print(f"[XACRO-PATCH] Warning: Failed to patch substitution_args: {e}")
+
+def expand_xacro_final(filepath, mappings, resolver):
+    _ensure_xacro_patched()
+    print(f"[XACRO] Expanding {filepath} with mappings {mappings}")
+    global _active_resolver
+    _active_resolver = resolver
+    try:
+        doc = xacro.process_file(filepath, mappings=mappings)
+        print(f"[XACRO] Expansion completed successfully.")
+        return doc.toxml()
+    except Exception as e:
+        print(f"[XACRO] ERROR during expansion: {e}")
+        raise e
+    finally: _active_resolver = None
+
+# =================================================================
+# ASSET MANAGER
+# =================================================================
+class AssetManager:
+    def __init__(self, assets_root):
+        self.assets_root = os.path.abspath(assets_root)
+        self.files_to_upload = {}
+        self.exts = ['.stl', '.dae', '.obj', '.mtl', '.jpg', '.png', '.jpeg', '.yaml', '.json', '.txt', '.conf']
+        print(f"[ASSETS] AssetManager started at: {self.assets_root}")
+
+    def collect(self, filename, resolver):
+        if not filename: return None
+        print(f"[ASSETS] Collecting: {filename}")
+        found = resolver.resolve(filename)
+        if not found: 
+            print(f"   [ASSETS] WARNING: Failed to resolve '{filename}' for collection.")
+            return None
+        found = os.path.abspath(found)
+        if found in self.files_to_upload: 
+            print(f"   [ASSETS] Already in cache: {self.files_to_upload[found]}")
+            return self.files_to_upload[found]
+        
+        rel_path = os.path.relpath(found, self.assets_root).replace(os.sep, '/')
+        self.files_to_upload[found] = rel_path
+        print(f"   [ASSETS] New asset: {found} -> {rel_path}")
+        
+        if found.lower().endswith(('.dae', '.obj', '.mtl', '.yaml')):
+            print(f"   [ASSETS] Analyzing dependencies of {os.path.basename(found)}...")
+            try:
+                with open(found, 'r', errors='ignore', encoding='utf-8') as f: content = f.read()
+                refs = re.findall(r'<(?:init_from|texture|map_Kd|mtllib)[^>]*>\s*([^< \r\n]+)|(?:map_\w+|mtllib|import)\s+([^\s\r\n]+)', content)
+                for r in refs:
+                    ref = (r[0] or r[1]).strip()
+                    if ref and any(ext in ref.lower() for ext in self.exts):
+                        print(f"      [ASSETS] Reference found: {ref}")
+                        self.collect(ref, resolver)
+            except Exception as e:
+                print(f"      [ASSETS] Error reading {found}: {e}")
+        return rel_path
+
+# =================================================================
+# DIALOGS & DEPENDENCY MANAGER
+# =================================================================
+class DependencyDialog(QDialog):
+    def __init__(self, missing_files, resolver, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Missing Files")
+        self.setMinimumWidth(500)
+        self.resolver, self.missing = resolver, missing_files
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("<b>Files not found:</b>"))
+        self.list_widget = QListWidget()
+        for f in self.missing: self.list_widget.addItem(f"❌ {f}")
+        layout.addWidget(self.list_widget)
+        btn_add = QPushButton("📂 Add Folder"); btn_add.clicked.connect(self.add_folder)
+        self.btn_retry = QPushButton("Try Again"); self.btn_retry.setEnabled(False); self.btn_retry.clicked.connect(self.accept)
+        btn_layout = QHBoxLayout(); btn_layout.addWidget(btn_add); btn_layout.addWidget(self.btn_retry)
+        layout.addLayout(btn_layout)
+
+    def add_folder(self):
+        path = QFileDialog.getExistingDirectory(self, "Folder")
+        if path:
+            self.resolver.add_search_path(path)
+            all_ok = True
+            for i in range(self.list_widget.count()):
+                it = self.list_widget.item(i)
+                orig = it.text().replace("❌ ", "").replace("✅ ", "")
+                if self.resolver.resolve(orig): it.setText(f"✅ {orig}"); it.setForeground(Qt.GlobalColor.green)
+                else: all_ok = False
+            if all_ok: self.btn_retry.setEnabled(True)
+
+class XacroArgsDialog(QDialog):
+    def __init__(self, args_info, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Xacro Variables")
+        self.setMinimumWidth(600)
+        self.results = {}
+        
+        main_layout = QVBoxLayout(self)
+        self.grid = QGridLayout()
+        self.grid.setSpacing(10)
+        
+        self.inputs = {}
+        cols = 2
+        for i, (name, default) in enumerate(args_info.items()):
+            row = i // cols
+            col_offset = (i % cols) * 2
+            
+            lbl = QLabel(f"<b>{name}</b>")
+            
+            edit = QLineEdit()
+            if default: edit.setPlaceholderText(str(default))
+            edit.setMinimumWidth(120)
+            
+            self.inputs[name] = edit
+            self.grid.addWidget(lbl, row, col_offset)
+            self.grid.addWidget(edit, row, col_offset + 1)
+
+        main_layout.addLayout(self.grid)
+        
+        btn = QPushButton("Confirm Mappings"); btn.clicked.connect(self.accept_all)
+        btn.setStyleSheet("background: #2980b9; color: white; padding: 10px; font-weight: bold; margin-top: 10px;")
+        main_layout.addWidget(btn)
+
+    def accept_all(self):
+        for n, e in self.inputs.items():
+            v = e.text().strip()
+            if v: self.results[n] = v
+        self.accept()
+
+class DependencyManager:
+    @staticmethod
+    def scan_xacro_args(filepath, resolver):
+        all_defs = {}
+        all_text = ""
+        visited = set()
+        
+        def collect_recursive(fp):
+            nonlocal all_text
+            if fp in visited: return
+            visited.add(fp)
+            print(f"[DEP-MANAGER] Analyzing: {fp}")
+            try:
+                with open(fp, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    all_text += "\n" + content
+                    
+                    for m in re.finditer(r'<xacro:arg\s+name=["\']([^"\']+)["\'](?:\s+default=["\']([^"\']+)["\'])?', content):
+                        name, default = m.group(1), m.group(2)
+                        
+                        if default and '$(find ' in default:
+                            def replacer(match):
+                                pkg = match.group(1)
+                                res = resolver.resolve(f"$(find {pkg})") or f"[{pkg}]"
+                                return res
+                            default = re.sub(r'\$\(find ([^)]+)\)', replacer, default)
+                        
+                        all_defs[name] = default
+
+                    for inc in re.findall(r'<xacro:include\s+filename=["\']([^"\']+)["\']', content):
+                        res = resolver.resolve(inc)
+                        if res: collect_recursive(res)
+            except Exception as e:
+                print(f"   [DEP-MANAGER] Error reading {fp}: {e}")
+
+        collect_recursive(filepath)
+        used_names = set(re.findall(r'\$\(arg\s+([^)]+)\)', all_text))
+        filtered_args = {k: v for k, v in all_defs.items() if k in used_names}
+        print(f"[DEP-MANAGER] Found {len(all_defs)} definitions, {len(filtered_args)} are actually used.")
+        return filtered_args
+
+    @staticmethod
+    def scan_meshes(xml_text):
+        meshes = list(set(re.findall(r'<mesh\s+filename=["\']([^"\']+)["\']', xml_text)))
+        print(f"[DEP-MANAGER] Meshes detected in XML: {len(meshes)}")
+        return meshes
+
+    @staticmethod
+    def check_recursive_xacro(filepath, resolver, visited=None):
+        if visited is None: visited = set()
+        if filepath in visited: return []
+        missing = []
+        print(f"[DEP-MANAGER] Recursive Xacro check: {filepath}")
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f: content = f.read()
+            for inc in re.findall(r'<xacro:include\s+filename=["\']([^"\']+)["\']', content):
+                res = resolver.resolve(inc)
+                if not res: 
+                    print(f"   [DEP-MANAGER] MISSING: {inc}")
+                    missing.append(inc)
+                else: missing.extend(DependencyManager.check_recursive_xacro(res, resolver, visited))
+        except Exception as e:
+            print(f"   [DEP-MANAGER] Error verifying {filepath}: {e}")
+        return list(set(missing))
 
 # =================================================================
 # AAS UTILITIES
 # =================================================================
+def get_file_rel_path(el):
+    val = el.get("value", "")
+    id_short = el.get("idShort", "")
+    
+    rel_path = None
+    # 1. First priority: decode path from idShort if it is encoded as PATH_...
+    if id_short.startswith("PATH_"):
+        encoded_path = id_short[len("PATH_"):]
+        rel_path = encoded_path.replace("_SL_", "/").replace("_DOT_", ".").replace("_DASH_", "-")
+        
+    # 2. Second priority: strip standard prefix /aasx/robot/ or /aasx/kit/ if present
+    if not rel_path:
+        for prefix in ["/aasx/robot/", "/aasx/kit/", "/aasx/", "aasx/", "robot/", "kit/"]:
+            if val.startswith(prefix):
+                rel_path = val[len(prefix):]
+                break
+            
+    # 3. Fallback: return basename of value, or the value itself if it contains no slash
+    if not rel_path:
+        if "/" in val or "\\" in val:
+            rel_path = val.replace("\\", "/")
+        else:
+            rel_path = os.path.basename(val)
+            
+    # Strip any leading slashes to prevent os.path.join from treating it as drive-root relative
+    while rel_path.startswith("/"):
+        rel_path = rel_path[1:]
+    return rel_path
+
 class RobustFileRepo(dict):
     def get_content_type(self, fn): return mimetypes.guess_type(fn)[0] or "application/octet-stream"
     def add_file(self, n, c): self[n] = c
@@ -331,7 +711,7 @@ class ConveyorWizard(QMainWindow):
         self.setWindowTitle("Conveyor Wizard")
         self.config_data = {"kit_name": "", "aas_id": "", "description": "", "components": []}
         self.logic_rules = {"start": [], "sequences": []}
-        self.glb_path = None; self.meshes = {}; self.actors = {}; self.actuator_widgets = []; self.sensor_widgets = []; 
+        self.glb_path = None; self.meshes = {}; self.actors = {}; self.layout_actor_names = []; self.actuator_widgets = []; self.sensor_widgets = []; 
         self.current_config_widget = None
         self.model_type = "GLB"
         self.robot = None
@@ -451,9 +831,21 @@ class ConveyorWizard(QMainWindow):
         pos_l = QHBoxLayout(); rot_l = QHBoxLayout(); sca_l = QHBoxLayout()
         for i in range(3): 
             self.sys_pos[i].setRange(-100, 100); self.sys_pos[i].setSingleStep(0.1); self.sys_pos[i].setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons); pos_l.addWidget(self.sys_pos[i])
+            self.sys_pos[i].valueChanged.connect(self.update_system_transform)
+            
             self.sys_rot[i].setRange(-360, 360); self.sys_rot[i].setSingleStep(5.0); self.sys_rot[i].setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons); rot_l.addWidget(self.sys_rot[i])
+            self.sys_rot[i].valueChanged.connect(self.update_system_transform)
+            
             self.sys_scale[i].setRange(0, 100); self.sys_scale[i].setValue(1.0); self.sys_scale[i].setSingleStep(0.1); self.sys_scale[i].setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons); sca_l.addWidget(self.sys_scale[i])
+            self.sys_scale[i].valueChanged.connect(self.update_system_transform)
+            
         tfl.addRow("Position:", pos_l); tfl.addRow("Rotation:", rot_l); tfl.addRow("Scale:", sca_l)
+        
+        self.check_preview_layout = QCheckBox("View in Current Project (Preview Factory Layout)")
+        self.check_preview_layout.setStyleSheet("font-weight: bold; color: #3498db;")
+        self.check_preview_layout.stateChanged.connect(self.toggle_layout_preview)
+        tfl.addRow("", self.check_preview_layout)
+        
         l2.addWidget(info_group); l2.addWidget(trans_group); l2.addStretch(); self.stack.addWidget(self.page2)
         
         # P3: Sensors
@@ -1543,6 +1935,7 @@ class ConveyorWizard(QMainWindow):
         self.lbl_glb_path.setText("No file selected (Layout Preview Mode)")
 
         import trimesh.transformations as tf
+        import numpy as np
         loaded_count = 0
 
         try:
@@ -1570,6 +1963,132 @@ class ConveyorWizard(QMainWindow):
                             submodels_data[sm_data.get("idShort", "")] = sm_data
 
                 vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
+                
+                # Check if it is a robot (URDF) without visual structure
+                if "PositionData" in submodels_data and not vis_data:
+                    pos_data = submodels_data["PositionData"]
+                    pos_val = [0.0]*3; rot_val = [0.0]*3; scale_val = [1.0]*3
+                    for el in pos_data.get("submodelElements", []):
+                        if el["modelType"] == "Property":
+                            try:
+                                v = float(el.get("value", 0))
+                                id_s = el["idShort"]
+                                if id_s == "Pos_X": pos_val[0] = v
+                                elif id_s == "Pos_Y": pos_val[1] = v
+                                elif id_s == "Pos_Z": pos_val[2] = v
+                                elif id_s == "Rot_X": rot_val[0] = v
+                                elif id_s == "Rot_Y": rot_val[1] = v
+                                elif id_s == "Rot_Z": rot_val[2] = v
+                                elif id_s == "Scale_X": scale_val[0] = v
+                                elif id_s == "Scale_Y": scale_val[1] = v
+                                elif id_s == "Scale_Z": scale_val[2] = v
+                            except:
+                                pass
+                    if "GeometryData" in submodels_data:
+                        geo_data = submodels_data["GeometryData"]
+                        geo_id = geo_data.get("id")
+                        encoded_geo_id = base64.urlsafe_b64encode(geo_id.encode()).decode().rstrip("=")
+                        
+                        import tempfile
+                        temp_robot_dir = tempfile.mkdtemp()
+                        urdf_rel_path = None
+                        urdf_file_element = None
+                        for el in geo_data.get("submodelElements", []):
+                            if el["modelType"] == "File":
+                                val = el.get("value", "")
+                                if val.lower().endswith(".urdf") or el.get("idShort", "").lower().endswith("_urdf") or el.get("idShort", "").lower().endswith("_urdf_dot_urdf"):
+                                    urdf_file_element = el
+                                    urdf_rel_path = get_file_rel_path(el)
+                                        
+                        if urdf_file_element and urdf_rel_path:
+                            for el in geo_data.get("submodelElements", []):
+                                if el["modelType"] == "File":
+                                    rel_path = get_file_rel_path(el)
+                                    id_short_f = el.get("idShort")
+                                    dl_url = f"http://localhost:8081/submodels/{encoded_geo_id}/submodel-elements/{id_short_f}/attachment"
+                                    m_res = requests.get(dl_url, timeout=5)
+                                    if m_res.status_code == 200:
+                                        dest_path = os.path.join(temp_robot_dir, rel_path.replace("/", os.sep))
+                                        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                                        with open(dest_path, "wb") as f: f.write(m_res.content)
+                                    else:
+                                        print(f"[DOWNLOAD ERROR] Failed to download {id_short_f} (HTTP Code: {m_res.status_code})")
+                                        raise Exception(f"Failed to download robot mesh/file '{id_short_f}' (HTTP Code {m_res.status_code})")
+                                        
+                            target_urdf = os.path.join(temp_robot_dir, urdf_rel_path.replace("/", os.sep))
+                            try:
+                                robot_obj = URDF.load(target_urdf)
+                                fk = robot_obj.visual_geometry_fk()
+                                
+                                geom_to_visual = {}
+                                for l in robot_obj.links:
+                                    for v in l.visuals:
+                                        if v.geometry:
+                                            geom_to_visual[v.geometry] = v
+                                            
+                                # Convert coordinates to match Unity left-handed coordinate system (reflected Z-flip)
+                                pos_pv = [-pos_val[1], pos_val[2], -pos_val[0]]
+                                rz, rx, ry = rot_val[0], rot_val[1], -rot_val[2]
+                                scale_pv = [scale_val[1], scale_val[2], scale_val[0]]
+                                
+                                T_l = tf.translation_matrix(pos_pv)
+                                R_l = tf.euler_matrix(np.radians(rz), np.radians(rx), np.radians(ry), 'szxy')
+                                S_l = np.diag([scale_pv[0], scale_pv[1], scale_pv[2], 1.0])
+                                R_z_to_y = tf.euler_matrix(np.radians(-90), 0, 0, 'sxyz')
+                                M_layout = tf.concatenate_matrices(T_l, R_l, S_l) @ R_z_to_y
+                                
+                                for geom, geom_tf in fk.items():
+                                    # Get meshes from urdfpy geometry
+                                    meshes = getattr(geom, "meshes", None)
+                                    if meshes is None or len(meshes) == 0:
+                                        # Try fallback for Mesh type
+                                        if type(geom).__name__ == "Mesh" and getattr(geom, "filename", None):
+                                            try:
+                                                loaded = trimesh.load(geom.filename)
+                                                if isinstance(loaded, trimesh.Scene):
+                                                     m = loaded.dump(concatenate=True)
+                                                else:
+                                                     m = loaded
+                                                if hasattr(geom, 'scale') and geom.scale is not None:
+                                                    m.apply_scale(geom.scale)
+                                                meshes = [m]
+                                            except Exception as e_fallback:
+                                                print(f"Fallback mesh load failed: {e_fallback}")
+                                                
+                                    if meshes is None or len(meshes) == 0:
+                                        continue
+                                        
+                                    # Apply transform & render
+                                    scale_matrix = np.eye(4)
+                                    if hasattr(geom, 'scale') and geom.scale is not None:
+                                        s = geom.scale
+                                        scale_matrix = np.diag([s[0], s[1], s[2], 1.0])
+                                    
+                                    total_transform = M_layout @ geom_tf @ scale_matrix
+                                    
+                                    for m in meshes:
+                                        if m is None: continue
+                                        m_copy = m.copy()
+                                        m_copy.apply_transform(total_transform)
+                                        pm = pv.wrap(m_copy)
+                                        actor_name = f"layout_{id_short}_{getattr(geom, 'name', 'link')}_{id(m)}"
+                                        
+                                        # Get color matching Unity/URDF
+                                        visual_obj = geom_to_visual.get(geom, None)
+                                        col = [0.7, 0.7, 0.7]
+                                        if visual_obj and hasattr(visual_obj, 'material') and visual_obj.material and visual_obj.material.color is not None:
+                                            col = np.array(visual_obj.material.color[:3]).astype(float)
+                                            if col.max() > 1.01:
+                                                col /= 255.0
+                                        elif "abb" in id_short.lower():
+                                            col = [246.0/255.0, 120.0/255.0, 40.0/255.0]
+                                            
+                                        self.plotter.add_mesh(pm, name=actor_name, color=col, smooth_shading=True, specular=0.5, ambient=0.2, show_scalar_bar=False)
+                                loaded_count += 1
+                            except Exception as e_robot:
+                                print(f"Error loading robot in layout preview: {e_robot}")
+                    continue
+
                 if not vis_data: continue
 
                 beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
@@ -1630,10 +2149,14 @@ class ConveyorWizard(QMainWindow):
                         # Load geometry
                         scene = trimesh.load(tp, process=False)
                         
-                        # Build transformation matrix M = T * R * S
-                        T = tf.translation_matrix(pos_val)
-                        R = tf.euler_matrix(np.radians(rot_val[0]), np.radians(rot_val[1]), np.radians(rot_val[2]), 'sxyz')
-                        S = np.diag([scale_val[0], scale_val[1], scale_val[2], 1.0])
+                        # Map GLB Y-up coordinates to Unity left-handed coordinates (reflected Z-flip)
+                        pos_pv = [pos_val[0], pos_val[1], pos_val[2]]
+                        rz, rx, ry = rot_val[2], -rot_val[0], -rot_val[1]
+                        scale_pv = [scale_val[0], scale_val[1], scale_val[2]]
+                        
+                        T = tf.translation_matrix(pos_pv)
+                        R = tf.euler_matrix(np.radians(rz), np.radians(rx), np.radians(ry), 'szxy')
+                        S = np.diag([scale_pv[0], scale_pv[1], scale_pv[2], 1.0])
                         M = tf.concatenate_matrices(T, R, S)
                         
                         if isinstance(scene, trimesh.Scene):
@@ -1672,7 +2195,7 @@ class ConveyorWizard(QMainWindow):
                                         mi.apply_transform(combined_tf)
                                         pm = pv.wrap(mi)
                                         tx, cl, mt, rg = geo_mats.get(gn, (None, None, 0.0, 0.5))
-                                        self.plotter.add_mesh(pm, texture=tx, color=cl if not tx else None, smooth_shading=True, pbr=True, metallic=mt, roughness=rg)
+                                        self.plotter.add_mesh(pm, texture=tx, color=cl if not tx else None, smooth_shading=True, pbr=True, metallic=mt, roughness=rg, show_scalar_bar=False)
                                 for c in scene.graph.transforms.children.get(node, []):
                                     add_preview_node(c)
                                     
@@ -1681,7 +2204,7 @@ class ConveyorWizard(QMainWindow):
                         elif isinstance(scene, trimesh.Trimesh):
                             pm = pv.wrap(scene)
                             pm.transform(M)
-                            self.plotter.add_mesh(pm, pbr=True)
+                            self.plotter.add_mesh(pm, pbr=True, show_scalar_bar=False)
                         
                         loaded_count += 1
 
@@ -1689,7 +2212,7 @@ class ConveyorWizard(QMainWindow):
             self.plotter.camera.up = (0, 1, 0)
             while QApplication.overrideCursor() is not None:
                 QApplication.restoreOverrideCursor()
-            QMessageBox.information(self, "Success", f"Factory layout loaded! Rendered {loaded_count} active AAS kits.")
+            QMessageBox.information(self, "Success", f"Factory layout loaded! Rendered {loaded_count} active AAS resources.")
         except Exception as ex:
             while QApplication.overrideCursor() is not None:
                 QApplication.restoreOverrideCursor()
@@ -1724,128 +2247,226 @@ class ConveyorWizard(QMainWindow):
                         submodels_data[sm_data.get("idShort", "")] = sm_data
 
             # Look for submodels by parsing the actual Submodel IDs/data we just fetched
-            # We don't rely on 'GeometryData' strictly; we look for anything that looks like VisualStructure
-            vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
-            beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
+            is_urdf = "GeometryData" in submodels_data and "PositionData" in submodels_data
             
-            if not all([vis_data, beh_data]): raise Exception(f"AAS is missing required Kit submodels. Found: {list(submodels_data.keys())}")
+            if is_urdf:
+                # It's a URDF Robot AAS
+                geo_data = submodels_data["GeometryData"]
+                pos_data = submodels_data["PositionData"]
                 
-            # Basic Info
-            self.edit_kit_name.setText(shell_desc.get("idShort", "ClonedKit"))
-            self.edit_aas_id.setText(shell_desc.get("idShort", "ClonedKit"))
-            
-            # Fetch description from configuration if available
-            desc = ""
-            if "KitConfiguration" in submodels_data:
-                cfg = submodels_data["KitConfiguration"]
-                for el in cfg.get("submodelElements", []):
-                    if el["idShort"] == "Description":
-                        desc = el.get("value", "")
-            self.edit_desc.setText(desc)
-            
-            # Transform & Mesh
-            mesh_href = None
-            for el in vis_data.get("submodelElements", []):
-                if el["modelType"] == "SubmodelElementCollection": 
-                    for sel in el.get("value", []):
-                        if sel["idShort"] == "Transform":
-                            for t in sel.get("value", []):
-                                v = float(t.get("value", 0))
-                                if t["idShort"] == "PosX": self.sys_pos[0].setValue(v)
-                                elif t["idShort"] == "PosY": self.sys_pos[1].setValue(v)
-                                elif t["idShort"] == "PosZ": self.sys_pos[2].setValue(v)
-                                elif t["idShort"] == "RotX": self.sys_rot[0].setValue(v)
-                                elif t["idShort"] == "RotY": self.sys_rot[1].setValue(v)
-                                elif t["idShort"] == "RotZ": self.sys_rot[2].setValue(v)
-                                elif t["idShort"] == "ScaleX": self.sys_scale[0].setValue(v)
-                                elif t["idShort"] == "ScaleY": self.sys_scale[1].setValue(v)
-                                elif t["idShort"] == "ScaleZ": self.sys_scale[2].setValue(v)
-                        elif sel["idShort"] == "Mesh" and sel["modelType"] == "File":
-                            mesh_href = sel.get("value")
-                        elif sel["idShort"] == "DynamicObject" and sel["modelType"] == "Property":
-                            is_dyn = str(sel.get("value", "False")).lower() == "true"
-                            self.check_is_dynamic.setChecked(is_dyn)
-
-            # Behavior
-            for w in list(self.actuator_widgets): self.remove_actuator(w)
-            for w in list(self.sensor_widgets): self.remove_sensor(w)
-            
-            act_types = ["Conveyor", "RotateContinuous", "TranslateContinuous", "Piston", "Linear"]
-            sens_types = ["TriggerZone", "Presence", "Proximity"]
-            
-            for el in beh_data.get("submodelElements", []):
-                if el["modelType"] == "SubmodelElementCollection":
-                    props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
-                    params = {}
-                    for p in el.get("value", []):
-                        if p["idShort"] == "Parameters": params = {pp["idShort"]: pp.get("value") for pp in p.get("value", []) if pp["modelType"] == "Property"}
-                            
-                    b_type = props.get("Type", ""); pin_id = props.get("PinID", ""); node = props.get("Component", "")
+                # 1. Reconstruct robot folder structure and download files
+                import tempfile
+                temp_robot_dir = tempfile.mkdtemp()
+                self.current_robot_root = os.path.abspath(temp_robot_dir).replace('\\', '/')
+                
+                # Find the GeometryData ID to download attachments
+                geo_id = geo_data.get("id")
+                encoded_geo_id = base64.urlsafe_b64encode(geo_id.encode()).decode().rstrip("=")
+                
+                urdf_rel_path = None
+                urdf_file_element = None
+                
+                # First scan elements to find the URDF file
+                for el in geo_data.get("submodelElements", []):
+                    if el["modelType"] == "File":
+                        val = el.get("value", "")
+                        if val.lower().endswith(".urdf") or el.get("idShort", "").lower().endswith("_urdf") or el.get("idShort", "").lower().endswith("_urdf_dot_urdf"):
+                            urdf_file_element = el
+                            urdf_rel_path = get_file_rel_path(el)
+                                
+                if not urdf_file_element:
+                    raise Exception("AAS GeometryData is missing the URDF file.")
                     
-                    if b_type in act_types:
-                        self.add_actuator(); w = self.actuator_widgets[-1]
-                        w.edit_pin.setText(pin_id); w.edit_node.setText(node); w.combo_behavior.setCurrentText(b_type)
-                        w.spin_x.setValue(float(params.get("AxisX", 0))); w.spin_y.setValue(float(params.get("AxisY", 0))); w.spin_z.setValue(float(params.get("AxisZ", 0)))
-                        w.spin_speed.setValue(float(params.get("Speed", 1.0))); w.check_visible.setChecked(str(params.get("Visible", "True")).lower() == "true")
-                        if "StopSensorComponent" in params: w.combo_stop_sens.setCurrentText(params["StopSensorComponent"])
-                    elif b_type in sens_types:
-                        self.add_sensor(); w = self.sensor_widgets[-1]
-                        w.edit_pin.setText(pin_id); w.edit_node.setText(node); w.combo_behavior.setCurrentText(b_type)
-                        w.edit_filter.setText(params.get("TargetFilter", "Metal"))
-                        w.check_visible.setChecked(str(params.get("Visible", "False")).lower() == "true")
-                        w.check_active_low.setChecked(str(params.get("ActiveLow", "False")).lower() == "true")
-                        w.check_snap.setChecked("SnapTarget" in params)
-            self.update_all_actuator_dropdowns()
-
-            # Control Logic
-            logic_data = next((v for k,v in submodels_data.items() if "ControlLogic" in k or "Logic" in k), None)
-            self.logic_rules = {"start": [], "sequences": []}
-            if logic_data:
-                for el in logic_data.get("submodelElements", []):
-                    if el["idShort"] == "Rules":
-                        rules_json_str = el.get("value", "")
-                        if rules_json_str:
-                            try:
-                                loaded_rules = json.loads(rules_json_str)
-                                if isinstance(loaded_rules, dict):
-                                    self.logic_rules = loaded_rules
-                            except Exception:
-                                traceback.print_exc()
-
-            self.list_sequences.blockSignals(True)
-            self.list_sequences.clear()
-            self.list_sequences.addItem("Start Sequence")
-            for seq in self.logic_rules.get("sequences", []):
-                self.list_sequences.addItem(seq.get("name", "Custom Sequence"))
-            self.list_sequences.setCurrentRow(0)
-            self.list_sequences.blockSignals(False)
-            self.on_sequence_selected(0)
-            
-            # Mesh Download
-            if mesh_href:
-                # the href is typically a base64 encoded endpoint in basyx, or direct url
-                # since we know the visual structure id, we can reconstruct the API call to get the attachment
-                vis_id = vis_data.get("id")
-                encoded_vis_id = base64.urlsafe_b64encode(vis_id.encode()).decode().rstrip("=")
+                # Now download all files
+                self.files_to_upload = {}
+                for el in geo_data.get("submodelElements", []):
+                    if el["modelType"] == "File":
+                        rel_path = get_file_rel_path(el)
+                        id_short = el.get("idShort")
+                            
+                        # Download attachment
+                        dl_url = f"http://localhost:8081/submodels/{encoded_geo_id}/submodel-elements/{id_short}/attachment"
+                        m_res = requests.get(dl_url, timeout=5)
+                        if m_res.status_code == 200:
+                            dest_path = os.path.join(temp_robot_dir, rel_path.replace("/", os.sep))
+                            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                            with open(dest_path, "wb") as f:
+                                f.write(m_res.content)
+                            self.files_to_upload[dest_path] = rel_path
+                        else:
+                            print(f"[DOWNLOAD ERROR] Failed to download {id_short} (HTTP Code: {m_res.status_code})")
+                            raise Exception(f"Failed to download robot mesh/file '{id_short}' (HTTP Code {m_res.status_code})")
                 
-                # Find the collection that has the Mesh
-                coll_id_short = None
+                target_urdf_path = os.path.join(temp_robot_dir, urdf_rel_path.replace("/", os.sep))
+                self.current_urdf_path = target_urdf_path
+                self.glb_path = target_urdf_path
+                self.model_type = "URDF"
+                
+                # Set up resolver
+                self.resolver = XacroResolver(self.current_robot_root)
+                
+                # Load URDF XML content
+                with open(target_urdf_path, 'r', encoding='utf-8') as f:
+                    self.current_urdf_xml = f.read()
+                self.current_urdf_tree = ET.fromstring(self.current_urdf_xml.strip())
+                
+                # Load robot object using urdfpy
+                self.robot = URDF.load(target_urdf_path)
+                
+                # Basic Info
+                self.edit_kit_name.setText(shell_desc.get("idShort", "ClonedRobot"))
+                self.edit_aas_id.setText(shell_desc.get("idShort", "ClonedRobot"))
+                
+                desc = ""
+                if "KitConfiguration" in submodels_data:
+                    cfg = submodels_data["KitConfiguration"]
+                    for el in cfg.get("submodelElements", []):
+                        if el["idShort"] == "Description":
+                            desc = el.get("value", "")
+                self.edit_desc.setText(desc if desc else "Cloned Robot System")
+                
+                # Parse transform from PositionData
+                for el in pos_data.get("submodelElements", []):
+                    if el["modelType"] == "Property":
+                        try:
+                            v = float(el.get("value", 0))
+                            id_s = el["idShort"]
+                            if id_s == "Pos_X": self.sys_pos[0].setValue(v)
+                            elif id_s == "Pos_Y": self.sys_pos[1].setValue(v)
+                            elif id_s == "Pos_Z": self.sys_pos[2].setValue(v)
+                            elif id_s == "Rot_X": self.sys_rot[0].setValue(v)
+                            elif id_s == "Rot_Y": self.sys_rot[1].setValue(v)
+                            elif id_s == "Rot_Z": self.sys_rot[2].setValue(v)
+                            elif id_s == "Scale_X": self.sys_scale[0].setValue(v)
+                            elif id_s == "Scale_Y": self.sys_scale[1].setValue(v)
+                            elif id_s == "Scale_Z": self.sys_scale[2].setValue(v)
+                        except:
+                            pass
+                        
+                # Update label and build the 3D visualization
+                self.lbl_glb_path.setText(f"URDF: {self.robot.name} ({os.path.basename(target_urdf_path)})")
+                self._build_urdf_view()
+                
+            else:
+                # We don't rely on 'GeometryData' strictly; we look for anything that looks like VisualStructure
+                vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
+                beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
+                
+                if not all([vis_data, beh_data]): raise Exception(f"AAS is missing required Kit submodels. Found: {list(submodels_data.keys())}")
+                    
+                # Basic Info
+                self.edit_kit_name.setText(shell_desc.get("idShort", "ClonedKit"))
+                self.edit_aas_id.setText(shell_desc.get("idShort", "ClonedKit"))
+                
+                # Fetch description from configuration if available
+                desc = ""
+                if "KitConfiguration" in submodels_data:
+                    cfg = submodels_data["KitConfiguration"]
+                    for el in cfg.get("submodelElements", []):
+                        if el["idShort"] == "Description":
+                            desc = el.get("value", "")
+                self.edit_desc.setText(desc)
+                
+                # Transform & Mesh
+                mesh_href = None
                 for el in vis_data.get("submodelElements", []):
                     if el["modelType"] == "SubmodelElementCollection": 
                         for sel in el.get("value", []):
-                            if sel["idShort"] == "Mesh":
-                                coll_id_short = el["idShort"]
-                                break
+                            if sel["idShort"] == "Transform":
+                                for t in sel.get("value", []):
+                                    v = float(t.get("value", 0))
+                                    if t["idShort"] == "PosX": self.sys_pos[0].setValue(v)
+                                    elif t["idShort"] == "PosY": self.sys_pos[1].setValue(v)
+                                    elif t["idShort"] == "PosZ": self.sys_pos[2].setValue(v)
+                                    elif t["idShort"] == "RotX": self.sys_rot[0].setValue(v)
+                                    elif t["idShort"] == "RotY": self.sys_rot[1].setValue(v)
+                                    elif t["idShort"] == "RotZ": self.sys_rot[2].setValue(v)
+                                    elif t["idShort"] == "ScaleX": self.sys_scale[0].setValue(v)
+                                    elif t["idShort"] == "ScaleY": self.sys_scale[1].setValue(v)
+                                    elif t["idShort"] == "ScaleZ": self.sys_scale[2].setValue(v)
+                            elif sel["idShort"] == "Mesh" and sel["modelType"] == "File":
+                                mesh_href = sel.get("value")
+                            elif sel["idShort"] == "DynamicObject" and sel["modelType"] == "Property":
+                                is_dyn = str(sel.get("value", "False")).lower() == "true"
+                                self.check_is_dynamic.setChecked(is_dyn)
+    
+                # Behavior
+                for w in list(self.actuator_widgets): self.remove_actuator(w)
+                for w in list(self.sensor_widgets): self.remove_sensor(w)
+                
+                act_types = ["Conveyor", "RotateContinuous", "TranslateContinuous", "Piston", "Linear"]
+                sens_types = ["TriggerZone", "Presence", "Proximity"]
+                
+                for el in beh_data.get("submodelElements", []):
+                    if el["modelType"] == "SubmodelElementCollection":
+                        props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
+                        params = {}
+                        for p in el.get("value", []):
+                            if p["idShort"] == "Parameters": params = {pp["idShort"]: pp.get("value") for pp in p.get("value", []) if pp["modelType"] == "Property"}
                                 
-                if coll_id_short:
-                    dl_url = f"http://localhost:8081/submodels/{encoded_vis_id}/submodel-elements/{coll_id_short}.Mesh/attachment"
-                    m_res = requests.get(dl_url, timeout=5)
-                    if m_res.status_code == 200:
-                        import tempfile
-                        tp = os.path.join(tempfile.gettempdir(), f"{shell_desc['idShort']}_cloned.glb")
-                        with open(tp, "wb") as f: f.write(m_res.content)
-                        self.glb_path = tp; self.lbl_glb_path.setText(f"[Cloned] {shell_desc['idShort']}.glb"); self.load_model(tp)
-
+                        b_type = props.get("Type", ""); pin_id = props.get("PinID", ""); node = props.get("Component", "")
+                        
+                        if b_type in act_types:
+                            self.add_actuator(); w = self.actuator_widgets[-1]
+                            w.edit_pin.setText(pin_id); w.edit_node.setText(node); w.combo_behavior.setCurrentText(b_type)
+                            w.spin_x.setValue(float(params.get("AxisX", 0))); w.spin_y.setValue(float(params.get("AxisY", 0))); w.spin_z.setValue(float(params.get("AxisZ", 0)))
+                            w.spin_speed.setValue(float(params.get("Speed", 1.0))); w.check_visible.setChecked(str(params.get("Visible", "True")).lower() == "true")
+                            if "StopSensorComponent" in params: w.combo_stop_sens.setCurrentText(params["StopSensorComponent"])
+                        elif b_type in sens_types:
+                            self.add_sensor(); w = self.sensor_widgets[-1]
+                            w.edit_pin.setText(pin_id); w.edit_node.setText(node); w.combo_behavior.setCurrentText(b_type)
+                            w.edit_filter.setText(params.get("TargetFilter", "Metal"))
+                            w.check_visible.setChecked(str(params.get("Visible", "False")).lower() == "true")
+                            w.check_active_low.setChecked(str(params.get("ActiveLow", "False")).lower() == "true")
+                            w.check_snap.setChecked("SnapTarget" in params)
+                self.update_all_actuator_dropdowns()
+    
+                # Control Logic
+                logic_data = next((v for k,v in submodels_data.items() if "ControlLogic" in k or "Logic" in k), None)
+                self.logic_rules = {"start": [], "sequences": []}
+                if logic_data:
+                    for el in logic_data.get("submodelElements", []):
+                        if el["idShort"] == "Rules":
+                            rules_json_str = el.get("value", "")
+                            if rules_json_str:
+                                try:
+                                    loaded_rules = json.loads(rules_json_str)
+                                    if isinstance(loaded_rules, dict):
+                                        self.logic_rules = loaded_rules
+                                except Exception:
+                                    traceback.print_exc()
+    
+                self.list_sequences.blockSignals(True)
+                self.list_sequences.clear()
+                self.list_sequences.addItem("Start Sequence")
+                for seq in self.logic_rules.get("sequences", []):
+                    self.list_sequences.addItem(seq.get("name", "Custom Sequence"))
+                self.list_sequences.setCurrentRow(0)
+                self.list_sequences.blockSignals(False)
+                self.on_sequence_selected(0)
+                
+                # Mesh Download
+                if mesh_href:
+                    vis_id = vis_data.get("id")
+                    encoded_vis_id = base64.urlsafe_b64encode(vis_id.encode()).decode().rstrip("=")
+                    
+                    coll_id_short = None
+                    for el in vis_data.get("submodelElements", []):
+                        if el["modelType"] == "SubmodelElementCollection": 
+                            for sel in el.get("value", []):
+                                if sel["idShort"] == "Mesh":
+                                    coll_id_short = el["idShort"]
+                                    break
+                                    
+                    if coll_id_short:
+                        dl_url = f"http://localhost:8081/submodels/{encoded_vis_id}/submodel-elements/{coll_id_short}.Mesh/attachment"
+                        m_res = requests.get(dl_url, timeout=5)
+                        if m_res.status_code == 200:
+                            import tempfile
+                            tp = os.path.join(tempfile.gettempdir(), f"{shell_desc['idShort']}_cloned.glb")
+                            with open(tp, "wb") as f: f.write(m_res.content)
+                            self.glb_path = tp; self.lbl_glb_path.setText(f"[Cloned] {shell_desc['idShort']}.glb"); self.load_model(tp)
+                            
             self.stack.setCurrentIndex(1); self.update_nav()
             while QApplication.overrideCursor() is not None:
                 QApplication.restoreOverrideCursor()
@@ -2220,6 +2841,8 @@ class ConveyorWizard(QMainWindow):
 
     def _build_urdf_view(self):
         print("[VIEW] Building URDF 3D visualization...")
+        if hasattr(self, 'check_preview_layout'):
+            self.check_preview_layout.setChecked(False)
         self.plotter.clear()
         self.meshes = {}
         self.actors = {}
@@ -2370,8 +2993,11 @@ class ConveyorWizard(QMainWindow):
 
         if self.robot.base_link:
             add_urdf_tree_node(self.robot.base_link.name, None)
+        self.update_system_transform()
             
     def load_model(self, path):
+        if hasattr(self, 'check_preview_layout'):
+            self.check_preview_layout.setChecked(False)
         self.plotter.clear(); self.meshes = {}; self.actors = {}; self.node_tree.clear(); self.plotter.camera.up = (0, 1, 0)
         self.plotter.enable_eye_dome_lighting(); self.plotter.enable_shadows()
         self.kill_overlays()
@@ -2394,6 +3020,7 @@ class ConveyorWizard(QMainWindow):
             else:
                 pm = pv.wrap(scene); self.meshes["Main"] = pm; self.actors["Main"] = self.plotter.add_mesh(pm, name="Main", pbr=True); QTreeWidgetItem(self.node_tree, ["Main"])
             self.plotter.reset_camera(); self.plotter.add_axes()
+            self.update_system_transform()
         except Exception as e: QMessageBox.critical(self, "Error", str(e)); traceback.print_exc()
 
     def add_tree_node(self, n, pi, scene, gm):
@@ -2405,6 +3032,413 @@ class ConveyorWizard(QMainWindow):
             self.actors[n] = ac; it.setForeground(0, QColor("#007acc"))
         for c in scene.graph.transforms.children.get(n, []): self.add_tree_node(c, it, scene, gm)
         if pi is None: it.setExpanded(True)
+
+    def update_system_transform(self):
+        if not hasattr(self, 'actors') or not self.actors:
+            return
+        
+        pos = [s.value() for s in self.sys_pos]
+        rot = [s.value() for s in self.sys_rot]
+        scale = [s.value() for s in self.sys_scale]
+        
+        import trimesh.transformations as tf
+        import numpy as np
+        
+        # Check if layout preview is active (meaning we are viewing it in Unity coordinate space)
+        is_preview = hasattr(self, 'check_preview_layout') and self.check_preview_layout.isChecked()
+        
+        if is_preview:
+            if self.model_type == "URDF":
+                # Map URDF Z-up coordinates to Unity Y-up coordinates (reflected Z-flip)
+                pos_pv = [-pos[1], pos[2], -pos[0]]
+                # Unity rotation: rx_u = -rot[1], ry_u = rot[2], rz_u = rot[0]
+                # Reflected Z-flip: rz = rz_u = rot[0], rx = -rx_u = rot[1], ry = -ry_u = -rot[2]
+                rz, rx, ry = rot[0], rot[1], -rot[2]
+                scale_pv = [scale[1], scale[2], scale[0]]
+            else:
+                # Map GLB Y-up coordinates to Unity left-handed coordinates (reflected Z-flip)
+                pos_pv = [pos[0], pos[1], pos[2]]
+                # Unity rotation: rx_u = rot[0], ry_u = rot[1], rz_u = rot[2]
+                # Reflected Z-flip: rz = rz_u = rot[2], rx = -rx_u = -rot[0], ry = -ry_u = -rot[1]
+                rz, rx, ry = rot[2], -rot[0], -rot[1]
+                scale_pv = [scale[0], scale[1], scale[2]]
+                
+            T = tf.translation_matrix(pos_pv)
+            # Use 'szxy' static Euler matrix which evaluates Ry * Rx * Rz matching Unity's ZXY rotation sequence
+            R = tf.euler_matrix(np.radians(rz), np.radians(rx), np.radians(ry), 'szxy')
+            S = np.diag([scale_pv[0], scale_pv[1], scale_pv[2], 1.0])
+            M = tf.concatenate_matrices(T, R, S)
+            
+            # Apply Z-to-Y conversion rotation (-90 degrees around X) first, so the model stands upright in Unity
+            R_z_to_y = tf.euler_matrix(np.radians(-90), 0, 0, 'sxyz')
+            M = M @ R_z_to_y
+        else:
+            T = tf.translation_matrix(pos)
+            R = tf.euler_matrix(np.radians(rot[0]), np.radians(rot[1]), np.radians(rot[2]), 'sxyz')
+            S = np.diag([scale[0], scale[1], scale[2], 1.0])
+            M = tf.concatenate_matrices(T, R, S)
+            
+        for name, actor in self.actors.items():
+            if name.startswith("layout_"):
+                continue
+            actor.user_matrix = M
+            
+        self.plotter.render()
+
+    def toggle_layout_preview(self, state):
+        if state == 2 or state == True:  # Checked (Qt.CheckState.Checked is 2)
+            self.load_layout_preview()
+        else:
+            self.unload_layout_preview()
+
+    def unload_layout_preview(self):
+        if hasattr(self, 'layout_actor_names') and self.layout_actor_names:
+            for name in self.layout_actor_names:
+                try:
+                    self.plotter.remove_actor(name)
+                except:
+                    pass
+            self.layout_actor_names = []
+        if self.model_type == "URDF":
+            self.plotter.camera.up = (0, 0, 1)
+        else:
+            self.plotter.camera.up = (0, 1, 0)
+        self.update_system_transform()
+        self.plotter.render()
+
+    def load_layout_preview(self):
+        self.plotter.camera.up = (0, 1, 0)  # Align camera to Unity's Y-up orientation
+        try:
+            res = requests.get("http://localhost:8082/shell-descriptors", timeout=3)
+            shells = res.json().get("result", [])
+            if not shells:
+                QMessageBox.information(self, "Info", "No other AAS found on server.")
+                return
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not connect to registry: {e}")
+            if hasattr(self, 'check_preview_layout'):
+                self.check_preview_layout.setChecked(False)
+            return
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        if not hasattr(self, 'layout_actor_names'):
+            self.layout_actor_names = []
+            
+        # Clean up any existing layout actors first
+        self.unload_layout_preview()
+
+        import trimesh.transformations as tf
+        import numpy as np
+        loaded_count = 0
+
+        # We want to exclude the current AAS we are editing
+        current_aas_id = self.edit_aas_id.text().strip()
+
+        try:
+            for s in shells:
+                shell_id = s.get("id")
+                id_short = s.get("idShort", "AAS")
+                
+                # Exclude the current model if it's already deployed, to avoid duplicates
+                if id_short == current_aas_id or shell_id == current_aas_id:
+                    continue
+                    
+                # Fetch submodels for this shell
+                encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
+                res_s = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=3)
+                if res_s.status_code == 200:
+                    submodel_refs = res_s.json().get("submodels", [])
+                    submodels_data = {}
+                    for ref in submodel_refs:
+                        keys = ref.get("keys", [])
+                        if keys:
+                            sm_id = keys[0].get("value")
+                            encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
+                            res_sm = requests.get(f"http://localhost:8081/submodels/{encoded_sm_id}", timeout=3)
+                            if res_sm.status_code == 200:
+                                sm_data = res_sm.json()
+                                submodels_data[sm_data.get("idShort", "")] = sm_data
+                                
+                    vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
+                    
+                    # Also support reading position data from PositionData if it is a robot (URDF)
+                    # Robots also have their own position in the layout!
+                    if "PositionData" in submodels_data and not vis_data:
+                        pos_data = submodels_data["PositionData"]
+                        # Reconstruct positions
+                        pos_val = [0.0]*3; rot_val = [0.0]*3; scale_val = [1.0]*3
+                        for el in pos_data.get("submodelElements", []):
+                            if el["modelType"] == "Property":
+                                try:
+                                    v = float(el.get("value", 0))
+                                    id_s = el["idShort"]
+                                    if id_s == "Pos_X": pos_val[0] = v
+                                    elif id_s == "Pos_Y": pos_val[1] = v
+                                    elif id_s == "Pos_Z": pos_val[2] = v
+                                    elif id_s == "Rot_X": rot_val[0] = v
+                                    elif id_s == "Rot_Y": rot_val[1] = v
+                                    elif id_s == "Rot_Z": rot_val[2] = v
+                                    elif id_s == "Scale_X": scale_val[0] = v
+                                    elif id_s == "Scale_Y": scale_val[1] = v
+                                    elif id_s == "Scale_Z": scale_val[2] = v
+                                except:
+                                    pass
+                        # For URDF, the geometry is in GeometryData. In preview layout, we can load the base link geometry
+                        # or we can load the whole robot, but since robot has multiple meshes, loading it can be slow.
+                        # However, let's load it if it has GeometryData!
+                        if "GeometryData" in submodels_data:
+                            geo_data = submodels_data["GeometryData"]
+                            geo_id = geo_data.get("id")
+                            encoded_geo_id = base64.urlsafe_b64encode(geo_id.encode()).decode().rstrip("=")
+                            
+                            # Reconstruct robot in temp folder
+                            import tempfile
+                            temp_robot_dir = tempfile.mkdtemp()
+                            
+                            # Find URDF
+                            urdf_rel_path = None
+                            urdf_file_element = None
+                            for el in geo_data.get("submodelElements", []):
+                                if el["modelType"] == "File":
+                                    val = el.get("value", "")
+                                    if val.lower().endswith(".urdf") or el.get("idShort", "").lower().endswith("_urdf") or el.get("idShort", "").lower().endswith("_urdf_dot_urdf"):
+                                        urdf_file_element = el
+                                        urdf_rel_path = get_file_rel_path(el)
+                                            
+                            if urdf_file_element and urdf_rel_path:
+                                # Download all files
+                                for el in geo_data.get("submodelElements", []):
+                                    if el["modelType"] == "File":
+                                        val = el.get("value", "")
+                                        id_short_f = el.get("idShort")
+                                        rel_path = get_file_rel_path(el)
+                                            
+                                        dl_url = f"http://localhost:8081/submodels/{encoded_geo_id}/submodel-elements/{id_short_f}/attachment"
+                                        m_res = requests.get(dl_url, timeout=5)
+                                        if m_res.status_code == 200:
+                                            dest_path = os.path.join(temp_robot_dir, rel_path.replace("/", os.sep))
+                                            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                                            with open(dest_path, "wb") as f:
+                                                f.write(m_res.content)
+                                        else:
+                                            print(f"[DOWNLOAD ERROR] Failed to download {id_short_f} (HTTP Code: {m_res.status_code})")
+                                            raise Exception(f"Failed to download robot mesh/file '{id_short_f}' (HTTP Code {m_res.status_code})")
+                                                
+                                target_urdf = os.path.join(temp_robot_dir, urdf_rel_path.replace("/", os.sep))
+                                try:
+                                    # Load robot
+                                    robot_obj = URDF.load(target_urdf)
+                                    # Convert to trimesh/pyvista using forward kinematics
+                                    fk = robot_obj.visual_geometry_fk()
+                                    
+                                    geom_to_visual = {}
+                                    for l in robot_obj.links:
+                                        for v in l.visuals:
+                                            if v.geometry:
+                                                geom_to_visual[v.geometry] = v
+                                                
+                                    # We apply the layout position/rotation/scale *after* applying the Z-to-Y conversion rotation
+                                    # since URDF robot is natively Z-up and the layout is Y-up!
+                                    # Map URDF Z-up coordinates to Unity Y-up coordinates (reflected Z-flip)
+                                    pos_pv = [-pos_val[1], pos_val[2], -pos_val[0]]
+                                    rz, rx, ry = rot_val[0], rot_val[1], -rot_val[2]
+                                    scale_pv = [scale_val[1], scale_val[2], scale_val[0]]
+                                    
+                                    T_l = tf.translation_matrix(pos_pv)
+                                    R_l = tf.euler_matrix(np.radians(rz), np.radians(rx), np.radians(ry), 'szxy')
+                                    S_l = np.diag([scale_pv[0], scale_pv[1], scale_pv[2], 1.0])
+                                    R_z_to_y = tf.euler_matrix(np.radians(-90), 0, 0, 'sxyz')
+                                    M_layout = tf.concatenate_matrices(T_l, R_l, S_l) @ R_z_to_y
+                                    
+                                    for geom, geom_tf in fk.items():
+                                        # Get meshes from urdfpy geometry
+                                        meshes = getattr(geom, "meshes", None)
+                                        if meshes is None or len(meshes) == 0:
+                                            # Try fallback for Mesh type
+                                            if type(geom).__name__ == "Mesh" and getattr(geom, "filename", None):
+                                                try:
+                                                    loaded = trimesh.load(geom.filename)
+                                                    if isinstance(loaded, trimesh.Scene):
+                                                         m = loaded.dump(concatenate=True)
+                                                    else:
+                                                         m = loaded
+                                                    if hasattr(geom, 'scale') and geom.scale is not None:
+                                                        m.apply_scale(geom.scale)
+                                                    meshes = [m]
+                                                except Exception as e_fallback:
+                                                    print(f"Fallback mesh load failed: {e_fallback}")
+                                                    
+                                        if meshes is None or len(meshes) == 0:
+                                            continue
+                                            
+                                        # Apply transform & render
+                                        scale_matrix = np.eye(4)
+                                        if hasattr(geom, 'scale') and geom.scale is not None:
+                                            s = geom.scale
+                                            scale_matrix = np.diag([s[0], s[1], s[2], 1.0])
+                                        
+                                        total_transform = M_layout @ geom_tf @ scale_matrix
+                                        
+                                        for m in meshes:
+                                            if m is None: continue
+                                            m_copy = m.copy()
+                                            m_copy.apply_transform(total_transform)
+                                            pm = pv.wrap(m_copy)
+                                            actor_name = f"layout_{id_short}_{getattr(geom, 'name', 'link')}_{id(m)}"
+                                            
+                                            # Get color matching Unity/URDF
+                                            visual_obj = geom_to_visual.get(geom, None)
+                                            col = [0.7, 0.7, 0.7]
+                                            if visual_obj and hasattr(visual_obj, 'material') and visual_obj.material and visual_obj.material.color is not None:
+                                                col = np.array(visual_obj.material.color[:3]).astype(float)
+                                                if col.max() > 1.01:
+                                                    col /= 255.0
+                                            elif "abb" in id_short.lower():
+                                                col = [246.0/255.0, 120.0/255.0, 40.0/255.0]
+                                                
+                                            ac = self.plotter.add_mesh(pm, name=actor_name, color=col, smooth_shading=True, specular=0.5, ambient=0.2, show_scalar_bar=False)
+                                            self.layout_actor_names.append(actor_name)
+                                        
+                                    loaded_count += 1
+                                except Exception as e_robot:
+                                    print(f"Error loading robot in layout preview: {e_robot}")
+                                    traceback.print_exc()
+
+                    if vis_data:
+                        # Extract behaviors for visibility filtering (like presence sensors, conveyors)
+                        beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
+                        hidden_nodes = set()
+                        if beh_data:
+                            act_types = ["Conveyor", "RotateContinuous", "TranslateContinuous", "Piston", "Linear"]
+                            sens_types = ["TriggerZone", "Presence", "Proximity"]
+                            for el in beh_data.get("submodelElements", []):
+                                if el["modelType"] == "SubmodelElementCollection":
+                                    props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
+                                    params = {}
+                                    for p in el.get("value", []):
+                                        if p["idShort"] == "Parameters": params = {pp["idShort"]: pp.get("value") for pp in p.get("value", []) if pp["modelType"] == "Property"}
+                                    
+                                    b_type = props.get("Type", ""); node = props.get("Component", "")
+                                    if b_type in act_types:
+                                        visible = str(params.get("Visible", "True")).lower() == "true"
+                                        if not visible and node: hidden_nodes.add(node)
+                                    elif b_type in sens_types:
+                                        visible = str(params.get("Visible", "False")).lower() == "true"
+                                        if not visible and node: hidden_nodes.add(node)
+
+                        # Parse transform
+                        pos_val = [0.0]*3; rot_val = [0.0]*3; scale_val = [1.0]*3
+                        mesh_href = None
+                        coll_id_short = None
+                        for el in vis_data.get("submodelElements", []):
+                            if el["modelType"] == "SubmodelElementCollection": 
+                                for sel in el.get("value", []):
+                                    if sel["idShort"] == "Transform":
+                                        for t in sel.get("value", []):
+                                            v = float(t.get("value", 0))
+                                            if t["idShort"] == "PosX": pos_val[0] = v
+                                            elif t["idShort"] == "PosY": pos_val[1] = v
+                                            elif t["idShort"] == "PosZ": pos_val[2] = v
+                                            elif t["idShort"] == "RotX": rot_val[0] = v
+                                            elif t["idShort"] == "RotY": rot_val[1] = v
+                                            elif t["idShort"] == "RotZ": rot_val[2] = v
+                                            elif t["idShort"] == "ScaleX": scale_val[0] = v
+                                            elif t["idShort"] == "ScaleY": scale_val[1] = v
+                                            elif t["idShort"] == "ScaleZ": scale_val[2] = v
+                                    elif sel["idShort"] == "Mesh" and sel["modelType"] == "File":
+                                        mesh_href = sel.get("value")
+                                        coll_id_short = el["idShort"]
+
+                        if mesh_href and coll_id_short:
+                            # Fetch mesh attachment
+                            vis_id_node = vis_data.get("id")
+                            encoded_vis_id = base64.urlsafe_b64encode(vis_id_node.encode()).decode().rstrip("=")
+                            dl_url = f"http://localhost:8081/submodels/{encoded_vis_id}/submodel-elements/{coll_id_short}.Mesh/attachment"
+                            m_res = requests.get(dl_url, timeout=3)
+                            if m_res.status_code == 200:
+                                import tempfile
+                                tp = os.path.join(tempfile.gettempdir(), f"{id_short}_layout_bg.glb")
+                                with open(tp, "wb") as f: f.write(m_res.content)
+                                
+                                # Load geometry
+                                scene = trimesh.load(tp, process=False)
+                                
+                                # Build transformation matrix M = T * R * S
+                                # Map GLB Y-up coordinates to Unity left-handed coordinates (reflected Z-flip)
+                                pos_pv = [pos_val[0], pos_val[1], pos_val[2]]
+                                rz, rx, ry = rot_val[2], -rot_val[0], -rot_val[1]
+                                scale_pv = [scale_val[0], scale_val[1], scale_val[2]]
+                                
+                                T = tf.translation_matrix(pos_pv)
+                                R = tf.euler_matrix(np.radians(rz), np.radians(rx), np.radians(ry), 'szxy')
+                                S = np.diag([scale_pv[0], scale_pv[1], scale_pv[2], 1.0])
+                                M = tf.concatenate_matrices(T, R, S)
+                                
+                                if isinstance(scene, trimesh.Scene):
+                                    geo_mats = {}
+                                    for gn, mesh in scene.geometry.items():
+                                        tx = None; cl = None; mt = 0.0; rg = 0.5
+                                        if hasattr(mesh, 'visual') and hasattr(mesh.visual, 'material'):
+                                            mat = mesh.visual.material; img = getattr(mat, 'image', getattr(mat, 'baseColorTexture', None))
+                                            if img:
+                                                try: tx = pv.Texture(np.array(img))
+                                                except: pass
+                                            if hasattr(mat, 'baseColorFactor') and mat.baseColorFactor is not None:
+                                                cl = mat.baseColorFactor[:3]
+                                            mt = getattr(mat, 'metallicFactor', 0.0)
+                                            rg = getattr(mat, 'roughnessFactor', 0.5)
+                                        geo_mats[gn] = (tx, cl, mt, rg)
+                                    
+                                    root_nodes = [node for node in scene.graph.nodes if scene.graph.transforms.parents.get(node) is None]
+                                    
+                                    def is_hidden(node):
+                                        curr = node
+                                        while curr is not None:
+                                            if curr in hidden_nodes: return True
+                                            curr = scene.graph.transforms.parents.get(curr)
+                                        return False
+
+                                    def add_preview_node(node):
+                                        if node in scene.graph.nodes_geometry:
+                                            if not is_hidden(node):
+                                                node_tf, gn = scene.graph[node]
+                                                mi = scene.geometry[gn].copy()
+                                                combined_tf = M @ node_tf
+                                                mi.apply_transform(combined_tf)
+                                                pm = pv.wrap(mi)
+                                                tx, cl, mt, rg = geo_mats.get(gn, (None, None, 0.0, 0.5))
+                                                
+                                                # Use a unique name with layout_ prefix
+                                                actor_name = f"layout_{id_short}_{node}"
+                                                
+                                                # Make layout preview meshes slightly semi-transparent (e.g. opacity=0.7) to differentiate them
+                                                ac = self.plotter.add_mesh(pm, name=actor_name, texture=tx, color=cl if not tx else None, 
+                                                                           smooth_shading=True, pbr=True, metallic=mt, roughness=rg,
+                                                                           opacity=0.7, show_scalar_bar=False)
+                                                self.layout_actor_names.append(actor_name)
+                                        for c in scene.graph.transforms.children.get(node, []):
+                                            add_preview_node(c)
+                                            
+                                    for r in root_nodes:
+                                        add_preview_node(r)
+                                elif isinstance(scene, trimesh.Trimesh):
+                                    pm = pv.wrap(scene)
+                                    pm.transform(M)
+                                    actor_name = f"layout_{id_short}_main"
+                                    ac = self.plotter.add_mesh(pm, name=actor_name, pbr=True, opacity=0.7, show_scalar_bar=False)
+                                    self.layout_actor_names.append(actor_name)
+                                
+                                loaded_count += 1
+            
+            # Re-render
+            self.plotter.render()
+            self.update_system_transform()
+        except Exception as ex:
+            QMessageBox.warning(self, "Warning", f"Error rendering some layout items: {ex}")
+            traceback.print_exc()
+        finally:
+            while QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
 
     def next_step(self):
         idx = self.stack.currentIndex()
@@ -2509,6 +3543,8 @@ class ConveyorWizard(QMainWindow):
             kn = self.edit_kit_name.text(); aid = self.edit_aas_id.text(); kfn = sanitize_aas_id(kn)
             if self.model_type == "URDF":
                 px, py, pz = [str(s.value()) for s in self.sys_pos]
+                rx, ry, rz = [str(s.value()) for s in self.sys_rot]
+                sx, sy, sz = [str(s.value()) for s in self.sys_scale]
                 units = "rad"
                 import copy
                 tree_copy = copy.deepcopy(self.current_urdf_tree)
@@ -2533,6 +3569,10 @@ class ConveyorWizard(QMainWindow):
                 sm_tel = model.Submodel(id_=f"https://acplt.org/Submodels/Tel_{kfn}", id_short="TelemetryData")
                 for ax, v in [('X', px), ('Y', py), ('Z', pz)]:
                     sm_pos.submodel_element.add(model.Property(id_short=f"Pos_{ax}", value_type=model.datatypes.Double, value=float(v.replace(',', '.'))))
+                for ax, v in [('X', rx), ('Y', ry), ('Z', rz)]:
+                    sm_pos.submodel_element.add(model.Property(id_short=f"Rot_{ax}", value_type=model.datatypes.Double, value=float(v.replace(',', '.'))))
+                for ax, v in [('X', sx), ('Y', sy), ('Z', sz)]:
+                    sm_pos.submodel_element.add(model.Property(id_short=f"Scale_{ax}", value_type=model.datatypes.Double, value=float(v.replace(',', '.'))))
                 sm_tel.submodel_element.add(model.Property(id_short="JointUnits", value_type=model.datatypes.String, value=units))
                 joints_coll = model.SubmodelElementCollection(id_short="LiveJoints")
                 for j in self.robot.actuated_joints:
@@ -2646,7 +3686,6 @@ class ConveyorWizard(QMainWindow):
             shell.submodel.add(model.ModelReference.from_referable(vs)); shell.submodel.add(model.ModelReference.from_referable(vp)); shell.submodel.add(model.ModelReference.from_referable(bm)); shell.submodel.add(model.ModelReference.from_referable(cl))
             obj_store = model.DictObjectStore(); obj_store.add(shell); obj_store.add(vs); obj_store.add(vp); obj_store.add(bm); obj_store.add(cl); fr = RobustFileRepo()
             import tempfile
-            import time
             bd = os.path.dirname(self.glb_path)
             ae = ['.obj', '.mtl', '.stl', '.png', '.jpg', '.jpeg', '.dae', '.fbx', '.glb', '.gltf', '.bin']
             is_temp_dir = os.path.abspath(bd) == os.path.abspath(tempfile.gettempdir())
@@ -2772,6 +3811,13 @@ class AASRulesEditorDialog(QDialog):
         self.combo_aas.setMinimumWidth(300)
         self.combo_aas.currentIndexChanged.connect(self.on_aas_changed)
         aas_layout.addWidget(self.combo_aas)
+        
+        # Add button to create a new AAS
+        self.btn_create_aas = QPushButton("Create New AAS")
+        self.btn_create_aas.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; font-size: 12px; padding: 6px 12px;")
+        self.btn_create_aas.clicked.connect(self.create_new_aas)
+        aas_layout.addWidget(self.btn_create_aas)
+        
         aas_layout.addStretch()
         main_layout.addLayout(aas_layout)
         
@@ -2968,6 +4014,122 @@ class AASRulesEditorDialog(QDialog):
         self.group_triggers.setVisible(False)
         self.btn_del_seq.setEnabled(False)
         self.step_edit_stack.setCurrentIndex(0)
+
+    def create_new_aas(self):
+        # 1. Ask for idShort
+        id_short, ok1 = QInputDialog.getText(
+            self, "Create New AAS", 
+            "Enter AAS Name (idShort):", 
+            QLineEdit.EchoMode.Normal, "NewResource"
+        )
+        if not ok1 or not id_short.strip():
+            return
+            
+        id_short = id_short.strip()
+        default_id = f"https://acplt.org/AAS_{sanitize_aas_id(id_short)}"
+        
+        # 2. Ask for id
+        shell_id, ok2 = QInputDialog.getText(
+            self, "Create New AAS", 
+            "Enter AAS Identifier (ID):", 
+            QLineEdit.EchoMode.Normal, default_id
+        )
+        if not ok2 or not shell_id.strip():
+            return
+            
+        shell_id = shell_id.strip()
+        
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            # Step A: POST Shell to AAS Repository (this auto-registers the shell in registry)
+            shell_payload = {
+                "id": shell_id,
+                "idShort": id_short,
+                "modelType": "AssetAdministrationShell",
+                "assetInformation": {
+                    "assetKind": "Instance",
+                    "globalAssetId": f"http://acplt.org/Assets/{sanitize_aas_id(id_short)}"
+                },
+                "submodels": []
+            }
+            res_shell = requests.post(
+                "http://localhost:8081/shells", 
+                json=shell_payload, 
+                headers={"Content-Type": "application/json"}, 
+                timeout=5
+            )
+            if res_shell.status_code not in [200, 201]:
+                if res_shell.status_code == 409:
+                    raise Exception("An AAS with this ID already exists in the repository.")
+                raise Exception(f"Failed to create shell in repository: {res_shell.text}")
+                
+            # Step B: Create the empty ControlLogic submodel in Submodel Repository
+            sm_id = f"https://acplt.org/Submodels/ControlLogic_{sanitize_aas_id(id_short)}"
+            submodel_payload = {
+                "id": sm_id,
+                "idShort": "ControlLogic",
+                "modelType": "Submodel",
+                "submodelElements": [
+                    {
+                        "idShort": "Rules",
+                        "modelType": "Property",
+                        "value": json.dumps({"start": [], "sequences": []}),
+                        "valueType": "xs:string"
+                    }
+                ]
+            }
+            res_sm = requests.post(
+                "http://localhost:8081/submodels", 
+                json=submodel_payload, 
+                headers={"Content-Type": "application/json"}, 
+                timeout=5
+            )
+            if res_sm.status_code not in [200, 201]:
+                # Cleanup shell
+                requests.delete(f"http://localhost:8081/shells/{encode_id(shell_id)}", timeout=5)
+                raise Exception(f"AAS Shell created, but failed to create ControlLogic submodel: {res_sm.text}")
+                
+            # Step C: Link submodel to shell in Repository (this auto-updates registry)
+            link_payload = {
+                "type": "ModelReference",
+                "keys": [
+                    {
+                        "type": "Submodel",
+                        "value": sm_id
+                    }
+                ]
+            }
+            res_link = requests.post(
+                f"http://localhost:8081/shells/{encode_id(shell_id)}/submodel-refs", 
+                json=link_payload, 
+                headers={"Content-Type": "application/json"}, 
+                timeout=5
+            )
+            if res_link.status_code not in [200, 201, 204]:
+                # Cleanup submodel and shell
+                requests.delete(f"http://localhost:8081/submodels/{encode_id(sm_id)}", timeout=5)
+                requests.delete(f"http://localhost:8081/shells/{encode_id(shell_id)}", timeout=5)
+                raise Exception(f"Failed to link ControlLogic submodel to shell: {res_link.text}")
+                
+            # Allow some time for registry synchronization
+            time.sleep(0.5)
+            
+            while QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
+            QMessageBox.information(self, "Success", f"AAS '{id_short}' created and registered successfully!")
+            
+            # Reload list and select it
+            self.load_aas_list()
+            # Select the newly created AAS in the combo box
+            for index in range(self.combo_aas.count()):
+                data = self.combo_aas.itemData(index)
+                if data and data.get("id") == shell_id:
+                    self.combo_aas.setCurrentIndex(index)
+                    break
+        except Exception as e:
+            while QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "Error", f"An error occurred while creating AAS: {e}")
 
     def load_aas_list(self):
         self.combo_aas.blockSignals(True)
@@ -3539,7 +4701,7 @@ class AASRulesEditorDialog(QDialog):
                         }
                     ]
                 }
-                link_res = requests.post(f"http://localhost:8081/shells/{encoded_shell_id}/submodels", json=link_payload, headers={"Content-Type": "application/json"}, timeout=5)
+                link_res = requests.post(f"http://localhost:8081/shells/{encoded_shell_id}/submodel-refs", json=link_payload, headers={"Content-Type": "application/json"}, timeout=5)
                 if link_res.status_code not in [200, 201, 204]:
                     raise Exception(f"Failed to link ControlLogic submodel to shell: {link_res.text}")
             else:

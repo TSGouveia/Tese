@@ -666,6 +666,19 @@ public class BaSyxManager : MonoBehaviour
 
     IEnumerator SyncPositionLoop(string submodelId, GameObject robot)
     {
+        string robotName = robot != null ? robot.name : "";
+        string robotPath = Path.Combine(Application.persistentDataPath, "Robots", robotName);
+        bool hasDae = false;
+        if (!string.IsNullOrEmpty(robotName) && Directory.Exists(robotPath))
+        {
+            try {
+                hasDae = Directory.GetFiles(robotPath, "*.dae", SearchOption.AllDirectories).Length > 0;
+                Debug.Log($"[BaSyx] Position Sync: robot={robotName}, hasDae={hasDae}");
+            } catch (Exception e) {
+                Debug.LogWarning($"[BaSyx] Failed to check for DAE files: {e.Message}");
+            }
+        }
+
         while (robot != null)
         {
             string elementsUrl = $"{aasServerUrl}/submodels/{Base64Url(submodelId)}/submodel-elements";
@@ -676,15 +689,34 @@ public class BaSyxManager : MonoBehaviour
             {
                 var elements = DeserializeList<SubmodelElement>(req.downloadHandler.text);
                 Vector3 urdfPos = Vector3.zero;
+                Vector3 urdfRot = Vector3.zero;
+                Vector3 urdfScale = Vector3.one;
                 bool xSet = false, ySet = false, zSet = false;
+                bool rxSet = false, rySet = false, rzSet = false;
+                bool sxSet = false, sySet = false, szSet = false;
                 foreach (var el in elements)
                 {
                     if (el == null || string.IsNullOrEmpty(el.idShort) || el.value == null) continue;
                     string k = el.idShort.ToUpper();
                     float val = SafeFloat(el.value);
-                    if (k.Contains("X")) { urdfPos.x = val; xSet = true; }
-                    if (k.Contains("Y")) { urdfPos.y = val; ySet = true; }
-                    if (k.Contains("Z")) { urdfPos.z = val; zSet = true; }
+                    if (k.StartsWith("POS_"))
+                    {
+                        if (k.EndsWith("X")) { urdfPos.x = val; xSet = true; }
+                        else if (k.EndsWith("Y")) { urdfPos.y = val; ySet = true; }
+                        else if (k.EndsWith("Z")) { urdfPos.z = val; zSet = true; }
+                    }
+                    else if (k.StartsWith("ROT_"))
+                    {
+                        if (k.EndsWith("X")) { urdfRot.x = val; rxSet = true; }
+                        else if (k.EndsWith("Y")) { urdfRot.y = val; rySet = true; }
+                        else if (k.EndsWith("Z")) { urdfRot.z = val; rzSet = true; }
+                    }
+                    else if (k.StartsWith("SCALE_"))
+                    {
+                        if (k.EndsWith("X")) { urdfScale.x = val; sxSet = true; }
+                        else if (k.EndsWith("Y")) { urdfScale.y = val; sySet = true; }
+                        else if (k.EndsWith("Z")) { urdfScale.z = val; szSet = true; }
+                    }
                 }
                 if (xSet || ySet || zSet)
                 {
@@ -693,6 +725,15 @@ public class BaSyxManager : MonoBehaviour
                     // Unity Y =  URDF Z
                     // Unity Z =  URDF X
                     robot.transform.position = new Vector3(-urdfPos.y, urdfPos.z, urdfPos.x);
+                }
+                if (rxSet || rySet || rzSet)
+                {
+                    float yawOffset = hasDae ? 270f : 90f;
+                    robot.transform.eulerAngles = new Vector3(-urdfRot.y, yawOffset - urdfRot.z, urdfRot.x);
+                }
+                if (sxSet || sySet || szSet)
+                {
+                    robot.transform.localScale = new Vector3(urdfScale.y, urdfScale.z, urdfScale.x) * globalScale;
                 }
             }
             yield return new WaitForSeconds(positionSyncInterval);

@@ -30,17 +30,38 @@ public class AASUrdfImporter : MonoBehaviour
         XDocument doc = XDocument.Load(urdfPath);
         XElement root = doc.Element("robot");
 
+        // Detect if any visual geometry uses a .dae (Collada) mesh
+        bool hasDaeMeshes = false;
+        if (root != null)
+        {
+            foreach (var mesh in root.Descendants("mesh"))
+            {
+                string filename = mesh.Attribute("filename")?.Value;
+                if (filename != null && filename.ToLower().EndsWith(".dae"))
+                {
+                    hasDaeMeshes = true;
+                    break;
+                }
+            }
+        }
+
         GameObject robotRoot = new GameObject(robotName);
         if (parent != null) robotRoot.transform.SetParent(parent, false);
 
         var result = new ImportResult { root = robotRoot };
-        var links = root.Elements("link").ToDictionary(l => l.Attribute("name").Value);
-        var joints = root.Elements("joint").ToList();
+        
+        // Namespace-independent parsing
+        var links = root.Elements().Where(e => e.Name.LocalName.Equals("link", StringComparison.OrdinalIgnoreCase))
+                                   .ToDictionary(l => l.Attribute("name").Value);
+        var joints = root.Elements().Where(e => e.Name.LocalName.Equals("joint", StringComparison.OrdinalIgnoreCase))
+                                    .ToList();
 
-        // Find root link
-        var childLinks = joints.Select(j => j.Element("child").Attribute("link").Value).ToHashSet();
+        // Find root link in a namespace-independent way
+        var childLinks = joints.Select(j => j.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("child", StringComparison.OrdinalIgnoreCase))?.Attribute("link")?.Value).Where(v => v != null).ToHashSet();
         var rootLinkName = links.Keys.FirstOrDefault(name => !childLinks.Contains(name));
         if (string.IsNullOrEmpty(rootLinkName)) rootLinkName = links.Keys.First();
+
+        Debug.Log($"[AAS-URDF] Importing robot: name={robotName}, hasDaeMeshes={hasDaeMeshes}, rootLink={rootLinkName}");
 
         // Set Runtime Mode for the importer to handle paths correctly without AssetDatabase
         RuntimeUrdf.SetRuntimeMode(true);
@@ -59,26 +80,32 @@ public class AASUrdfImporter : MonoBehaviour
 
         XElement linkXml = links[linkName];
 
-        // Create Visuals
-        foreach (var visualXml in linkXml.Elements("visual"))
+        // Create Visuals (namespace-independent)
+        foreach (var visualXml in linkXml.Elements().Where(e => e.Name.LocalName.Equals("visual", StringComparison.OrdinalIgnoreCase)))
         {
             CreateVisual(visualXml, linkObj.transform, urdfPath);
         }
 
-        // Find child joints
-        var childJoints = joints.Where(j => j.Element("parent").Attribute("link").Value == linkName).ToList();
+        // Find child joints (namespace-independent)
+        var childJoints = joints.Where(j => {
+            var parentEl = j.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("parent", StringComparison.OrdinalIgnoreCase));
+            return parentEl != null && parentEl.Attribute("link")?.Value == linkName;
+        }).ToList();
+
         foreach (var joint in childJoints)
         {
-            string childName = joint.Element("child").Attribute("link").Value;
-            string jointName = joint.Attribute("name").Value;
+            string childName = joint.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("child", StringComparison.OrdinalIgnoreCase))?.Attribute("link")?.Value;
+            string jointName = joint.Attribute("name")?.Value;
             string jointType = joint.Attribute("type")?.Value ?? "fixed";
-            Vector3 axis = ParseVector3(joint.Element("axis")?.Attribute("xyz")?.Value, Vector3.right);
+            
+            var axisEl = joint.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("axis", StringComparison.OrdinalIgnoreCase));
+            Vector3 axis = ParseVector3(axisEl?.Attribute("xyz")?.Value, Vector3.right);
 
             // Create Joint Anchor (handles origin)
             GameObject jointAnchor = new GameObject("Joint_" + jointName);
             jointAnchor.transform.SetParent(linkObj.transform, false);
 
-            XElement origin = joint.Element("origin");
+            XElement origin = joint.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("origin", StringComparison.OrdinalIgnoreCase));
             if (origin != null)
             {
                 Vector3 pos = ParseVector3(origin.Attribute("xyz")?.Value, Vector3.zero);
@@ -112,7 +139,7 @@ public class AASUrdfImporter : MonoBehaviour
         GameObject visOriginObj = new GameObject(visName);
         visOriginObj.transform.SetParent(parent, false);
 
-        XElement origin = visualXml.Element("origin");
+        XElement origin = visualXml.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("origin", StringComparison.OrdinalIgnoreCase));
         if (origin != null)
         {
             Vector3 pos = ParseVector3(origin.Attribute("xyz")?.Value, Vector3.zero);
@@ -129,7 +156,7 @@ public class AASUrdfImporter : MonoBehaviour
         GameObject visGeometryObj = new GameObject("Geometry");
         visGeometryObj.transform.SetParent(visOriginObj.transform, false);
 
-        XElement geometryXml = visualXml.Element("geometry");
+        XElement geometryXml = visualXml.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("geometry", StringComparison.OrdinalIgnoreCase));
         if (geometryXml != null)
         {
             try {
