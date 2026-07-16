@@ -728,8 +728,13 @@ public class BaSyxManager : MonoBehaviour
                 }
                 if (rxSet || rySet || rzSet)
                 {
-                    float yawOffset = hasDae ? 270f : 90f;
-                    robot.transform.eulerAngles = new Vector3(-urdfRot.y, yawOffset - urdfRot.z, urdfRot.x);
+                    // Direct coordinate mapping to align exactly with Python.
+                    // We apply a base 90-degree offset to align the robot's forward direction with the layout.
+                    // If the robot contains DAE meshes, we apply an additional 180-degree rotation (total 270)
+                    // at the root level to compensate for the Collada coordinate conversion.
+                    float yaw = 90f - urdfRot.z;
+                    if (hasDae) yaw += 180f;
+                    robot.transform.eulerAngles = new Vector3(-urdfRot.y, yaw, urdfRot.x);
                 }
                 if (sxSet || sySet || szSet)
                 {

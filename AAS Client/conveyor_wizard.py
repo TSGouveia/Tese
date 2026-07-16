@@ -757,7 +757,7 @@ class ConveyorWizard(QMainWindow):
         nav_layout.addWidget(self.btn_prev); nav_layout.addWidget(self.btn_next); self.wizard_layout.addLayout(nav_layout)
         
         self.viewer_container = QWidget(); viewer_layout = QVBoxLayout(self.viewer_container); viewer_layout.setContentsMargins(0, 0, 0, 0)
-        self.plotter = BackgroundPlotter(show=False); self.plotter.set_background("#161616")
+        self.plotter = BackgroundPlotter(show=False); self.plotter.set_background("#161616"); self.plotter.add_axes()
         
         # NUCLEAR OPTION FOR HELP TEXT
         self.plotter.enable_mesh_picking(callback=self.on_mesh_picked, show=False, show_message=False, left_clicking=True)
@@ -2028,7 +2028,7 @@ class ConveyorWizard(QMainWindow):
                                             
                                 # Convert coordinates to match Unity left-handed coordinate system (reflected Z-flip)
                                 pos_pv = [-pos_val[1], pos_val[2], -pos_val[0]]
-                                rz, rx, ry = rot_val[0], rot_val[1], -rot_val[2]
+                                rz, rx, ry = rot_val[0], rot_val[1], 90.0 - rot_val[2]
                                 scale_pv = [scale_val[1], scale_val[2], scale_val[0]]
                                 
                                 T_l = tf.translation_matrix(pos_pv)
@@ -3053,7 +3053,7 @@ class ConveyorWizard(QMainWindow):
                 pos_pv = [-pos[1], pos[2], -pos[0]]
                 # Unity rotation: rx_u = -rot[1], ry_u = rot[2], rz_u = rot[0]
                 # Reflected Z-flip: rz = rz_u = rot[0], rx = -rx_u = rot[1], ry = -ry_u = -rot[2]
-                rz, rx, ry = rot[0], rot[1], -rot[2]
+                rz, rx, ry = rot[0], rot[1], 90.0 - rot[2]
                 scale_pv = [scale[1], scale[2], scale[0]]
             else:
                 # Map GLB Y-up coordinates to Unity left-handed coordinates (reflected Z-flip)
@@ -3236,12 +3236,12 @@ class ConveyorWizard(QMainWindow):
                                         for v in l.visuals:
                                             if v.geometry:
                                                 geom_to_visual[v.geometry] = v
-                                                
+                                    
                                     # We apply the layout position/rotation/scale *after* applying the Z-to-Y conversion rotation
                                     # since URDF robot is natively Z-up and the layout is Y-up!
                                     # Map URDF Z-up coordinates to Unity Y-up coordinates (reflected Z-flip)
                                     pos_pv = [-pos_val[1], pos_val[2], -pos_val[0]]
-                                    rz, rx, ry = rot_val[0], rot_val[1], -rot_val[2]
+                                    rz, rx, ry = rot_val[0], rot_val[1], 90.0 - rot_val[2]
                                     scale_pv = [scale_val[1], scale_val[2], scale_val[0]]
                                     
                                     T_l = tf.translation_matrix(pos_pv)
