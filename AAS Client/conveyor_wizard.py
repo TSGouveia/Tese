@@ -840,23 +840,28 @@ class ConveyorWizard(QMainWindow):
         comm_group = QGroupBox("Communication Settings")
         cfl = QFormLayout(comm_group)
         self.combo_comm_protocol = QComboBox()
-        self.combo_comm_protocol.addItems(["Sockets", "None"])
+        self.combo_comm_protocol.addItems(["None", "Sockets"])
         self.edit_comm_ip = QLineEdit("192.168.10.1")
         self.spin_comm_port = QSpinBox()
         self.spin_comm_port.setRange(1, 65535)
         self.spin_comm_port.setValue(8888)
 
+        lbl_ip = QLabel("IP Address:")
+        lbl_port = QLabel("Port:")
+
         def _on_comm_proto_changed(proto):
             is_sockets = (proto == "Sockets")
-            self.edit_comm_ip.setEnabled(is_sockets)
-            self.spin_comm_port.setEnabled(is_sockets)
+            lbl_ip.setVisible(is_sockets)
+            self.edit_comm_ip.setVisible(is_sockets)
+            lbl_port.setVisible(is_sockets)
+            self.spin_comm_port.setVisible(is_sockets)
 
         self.combo_comm_protocol.currentTextChanged.connect(_on_comm_proto_changed)
         _on_comm_proto_changed(self.combo_comm_protocol.currentText())
 
         cfl.addRow("Protocol:", self.combo_comm_protocol)
-        cfl.addRow("IP Address:", self.edit_comm_ip)
-        cfl.addRow("Port:", self.spin_comm_port)
+        cfl.addRow(lbl_ip, self.edit_comm_ip)
+        cfl.addRow(lbl_port, self.spin_comm_port)
         
         trans_group = QGroupBox("System Transform"); tfl = QFormLayout(trans_group)
         self.sys_pos = [QDoubleSpinBox() for _ in range(3)]; self.sys_rot = [QDoubleSpinBox() for _ in range(3)]; self.sys_scale = [QDoubleSpinBox() for _ in range(3)]
@@ -2615,7 +2620,7 @@ class ConveyorWizard(QMainWindow):
         self.edit_aas_id.setText(state.get("aas_id", ""))
         self.edit_desc.setText(state.get("description", ""))
         self.check_is_dynamic.setChecked(is_dynamic)
-        self.combo_comm_protocol.setCurrentText(state.get("comm_protocol", "Sockets"))
+        self.combo_comm_protocol.setCurrentText(state.get("comm_protocol", "None"))
         self.edit_comm_ip.setText(state.get("comm_ip", "192.168.10.1"))
         self.spin_comm_port.setValue(state.get("comm_port", 8888))
 
