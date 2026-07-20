@@ -1641,9 +1641,29 @@ class ConveyorWizard(QMainWindow):
 
             vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
             beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
+            aid_data = next((v for k,v in submodels_data.items() if "AssetInterfacesDescription" in k), None)
             
             if not all([vis_data, beh_data]):
                 raise Exception("AAS is missing required submodels.")
+
+            # Extract communication parameters if AssetInterfacesDescription exists
+            comm_protocol = "Sockets"
+            comm_ip = "127.0.0.1"
+            comm_port = 5000
+            if aid_data:
+                aid_props = {el["idShort"]: el.get("value") for el in aid_data.get("submodelElements", []) if el.get("modelType") == "Property"}
+                comm_protocol = str(aid_props.get("Protocol", "Sockets"))
+                comm_ip = str(aid_props.get("EndpointIP", "127.0.0.1"))
+                try:
+                    comm_port = int(aid_props.get("EndpointPort", 5000))
+                except (ValueError, TypeError):
+                    comm_port = 5000
+                if hasattr(self, "combo_comm_protocol"):
+                    self.combo_comm_protocol.setCurrentText(comm_protocol)
+                if hasattr(self, "edit_comm_ip"):
+                    self.edit_comm_ip.setText(comm_ip)
+                if hasattr(self, "spin_comm_port"):
+                    self.spin_comm_port.setValue(comm_port)
 
             # Gather config parameters (equivalent to clone parsing)
             kit_name = shell_desc.get("idShort", "ClonedKit")
@@ -1704,12 +1724,15 @@ class ConveyorWizard(QMainWindow):
                           
                         actuators.append(act_data)
                     elif b_type in sens_types:
+                        r_enabled = str(params.get("RealSensorEnabled", "False")).lower() == "true" if isinstance(params.get("RealSensorEnabled"), str) else bool(params.get("RealSensorEnabled", False))
                         sens_data = {
                             "pin_id": pin_id, "node": node, "behavior": b_type,
                             "target_filter": params.get("TargetFilter", "Metal"),
                             "visible": str(params.get("Visible", "False")).lower() == "true",
                             "active_low": str(params.get("ActiveLow", "False")).lower() == "true",
-                            "snap_product": "SnapTarget" in params
+                            "snap_product": "SnapTarget" in params,
+                            "real_sensor_enabled": r_enabled,
+                            "real_port_id": str(params.get("RealPortID", ""))
                         }
                         sensors.append(sens_data)
 
@@ -1737,11 +1760,17 @@ class ConveyorWizard(QMainWindow):
                 "kit_name": kit_name,
                 "aas_id": shell_desc.get("id", f"https://acplt.org/AAS_{kit_name}"),
                 "description": description,
+                "comm_protocol": comm_protocol,
+                "comm_ip": comm_ip,
+                "comm_port": comm_port,
                 "config_data": {
                     "kit_name": kit_name,
                     "aas_id": kit_name,
                     "description": description,
                     "dynamic": is_dynamic,
+                    "comm_protocol": comm_protocol,
+                    "comm_ip": comm_ip,
+                    "comm_port": comm_port,
                     "pos": pos_val,
                     "rot": rot_val,
                     "scale": scale_val,
@@ -2383,6 +2412,7 @@ class ConveyorWizard(QMainWindow):
                 # We don't rely on 'GeometryData' strictly; we look for anything that looks like VisualStructure
                 vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
                 beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
+                aid_data = next((v for k,v in submodels_data.items() if "AssetInterfacesDescription" in k), None)
                 
                 if not all([vis_data, beh_data]): raise Exception(f"AAS is missing required Kit submodels. Found: {list(submodels_data.keys())}")
                     
@@ -2398,6 +2428,21 @@ class ConveyorWizard(QMainWindow):
                         if el["idShort"] == "Description":
                             desc = el.get("value", "")
                 self.edit_desc.setText(desc)
+
+                if aid_data:
+                    aid_props = {el["idShort"]: el.get("value") for el in aid_data.get("submodelElements", []) if el.get("modelType") == "Property"}
+                    proto = aid_props.get("Protocol", "Sockets")
+                    ip = aid_props.get("EndpointIP", "127.0.0.1")
+                    port = aid_props.get("EndpointPort", 5000)
+                    if hasattr(self, "combo_comm_protocol"):
+                        self.combo_comm_protocol.setCurrentText(str(proto))
+                    if hasattr(self, "edit_comm_ip"):
+                        self.edit_comm_ip.setText(str(ip))
+                    if hasattr(self, "spin_comm_port"):
+                        try:
+                            self.spin_comm_port.setValue(int(port))
+                        except (ValueError, TypeError):
+                            pass
                 
                 # Transform & Mesh
                 mesh_href = None
@@ -2451,6 +2496,11 @@ class ConveyorWizard(QMainWindow):
                             w.check_visible.setChecked(str(params.get("Visible", "False")).lower() == "true")
                             w.check_active_low.setChecked(str(params.get("ActiveLow", "False")).lower() == "true")
                             w.check_snap.setChecked("SnapTarget" in params)
+                            if hasattr(w, "check_real_sensor") and "RealSensorEnabled" in params:
+                                r_enabled = str(params.get("RealSensorEnabled", "False")).lower() == "true" if isinstance(params.get("RealSensorEnabled"), str) else bool(params.get("RealSensorEnabled", False))
+                                w.check_real_sensor.setChecked(r_enabled)
+                            if hasattr(w, "edit_real_port") and "RealPortID" in params:
+                                w.edit_real_port.setText(str(params.get("RealPortID", "")))
                 self.update_all_actuator_dropdowns()
     
                 # Control Logic
@@ -3689,6 +3739,10 @@ class ConveyorWizard(QMainWindow):
             vp = model.Submodel(id_=f"https://acplt.org/Submodels/Pins_{kfn}", id_short="VirtualPins")
             bm = model.Submodel(id_=f"https://acplt.org/Submodels/Behavior_{kfn}", id_short="BehaviorMapping")
             cl = model.Submodel(id_=f"https://acplt.org/Submodels/ControlLogic_{kfn}", id_short="ControlLogic")
+            sm_aid = model.Submodel(id_=f"https://acplt.org/Submodels/AssetInterfacesDescription_{kfn}", id_short="AssetInterfacesDescription")
+            sm_aid.submodel_element.add(model.Property(id_short="Protocol", value_type=model.datatypes.String, value=str(self.combo_comm_protocol.currentText())))
+            sm_aid.submodel_element.add(model.Property(id_short="EndpointIP", value_type=model.datatypes.String, value=str(self.edit_comm_ip.text().strip())))
+            sm_aid.submodel_element.add(model.Property(id_short="EndpointPort", value_type=model.datatypes.Integer, value=int(self.spin_comm_port.value())))
             cl.submodel_element.add(model.Property(id_short="Rules", value_type=model.datatypes.String, value=json.dumps(self.logic_rules)))
             ic = model.SubmodelElementCollection(id_short="Inputs"); oc = model.SubmodelElementCollection(id_short="Outputs")
             vp.submodel_element.add(ic); vp.submodel_element.add(oc)
@@ -3725,9 +3779,11 @@ class ConveyorWizard(QMainWindow):
                     if "visible" in sns: pc.value.add(model.Property(id_short="Visible", value_type=model.datatypes.Boolean, value=bool(sns["visible"])))
                     if "active_low" in sns: pc.value.add(model.Property(id_short="ActiveLow", value_type=model.datatypes.Boolean, value=bool(sns["active_low"])))
                     if sns.get("snap_product"): pc.value.add(model.Property(id_short="SnapTarget", value_type=model.datatypes.String, value="Product_ConveyorSystem"))
+                    pc.value.add(model.Property(id_short="RealSensorEnabled", value_type=model.datatypes.Boolean, value=bool(sns.get("real_sensor_enabled", False))))
+                    pc.value.add(model.Property(id_short="RealPortID", value_type=model.datatypes.String, value=str(sns.get("real_port_id", ""))))
                     bc.value.add(pc); bm.submodel_element.add(bc)
-            shell.submodel.add(model.ModelReference.from_referable(vs)); shell.submodel.add(model.ModelReference.from_referable(vp)); shell.submodel.add(model.ModelReference.from_referable(bm)); shell.submodel.add(model.ModelReference.from_referable(cl))
-            obj_store = model.DictObjectStore(); obj_store.add(shell); obj_store.add(vs); obj_store.add(vp); obj_store.add(bm); obj_store.add(cl); fr = RobustFileRepo()
+            shell.submodel.add(model.ModelReference.from_referable(vs)); shell.submodel.add(model.ModelReference.from_referable(vp)); shell.submodel.add(model.ModelReference.from_referable(bm)); shell.submodel.add(model.ModelReference.from_referable(cl)); shell.submodel.add(model.ModelReference.from_referable(sm_aid))
+            obj_store = model.DictObjectStore(); obj_store.add(shell); obj_store.add(vs); obj_store.add(vp); obj_store.add(bm); obj_store.add(cl); obj_store.add(sm_aid); fr = RobustFileRepo()
             import tempfile
             bd = os.path.dirname(self.glb_path)
             ae = ['.obj', '.mtl', '.stl', '.png', '.jpg', '.jpeg', '.dae', '.fbx', '.glb', '.gltf', '.bin']
@@ -3747,7 +3803,7 @@ class ConveyorWizard(QMainWindow):
                             with open(lp, 'rb') as tf:
                                 co = tf.read()
                             ap = posixpath.normpath(posixpath.join("/aasx/kit", rp)); fr.add_file(ap, co)
-            for sm in [vs, vp, bm, cl]:
+            for sm in [vs, vp, bm, cl, sm_aid]:
                 for el in sm.submodel_element:
                     if isinstance(el, model.File) and el.value and not el.value.startswith("/aasx/"): el.value = posixpath.normpath(posixpath.join("/aasx/kit", el.value))
                     elif isinstance(el, model.SubmodelElementCollection):
