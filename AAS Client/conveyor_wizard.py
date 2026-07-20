@@ -62,7 +62,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QLineEdit, 
                              QFileDialog, QStackedWidget, QFormLayout, 
                              QTreeWidget, QTreeWidgetItem, QCheckBox, 
-                             QDoubleSpinBox, QComboBox, QMessageBox, QTextEdit,
+                             QDoubleSpinBox, QSpinBox, QComboBox, QMessageBox, QTextEdit,
                              QGroupBox, QScrollArea, QDialog, QDialogButtonBox,
                              QSplitter, QListWidget, QListWidgetItem, QInputDialog,
                              QGridLayout)
@@ -573,6 +573,13 @@ class SensorWidget(QGroupBox):
         self.check_snap = QCheckBox("Snap Product to Sensor Center")
         self.check_snap.setChecked(False)
         
+        self.check_real_sensor = QCheckBox("Real Physical Sensor")
+        self.check_real_sensor.setChecked(False)
+        self.edit_real_port = QLineEdit("I0_0")
+        self.edit_real_port.setPlaceholderText("Physical Port ID (e.g. I0_0)")
+        self.edit_real_port.setEnabled(False)
+        self.check_real_sensor.toggled.connect(self.edit_real_port.setEnabled)
+        
         self.combo_behavior = QComboBox(); self.combo_behavior.addItems(["TriggerZone", "Presence", "Proximity"])
         self.edit_filter = QLineEdit("Metal")
         
@@ -583,6 +590,8 @@ class SensorWidget(QGroupBox):
         layout.addRow(self.check_visible)
         layout.addRow(self.check_active_low)
         layout.addRow(self.check_snap)
+        layout.addRow(self.check_real_sensor)
+        layout.addRow("Real Port ID:", self.edit_real_port)
         
         btn_del = QPushButton("Delete")
         btn_del.setStyleSheet("background-color: #a93226;")
@@ -624,7 +633,9 @@ class SensorWidget(QGroupBox):
             "target_filter": self.edit_filter.text(), 
             "visible": self.check_visible.isChecked(), 
             "active_low": self.check_active_low.isChecked(),
-            "snap_product": self.check_snap.isChecked()
+            "snap_product": self.check_snap.isChecked(),
+            "real_sensor_enabled": self.check_real_sensor.isChecked(),
+            "real_port_id": self.edit_real_port.text().strip()
         }
 
 class TriggerRow(QWidget):
@@ -825,6 +836,27 @@ class ConveyorWizard(QMainWindow):
         self.check_is_dynamic = QCheckBox("Is Dynamic (adds Rigidbody/Physics in Unity)")
         ifl.addRow("Kit Name:", self.edit_kit_name); ifl.addRow("AAS ID:", self.edit_aas_id); ifl.addRow("Description:", self.edit_desc)
         ifl.addRow("", self.check_is_dynamic)
+
+        comm_group = QGroupBox("Communication Settings")
+        cfl = QFormLayout(comm_group)
+        self.combo_comm_protocol = QComboBox()
+        self.combo_comm_protocol.addItems(["Sockets", "None"])
+        self.edit_comm_ip = QLineEdit("192.168.10.1")
+        self.spin_comm_port = QSpinBox()
+        self.spin_comm_port.setRange(1, 65535)
+        self.spin_comm_port.setValue(8888)
+
+        def _on_comm_proto_changed(proto):
+            is_sockets = (proto == "Sockets")
+            self.edit_comm_ip.setEnabled(is_sockets)
+            self.spin_comm_port.setEnabled(is_sockets)
+
+        self.combo_comm_protocol.currentTextChanged.connect(_on_comm_proto_changed)
+        _on_comm_proto_changed(self.combo_comm_protocol.currentText())
+
+        cfl.addRow("Protocol:", self.combo_comm_protocol)
+        cfl.addRow("IP Address:", self.edit_comm_ip)
+        cfl.addRow("Port:", self.spin_comm_port)
         
         trans_group = QGroupBox("System Transform"); tfl = QFormLayout(trans_group)
         self.sys_pos = [QDoubleSpinBox() for _ in range(3)]; self.sys_rot = [QDoubleSpinBox() for _ in range(3)]; self.sys_scale = [QDoubleSpinBox() for _ in range(3)]
@@ -846,7 +878,7 @@ class ConveyorWizard(QMainWindow):
         self.check_preview_layout.stateChanged.connect(self.toggle_layout_preview)
         tfl.addRow("", self.check_preview_layout)
         
-        l2.addWidget(info_group); l2.addWidget(trans_group); l2.addStretch(); self.stack.addWidget(self.page2)
+        l2.addWidget(info_group); l2.addWidget(trans_group); l2.addWidget(comm_group); l2.addStretch(); self.stack.addWidget(self.page2)
         
         # P3: Sensors
         self.page3 = QWidget(); l3 = QVBoxLayout(self.page3); self.scroll_sens = QScrollArea(); self.scroll_sens.setWidgetResizable(True); self.sens_container = QWidget(); self.sens_layout = QVBoxLayout(self.sens_container); self.scroll_sens.setWidget(self.sens_container)
@@ -2485,6 +2517,9 @@ class ConveyorWizard(QMainWindow):
             "aas_id": self.edit_aas_id.text(),
             "description": self.edit_desc.text(),
             "dynamic": self.check_is_dynamic.isChecked(),
+            "comm_protocol": self.combo_comm_protocol.currentText(),
+            "comm_ip": self.edit_comm_ip.text().strip(),
+            "comm_port": self.spin_comm_port.value(),
             "glb_path": self.glb_path,
             "pos": [self.sys_pos[i].value() for i in range(3)],
             "rot": [self.sys_rot[i].value() for i in range(3)],
@@ -2530,6 +2565,9 @@ class ConveyorWizard(QMainWindow):
         self.edit_aas_id.setText(state.get("aas_id", ""))
         self.edit_desc.setText(state.get("description", ""))
         self.check_is_dynamic.setChecked(is_dynamic)
+        self.combo_comm_protocol.setCurrentText(state.get("comm_protocol", "Sockets"))
+        self.edit_comm_ip.setText(state.get("comm_ip", "192.168.10.1"))
+        self.spin_comm_port.setValue(state.get("comm_port", 8888))
 
         for i in range(3):
             self.sys_pos[i].setValue(pos[i])
@@ -2560,6 +2598,8 @@ class ConveyorWizard(QMainWindow):
             w.check_visible.setChecked(sns.get("visible", False))
             w.check_active_low.setChecked(sns.get("active_low", False))
             w.check_snap.setChecked(sns.get("snap_product", False))
+            w.check_real_sensor.setChecked(sns.get("real_sensor_enabled", False))
+            w.edit_real_port.setText(sns.get("real_port_id", "I0_0"))
             
         self.update_all_actuator_dropdowns()
 
@@ -3516,6 +3556,9 @@ class ConveyorWizard(QMainWindow):
             "kit_name": self.edit_kit_name.text(),
             "aas_id": self.edit_aas_id.text(),
             "description": self.edit_desc.text(),
+            "comm_protocol": self.combo_comm_protocol.currentText(),
+            "comm_ip": self.edit_comm_ip.text().strip(),
+            "comm_port": self.spin_comm_port.value(),
             "control_logic": self.logic_rules
         }
         
