@@ -123,7 +123,7 @@ class TestConveyorWizard(unittest.TestCase):
             window.close()
 
     def test_aas_generation_and_cloning(self):
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch, MagicMock, mock_open
         import base64
         window = ConveyorWizard()
         try:
@@ -136,12 +136,15 @@ class TestConveyorWizard(unittest.TestCase):
             }
 
             # 1. Test deployment (which generates the AASX file and registers descriptors)
-            with patch('requests.post') as mock_post, \
-                 patch('requests.get') as mock_get, \
-                 patch('builtins.open', create=True) as mock_open, \
+            with patch('conveyor_wizard.requests.post') as mock_post, \
+                 patch('conveyor_wizard.requests.get') as mock_get, \
+                 patch('builtins.open', mock_open(read_data=b"")), \
                  patch('os.walk') as mock_walk, \
                  patch('os.makedirs') as mock_makedirs, \
-                 patch('basyx.aas.adapter.aasx.AASXWriter') as mock_writer:
+                 patch('conveyor_wizard.QMessageBox.critical'), \
+                 patch('conveyor_wizard.QMessageBox.warning'), \
+                 patch('conveyor_wizard.QMessageBox.information'), \
+                 patch('conveyor_wizard.aasx.AASXWriter') as mock_writer:
                 
                 mock_walk.return_value = [("C:\\Users\\LazyT\\Desktop\\Tese\\AAS Client", [], ["dummy.glb"])]
                 mock_res = MagicMock()
@@ -213,7 +216,9 @@ class TestConveyorWizard(unittest.TestCase):
                     return cl_sm_response
                 return MagicMock(status_code=404)
                 
-            with patch('requests.get', side_effect=get_side_effect) as mock_get_clone:
+            with patch('conveyor_wizard.requests.get', side_effect=get_side_effect) as mock_get_clone, \
+                 patch('conveyor_wizard.QMessageBox.information'), \
+                 patch('conveyor_wizard.QMessageBox.critical'):
                 window.load_cloned_aas(shell_desc)
                 
                 # Check that logic_rules were successfully parsed from the ControlLogic submodel
@@ -250,7 +255,7 @@ class TestConveyorWizard(unittest.TestCase):
                 dlg.close()
 
     def test_urdf_loading_and_deployment(self):
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch, MagicMock, mock_open
         window = ConveyorWizard()
         try:
             # Mock robot object from URDF.load
@@ -297,17 +302,19 @@ class TestConveyorWizard(unittest.TestCase):
             self.assertEqual(window.stack.currentIndex(), 1)
 
             # 3. Test deploy_to_aas for URDF
-            with patch('requests.post') as mock_post, \
-                 patch('requests.get') as mock_get, \
-                 patch('builtins.open', create=True) as mock_open, \
+            with patch('conveyor_wizard.requests.post') as mock_post, \
+                 patch('conveyor_wizard.requests.get') as mock_get, \
+                 patch('builtins.open', mock_open(read_data=b"")), \
                  patch('os.makedirs') as mock_makedirs, \
+                 patch('conveyor_wizard.QMessageBox.critical'), \
+                 patch('conveyor_wizard.QMessageBox.warning'), \
+                 patch('conveyor_wizard.QMessageBox.information'), \
                  patch('xml.etree.ElementTree.ElementTree.write') as mock_et_write, \
                  patch('conveyor_wizard.AssetManager') as mock_asset_manager_class, \
-                 patch('basyx.aas.adapter.aasx.AASXWriter') as mock_writer:
+                 patch('conveyor_wizard.aasx.AASXWriter') as mock_writer:
                 
                 mock_asset_manager = MagicMock()
                 mock_asset_manager.exts = ['.stl']
-                mock_asset_manager.files_to_upload = {"C:/path/to/mesh.stl": "mesh.stl"}
                 mock_asset_manager.files_to_upload = {"C:/path/to/mesh.stl": "mesh.stl"}
                 mock_asset_manager_class.return_value = mock_asset_manager
                 
