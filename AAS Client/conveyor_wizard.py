@@ -3836,7 +3836,7 @@ class ConveyorWizard(QMainWindow):
                     with open(out, 'rb') as f:
                         res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
                     if res.status_code in [200, 201, 204]:
-                        requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, cl]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                        requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, cl, sm_aid]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
                         while QApplication.overrideCursor() is not None:
                             QApplication.restoreOverrideCursor()
                         QMessageBox.information(self, "Success", f"AAS Kit deployed (overwritten) successfully!")
@@ -3848,7 +3848,7 @@ class ConveyorWizard(QMainWindow):
                 else:
                     return
             elif res.status_code in [200, 201, 204]:
-                requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, cl]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, cl, sm_aid]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
                 QMessageBox.information(self, "Success", f"AAS Kit deployed successfully!")
