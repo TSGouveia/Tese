@@ -65,8 +65,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QDoubleSpinBox, QSpinBox, QComboBox, QMessageBox, QTextEdit,
                              QGroupBox, QScrollArea, QDialog, QDialogButtonBox,
                              QSplitter, QListWidget, QListWidgetItem, QInputDialog,
-                             QGridLayout)
-from PyQt6.QtCore import Qt, QSize, QTimer
+                             QGridLayout, QAbstractItemView)
+from PyQt6.QtCore import Qt, QSize, QTimer, QEvent
 from PyQt6.QtGui import QColor, QFont
 
 import basyx.aas.model as model
@@ -479,6 +479,22 @@ class ActuatorWidget(QGroupBox):
         
         self.spin_speed = QDoubleSpinBox(); self.spin_speed.setRange(-100, 100); self.spin_speed.setValue(1.0); self.spin_speed.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         
+        self.check_real_actuator = QCheckBox("Real Physical Actuator")
+        self.check_real_actuator.setChecked(False)
+        self.edit_real_port = QLineEdit("R0_0")
+        self.real_port_container = QWidget()
+        real_layout = QFormLayout(self.real_port_container)
+        real_layout.setContentsMargins(0, 0, 0, 0)
+        real_layout.addRow("Real Port ID:", self.edit_real_port)
+        self.real_port_container.setVisible(False)
+
+        def toggle_real_actuator(active):
+            self.real_port_container.setVisible(active)
+            self.wizard.update_json_preview()
+
+        self.check_real_actuator.toggled.connect(toggle_real_actuator)
+        self.edit_real_port.textChanged.connect(lambda: self.wizard.update_json_preview())
+
         self.layout.addRow("Pin ID:", self.edit_pin)
         self.layout.addRow("Target Node:", self.edit_node)
         self.layout.addRow("Behavior:", self.combo_behavior)
@@ -486,6 +502,8 @@ class ActuatorWidget(QGroupBox):
         self.layout.addRow("Axis (X,Y,Z):", axis_layout)
         self.layout.addRow("Speed:", self.spin_speed)
         self.layout.addRow(self.check_visible)
+        self.layout.addRow(self.check_real_actuator)
+        self.layout.addRow(self.real_port_container)
         
         btn_del = QPushButton("Delete")
         btn_del.setStyleSheet("background-color: #a93226;")
@@ -550,9 +568,32 @@ class ActuatorWidget(QGroupBox):
                     min_b = np.min(b[:, [0, 2, 4]], axis=0); max_b = np.max(b[:, [1, 3, 5]], axis=0)
                     scale = max(max_b - min_b) * 1.5; pos = (min_b + max_b) / 2.0
             self.arrow = self.wizard.plotter.add_arrows(np.array([pos]), np.array([vis_axis]), mag=scale, color="yellow")
+            
+        # Install event filter on ALL child widgets to auto-select/activate this ActuatorWidget on click or focus
+        for child in self.findChildren(QWidget):
+            child.installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Wheel:
+            # Ignore wheel events on focus widgets to allow outer scroll area to scroll
+            event.ignore()
+            return True
+        if event.type() in [QEvent.Type.MouseButtonPress, QEvent.Type.FocusIn]:
+            self.activate()
+        return super().eventFilter(watched, event)
 
     def get_data(self):
-        return { "pin_id": self.edit_pin.text(), "node": self.edit_node.text(), "behavior": self.combo_behavior.currentText(), "stop_sensor": self.combo_stop_sens.currentText(), "axis": [self.spin_x.value(), self.spin_y.value(), self.spin_z.value()], "speed": self.spin_speed.value(), "visible": self.check_visible.isChecked() }
+        return {
+            "pin_id": self.edit_pin.text(),
+            "node": self.edit_node.text(),
+            "behavior": self.combo_behavior.currentText(),
+            "stop_sensor": self.combo_stop_sens.currentText(),
+            "axis": [self.spin_x.value(), self.spin_y.value(), self.spin_z.value()],
+            "speed": self.spin_speed.value(),
+            "visible": self.check_visible.isChecked(),
+            "real_actuator_enabled": self.check_real_actuator.isChecked(),
+            "real_port_id": self.edit_real_port.text().strip()
+        }
 
 class SensorWidget(QGroupBox):
     def __init__(self, parent_wizard):
@@ -572,14 +613,157 @@ class SensorWidget(QGroupBox):
         self.check_active_low = QCheckBox("Active Low")
         self.check_snap = QCheckBox("Snap Product to Sensor Center")
         self.check_snap.setChecked(False)
+        self.check_snap.toggled.connect(lambda: self.wizard.update_json_preview())
         
         self.check_real_sensor = QCheckBox("Real Physical Sensor")
         self.check_real_sensor.setChecked(False)
         self.edit_real_port = QLineEdit("I0_0")
         self.edit_real_port.setPlaceholderText("Physical Port ID (e.g. I0_0)")
         self.edit_real_port.setEnabled(False)
-        self.check_real_sensor.toggled.connect(self.edit_real_port.setEnabled)
         
+        # Container to hide/show Real Port ID field dynamically
+        self.real_port_container = QWidget()
+        real_port_layout = QFormLayout(self.real_port_container)
+        real_port_layout.setContentsMargins(0, 0, 0, 0)
+        real_port_layout.addRow("Real Port ID:", self.edit_real_port)
+        self.real_port_container.setVisible(False)
+
+        def toggle_real_sensor(active):
+            self.edit_real_port.setEnabled(active)
+            self.real_port_container.setVisible(active)
+            self.wizard.update_json_preview()
+
+        self.check_real_sensor.toggled.connect(toggle_real_sensor)
+        self.edit_real_port.textChanged.connect(lambda: self.wizard.update_json_preview())
+
+        # --- Move-On-State UI fields ---
+        self.check_move = QCheckBox("Move Target on State")
+        self.check_move.setChecked(False)
+        self.edit_move_target = QLineEdit("")
+        self.edit_move_target.setReadOnly(True)
+        self.edit_move_target.setPlaceholderText("Select component in Tree or 3D...")
+        self.combo_move_state = QComboBox()
+        self.combo_move_state.addItems(["HIGH", "LOW"])
+        self.spin_mpos_x = QDoubleSpinBox(); self.spin_mpos_x.setRange(-999, 999); self.spin_mpos_x.setSingleStep(0.1)
+        self.spin_mpos_y = QDoubleSpinBox(); self.spin_mpos_y.setRange(-999, 999); self.spin_mpos_y.setSingleStep(0.1)
+        self.spin_mpos_z = QDoubleSpinBox(); self.spin_mpos_z.setRange(-999, 999); self.spin_mpos_z.setSingleStep(0.1)
+        self.spin_mrot_x = QDoubleSpinBox(); self.spin_mrot_x.setRange(-360, 360); self.spin_mrot_x.setSingleStep(5)
+        self.spin_mrot_y = QDoubleSpinBox(); self.spin_mrot_y.setRange(-360, 360); self.spin_mrot_y.setSingleStep(5)
+        self.spin_mrot_z = QDoubleSpinBox(); self.spin_mrot_z.setRange(-360, 360); self.spin_mrot_z.setSingleStep(5)
+        self.spin_mdur = QDoubleSpinBox(); self.spin_mdur.setRange(0, 60); self.spin_mdur.setValue(0.5); self.spin_mdur.setSingleStep(0.1)
+
+        self.combo_move_mode = QComboBox()
+        self.combo_move_mode.addItems(["Position and Rotation", "Position Only", "Rotation Only"])
+        
+        self.edit_move_target.setEnabled(False)
+        self.combo_move_state.setEnabled(False)
+        self.combo_move_mode.setEnabled(False)
+        self.spin_mpos_x.setEnabled(False); self.spin_mpos_y.setEnabled(False); self.spin_mpos_z.setEnabled(False)
+        self.spin_mrot_x.setEnabled(False); self.spin_mrot_y.setEnabled(False); self.spin_mrot_z.setEnabled(False)
+        self.spin_mdur.setEnabled(False)
+
+        self.check_move.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.edit_move_target.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.combo_move_state.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.combo_move_mode.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.spin_mpos_x.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.spin_mpos_y.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.spin_mpos_z.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.spin_mrot_x.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.spin_mrot_y.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.spin_mrot_z.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.spin_mdur.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+        # Event filter to safely detect clicks/focus on the line edits without causing recursions
+        self.edit_node.installEventFilter(self)
+        self.edit_move_target.installEventFilter(self)
+
+        # Helper to toggle visibility of a form row (label widget + field widget/layout)
+        def set_row_visible(form_layout, row_idx, visible):
+            label_item = form_layout.itemAt(row_idx, QFormLayout.ItemRole.LabelRole)
+            field_item = form_layout.itemAt(row_idx, QFormLayout.ItemRole.FieldRole)
+            if label_item and label_item.widget():
+                label_item.widget().setVisible(visible)
+            if field_item:
+                if field_item.widget():
+                    field_item.widget().setVisible(visible)
+                elif field_item.layout():
+                    for i in range(field_item.layout().count()):
+                        w = field_item.layout().itemAt(i).widget()
+                        if w: w.setVisible(visible)
+
+        # Helpers to wrap layouts in dummy widgets for perfect visibility toggling
+        pos_layout = QHBoxLayout()
+        pos_layout.setContentsMargins(0, 0, 0, 0)
+        pos_layout.addWidget(QLabel("X:")); pos_layout.addWidget(self.spin_mpos_x)
+        pos_layout.addWidget(QLabel("Y:")); pos_layout.addWidget(self.spin_mpos_y)
+        pos_layout.addWidget(QLabel("Z:")); pos_layout.addWidget(self.spin_mpos_z)
+
+        rot_layout = QHBoxLayout()
+        rot_layout.setContentsMargins(0, 0, 0, 0)
+        rot_layout.addWidget(QLabel("X:")); rot_layout.addWidget(self.spin_mrot_x)
+        rot_layout.addWidget(QLabel("Y:")); rot_layout.addWidget(self.spin_mrot_y)
+        rot_layout.addWidget(QLabel("Z:")); rot_layout.addWidget(self.spin_mrot_z)
+
+        self.pos_container = QWidget(); self.pos_container.setLayout(pos_layout)
+        self.rot_container = QWidget(); self.rot_container.setLayout(rot_layout)
+
+        # Connect Move Mode combobox
+        def update_move_mode_visibility():
+            mode = self.combo_move_mode.currentText()
+            show_pos = mode in ["Position and Rotation", "Position Only"]
+            show_rot = mode in ["Position and Rotation", "Rotation Only"]
+            
+            self.pos_container.setVisible(show_pos)
+            self.spin_mpos_x.setEnabled(show_pos); self.spin_mpos_y.setEnabled(show_pos); self.spin_mpos_z.setEnabled(show_pos)
+            
+            self.rot_container.setVisible(show_rot)
+            self.spin_mrot_x.setEnabled(show_rot); self.spin_mrot_y.setEnabled(show_rot); self.spin_mrot_z.setEnabled(show_rot)
+            
+            # Hide/show the labels for position and rotation rows
+            pos_label = layout.labelForField(self.pos_container)
+            if pos_label: pos_label.setVisible(show_pos)
+            rot_label = layout.labelForField(self.rot_container)
+            if rot_label: rot_label.setVisible(show_rot)
+            
+            self.wizard.update_json_preview()
+
+        self.combo_move_mode.currentTextChanged.connect(lambda: update_move_mode_visibility())
+
+        def toggle_move_fields(active):
+            # Show/hide all move-related rows in the main layout
+            for row_w in [self.edit_move_target, self.combo_move_state, self.combo_move_mode, self.spin_mdur, self.pos_container, self.rot_container]:
+                lbl = layout.labelForField(row_w)
+                if lbl: lbl.setVisible(active)
+                row_w.setVisible(active)
+                
+            self.edit_move_target.setEnabled(active)
+            self.combo_move_state.setEnabled(active)
+            self.combo_move_mode.setEnabled(active)
+            self.spin_mdur.setEnabled(active)
+            
+            if active:
+                self.active_selection_field = "move"
+                self.edit_move_target.setStyleSheet("border: 2px solid #2874a6;")
+                self.edit_node.setStyleSheet("")
+                update_move_mode_visibility()
+            else:
+                self.active_selection_field = "node"
+                self.edit_node.setStyleSheet("border: 2px solid #2874a6;")
+                self.edit_move_target.setStyleSheet("")
+            self.wizard.update_json_preview()
+            
+        self.check_move.toggled.connect(toggle_move_fields)
+        self.edit_move_target.textChanged.connect(lambda: self.wizard.update_json_preview())
+        self.combo_move_state.currentTextChanged.connect(lambda: self.wizard.update_json_preview())
+        self.spin_mpos_x.valueChanged.connect(lambda: self.wizard.update_json_preview())
+        self.spin_mpos_y.valueChanged.connect(lambda: self.wizard.update_json_preview())
+        self.spin_mpos_z.valueChanged.connect(lambda: self.wizard.update_json_preview())
+        self.spin_mrot_x.valueChanged.connect(lambda: self.wizard.update_json_preview())
+        self.spin_mrot_y.valueChanged.connect(lambda: self.wizard.update_json_preview())
+        self.spin_mrot_z.valueChanged.connect(lambda: self.wizard.update_json_preview())
+        self.spin_mdur.valueChanged.connect(lambda: self.wizard.update_json_preview())
+
         self.combo_behavior = QComboBox(); self.combo_behavior.addItems(["TriggerZone", "Presence", "Proximity"])
         self.edit_filter = QLineEdit("Metal")
         
@@ -591,13 +775,53 @@ class SensorWidget(QGroupBox):
         layout.addRow(self.check_active_low)
         layout.addRow(self.check_snap)
         layout.addRow(self.check_real_sensor)
-        layout.addRow("Real Port ID:", self.edit_real_port)
+        layout.addRow(self.real_port_container)
+        
+        layout.addRow(self.check_move)
+        layout.addRow("Move Target:", self.edit_move_target)
+        layout.addRow("Move on State:", self.combo_move_state)
+        layout.addRow("Move Mode:", self.combo_move_mode)
+        layout.addRow("Move Local Pos:", self.pos_container)
+        layout.addRow("Move Local Rot:", self.rot_container)
+        layout.addRow("Move Duration (s):", self.spin_mdur)
+
+        # Start hidden by default
+        for row_w in [self.edit_move_target, self.combo_move_state, self.combo_move_mode, self.spin_mdur, self.pos_container, self.rot_container]:
+            lbl = layout.labelForField(row_w)
+            if lbl: lbl.setVisible(False)
+            row_w.setVisible(False)
         
         btn_del = QPushButton("Delete")
         btn_del.setStyleSheet("background-color: #a93226;")
         btn_del.clicked.connect(lambda: self.wizard.remove_sensor(self))
         layout.addRow(btn_del)
         self.validate()
+
+        # Install event filter on ALL child widgets to auto-select/activate this SensorWidget on click or focus
+        for child in self.findChildren(QWidget):
+            child.installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Wheel:
+            # Ignore wheel events on inputs to allow outer scroll area to scroll
+            event.ignore()
+            return True
+            
+        # Automatically activate this widget if any of its children get clicked or focused
+        if event.type() in [QEvent.Type.MouseButtonPress, QEvent.Type.FocusIn]:
+            self.activate()
+
+        # Handle text box selection routing
+        if event.type() == QEvent.Type.MouseButtonPress:
+            if watched == self.edit_node:
+                self.active_selection_field = "node"
+                self.edit_node.setStyleSheet("border: 2px solid #2874a6;")
+                self.edit_move_target.setStyleSheet("")
+            elif watched == self.edit_move_target and self.edit_move_target.isEnabled():
+                self.active_selection_field = "move"
+                self.edit_move_target.setStyleSheet("border: 2px solid #2874a6;")
+                self.edit_node.setStyleSheet("")
+        return super().eventFilter(watched, event)
 
     def on_pin_changed(self):
         self.validate()
@@ -619,14 +843,21 @@ class SensorWidget(QGroupBox):
 
     def mousePressEvent(self, event):
         self.activate()
+        child = self.childAt(event.position().toPoint())
+        if child:
+            child.setFocus()
         super().mousePressEvent(event)
 
     def set_node(self, name):
-        self.edit_node.setPlaceholderText("")
-        self.edit_node.setText(name)
+        if hasattr(self, "active_selection_field") and self.active_selection_field == "move":
+            self.edit_move_target.setPlaceholderText("")
+            self.edit_move_target.setText(name)
+        else:
+            self.edit_node.setPlaceholderText("")
+            self.edit_node.setText(name)
 
     def get_data(self):
-        return { 
+        data = { 
             "pin_id": self.edit_pin.text(), 
             "node": self.edit_node.text(), 
             "behavior": self.combo_behavior.currentText(), 
@@ -637,6 +868,16 @@ class SensorWidget(QGroupBox):
             "real_sensor_enabled": self.check_real_sensor.isChecked(),
             "real_port_id": self.edit_real_port.text().strip()
         }
+        if self.check_move.isChecked():
+            data["move_target"] = self.edit_move_target.text().strip()
+            data["move_on_state"] = self.combo_move_state.currentText() == "HIGH"
+            # Map clean strings for backend serialization
+            mode_map = {"Position and Rotation": "Both", "Position Only": "Position", "Rotation Only": "Rotation"}
+            data["move_mode"] = mode_map.get(self.combo_move_mode.currentText(), "Both")
+            data["move_position"] = [self.spin_mpos_x.value(), self.spin_mpos_y.value(), self.spin_mpos_z.value()]
+            data["move_rotation"] = [self.spin_mrot_x.value(), self.spin_mrot_y.value(), self.spin_mrot_z.value()]
+            data["move_duration"] = self.spin_mdur.value()
+        return data
 
 class TriggerRow(QWidget):
     def __init__(self, parent_wizard, sensor_list, initial_sensor="", initial_value=True, on_delete=None, on_changed=None, initial_kit=None):
@@ -696,6 +937,13 @@ class TriggerRow(QWidget):
             
     def get_data(self):
         text = self.combo_sensor.currentText()
+        if text.startswith("[Rule] "):
+            seq_name = text[len("[Rule] "):].strip()
+            return {
+                "sequence": seq_name,
+                "value": self.combo_value.currentText() == "true"
+            }
+            
         default_kit = ""
         if hasattr(self.parent_wizard, "edit_kit_name"):
             default_kit = self.parent_wizard.edit_kit_name.text()
@@ -733,6 +981,8 @@ class ConveyorWizard(QMainWindow):
         self.current_robot_root = ""
         self.apply_styles(); self.setup_ui()
         self.showMaximized()
+
+
         
     def apply_styles(self):
         self.setStyleSheet("""
@@ -834,6 +1084,7 @@ class ConveyorWizard(QMainWindow):
         self.edit_kit_name = QLineEdit("ConveyorKit"); self.edit_aas_id = QLineEdit("Conveyor_01"); self.edit_desc = QLineEdit("Standard Conveyor System")
         self.edit_aas_id.textChanged.connect(self.update_validation_ui)
         self.check_is_dynamic = QCheckBox("Is Dynamic (adds Rigidbody/Physics in Unity)")
+        
         ifl.addRow("Kit Name:", self.edit_kit_name); ifl.addRow("AAS ID:", self.edit_aas_id); ifl.addRow("Description:", self.edit_desc)
         ifl.addRow("", self.check_is_dynamic)
 
@@ -876,7 +1127,9 @@ class ConveyorWizard(QMainWindow):
             self.sys_scale[i].setRange(0, 100); self.sys_scale[i].setValue(1.0); self.sys_scale[i].setSingleStep(0.1); self.sys_scale[i].setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons); sca_l.addWidget(self.sys_scale[i])
             self.sys_scale[i].valueChanged.connect(self.update_system_transform)
             
-        tfl.addRow("Position:", pos_l); tfl.addRow("Rotation:", rot_l); tfl.addRow("Scale:", sca_l)
+        tfl.addRow("Position:", pos_l)
+        tfl.addRow("Rotation:", rot_l)
+        tfl.addRow("Scale:", sca_l)
         
         self.check_preview_layout = QCheckBox("View in Current Project (Preview Factory Layout)")
         self.check_preview_layout.setStyleSheet("font-weight: bold; color: #3498db;")
@@ -893,18 +1146,13 @@ class ConveyorWizard(QMainWindow):
         self.page4 = QWidget(); l4 = QVBoxLayout(self.page4); self.scroll_act = QScrollArea(); self.scroll_act.setWidgetResizable(True); self.act_container = QWidget(); self.act_layout = QVBoxLayout(self.act_container); self.scroll_act.setWidget(self.act_container)
         l4.addWidget(self.scroll_act); ba = QPushButton("➕ Add Actuator"); ba.clicked.connect(self.add_actuator); l4.addWidget(ba); self.stack.addWidget(self.page4)
         
-        # P5: Control Logic
+        # P5: Preview (former P6)
         self.page5 = QWidget()
-        self.setup_control_logic_page()
-        self.stack.addWidget(self.page5)
-        
-        # P6: Preview
-        self.page6 = QWidget()
-        l6 = QVBoxLayout(self.page6)
+        l5 = QVBoxLayout(self.page5)
         self.json_preview = QTextEdit()
         self.json_preview.setReadOnly(True)
-        l6.addWidget(self.json_preview)
-        self.stack.addWidget(self.page6)
+        l5.addWidget(self.json_preview)
+        self.stack.addWidget(self.page5)
 
     def setup_control_logic_page(self):
         l5 = QVBoxLayout(self.page5)
@@ -919,6 +1167,8 @@ class ConveyorWizard(QMainWindow):
         layout_a = QVBoxLayout(panel_a)
         layout_a.setContentsMargins(10, 15, 10, 10)
         self.list_sequences = QListWidget()
+        self.list_sequences.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.list_sequences.model().rowsMoved.connect(self.on_sequences_reordered)
         self.list_sequences.addItem("Start Sequence")
         layout_a.addWidget(self.list_sequences)
         
@@ -977,7 +1227,10 @@ class ConveyorWizard(QMainWindow):
         self.btn_move_up = QPushButton("Move Up")
         self.btn_move_down = QPushButton("Move Down")
         self.btn_delete_step = QPushButton("Delete Step")
+        self.btn_move_up.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_move_down.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_delete_step.setStyleSheet("background-color: #a93226;")
+        self.btn_delete_step.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn_control_layout.addWidget(self.btn_move_up)
         btn_control_layout.addWidget(self.btn_move_down)
         btn_control_layout.addWidget(self.btn_delete_step)
@@ -1308,7 +1561,6 @@ class ConveyorWizard(QMainWindow):
                 triggers.append(w.get_data())
         seq["trigger"]["conditions"] = triggers
         
-        self.update_json_preview()
 
     def add_trigger_condition(self):
         row = self.list_sequences.currentRow()
@@ -1372,8 +1624,6 @@ class ConveyorWizard(QMainWindow):
             self.group_triggers.setVisible(False)
             self.list_steps.clear()
             self.step_edit_stack.setCurrentIndex(0)
-            
-        self.btn_del_seq.setEnabled(row > 0)
 
     def add_sequence(self):
         name, ok = QInputDialog.getText(self, "Add Sequence", "Enter sequence name:")
@@ -1410,6 +1660,26 @@ class ConveyorWizard(QMainWindow):
             self.list_sequences.takeItem(row)
             self.list_sequences.setCurrentRow(row - 1)
             self.update_json_preview()
+
+    def on_sequences_reordered(self, parent, start, end, destination, row):
+        new_sequences = []
+        for i in range(self.list_sequences.count()):
+            item = self.list_sequences.item(i)
+            name = item.text()
+            if name == "Start Sequence":
+                if i != 0:
+                    self.list_sequences.blockSignals(True)
+                    self.list_sequences.takeItem(i)
+                    self.list_sequences.insertItem(0, item)
+                    self.list_sequences.setCurrentRow(0)
+                    self.list_sequences.blockSignals(False)
+                continue
+            for seq in self.logic_rules.get("sequences", []):
+                if seq.get("name") == name:
+                    new_sequences.append(seq)
+                    break
+        self.logic_rules["sequences"] = new_sequences
+        self.update_json_preview()
 
     def add_set_actuator_step(self):
         steps = self.get_current_steps_list()
@@ -1739,6 +2009,18 @@ class ConveyorWizard(QMainWindow):
                             "real_sensor_enabled": r_enabled,
                             "real_port_id": str(params.get("RealPortID", ""))
                         }
+                        if "MoveTarget" in params:
+                            sens_data["move_target"] = params["MoveTarget"]
+                        if "MoveOnState" in params:
+                            sens_data["move_on_state"] = str(params["MoveOnState"]).lower() == "true"
+                        if "MoveMode" in params:
+                            sens_data["move_mode"] = str(params.get("MoveMode", "Both"))
+                        if "MovePosX" in params:
+                            sens_data["move_position"] = [float(params.get("MovePosX", 0)), float(params.get("MovePosY", 0)), float(params.get("MovePosZ", 0))]
+                        if "MoveRotX" in params:
+                            sens_data["move_rotation"] = [float(params.get("MoveRotX", 0)), float(params.get("MoveRotY", 0)), float(params.get("MoveRotZ", 0))]
+                        if "MoveDuration" in params:
+                            sens_data["move_duration"] = float(params.get("MoveDuration", 0.5))
                         sensors.append(sens_data)
 
             # Get GLB attachment
@@ -2315,6 +2597,8 @@ class ConveyorWizard(QMainWindow):
             # Look for submodels by parsing the actual Submodel IDs/data we just fetched
             is_urdf = "GeometryData" in submodels_data and "PositionData" in submodels_data
             
+            is_logical = "ControlLogic" in submodels_data and not any(k in submodels_data for k in ["GeometryData", "VisualStructure", "BehaviorMapping"])
+            
             if is_urdf:
                 # It's a URDF Robot AAS
                 geo_data = submodels_data["GeometryData"]
@@ -2413,6 +2697,21 @@ class ConveyorWizard(QMainWindow):
                 self.lbl_glb_path.setText(f"URDF: {self.robot.name} ({os.path.basename(target_urdf_path)})")
                 self._build_urdf_view()
                 
+            elif is_logical:
+                # It's a purely logical AAS (e.g. FMS logical orchestrator)
+                self.model_type = "GLB"
+                self.glb_path = None
+                self.lbl_glb_path.setText("None (Logical AAS)")
+                self.plotter.clear()
+                
+                self.edit_kit_name.setText(shell_desc.get("idShort", "ClonedLogical"))
+                self.edit_aas_id.setText(shell_desc.get("idShort", "ClonedLogical"))
+                self.edit_desc.setText("Cloned Logical AAS Orchestrator")
+                
+                # Behavior list is empty for logical AAS
+                for w in list(self.actuator_widgets): self.remove_actuator(w)
+                for w in list(self.sensor_widgets): self.remove_sensor(w)
+                
             else:
                 # We don't rely on 'GeometryData' strictly; we look for anything that looks like VisualStructure
                 vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
@@ -2494,6 +2793,11 @@ class ConveyorWizard(QMainWindow):
                             w.spin_x.setValue(float(params.get("AxisX", 0))); w.spin_y.setValue(float(params.get("AxisY", 0))); w.spin_z.setValue(float(params.get("AxisZ", 0)))
                             w.spin_speed.setValue(float(params.get("Speed", 1.0))); w.check_visible.setChecked(str(params.get("Visible", "True")).lower() == "true")
                             if "StopSensorComponent" in params: w.combo_stop_sens.setCurrentText(params["StopSensorComponent"])
+                            if "RealActuatorEnabled" in params:
+                                r_enabled = str(params.get("RealActuatorEnabled", "False")).lower() == "true" if isinstance(params.get("RealActuatorEnabled"), str) else bool(params.get("RealActuatorEnabled", False))
+                                w.check_real_actuator.setChecked(r_enabled)
+                            if "RealPortID" in params:
+                                w.edit_real_port.setText(str(params.get("RealPortID", "")))
                         elif b_type in sens_types:
                             self.add_sensor(); w = self.sensor_widgets[-1]
                             w.edit_pin.setText(pin_id); w.edit_node.setText(node); w.combo_behavior.setCurrentText(b_type)
@@ -2506,6 +2810,20 @@ class ConveyorWizard(QMainWindow):
                                 w.check_real_sensor.setChecked(r_enabled)
                             if hasattr(w, "edit_real_port") and "RealPortID" in params:
                                 w.edit_real_port.setText(str(params.get("RealPortID", "")))
+                            if "MoveTarget" in params:
+                                w.check_move.setChecked(True)
+                                w.edit_move_target.setText(str(params.get("MoveTarget", "")))
+                                w.combo_move_state.setCurrentText("HIGH" if str(params.get("MoveOnState", "True")).lower() == "true" else "LOW")
+                                mode_val = params.get("MoveMode", "Both")
+                                mode_reverse_map = {"Both": "Position and Rotation", "Position": "Position Only", "Rotation": "Rotation Only"}
+                                w.combo_move_mode.setCurrentText(mode_reverse_map.get(mode_val, "Position and Rotation"))
+                                w.spin_mpos_x.setValue(float(params.get("MovePosX", 0)))
+                                w.spin_mpos_y.setValue(float(params.get("MovePosY", 0)))
+                                w.spin_mpos_z.setValue(float(params.get("MovePosZ", 0)))
+                                w.spin_mrot_x.setValue(float(params.get("MoveRotX", 0)))
+                                w.spin_mrot_y.setValue(float(params.get("MoveRotY", 0)))
+                                w.spin_mrot_z.setValue(float(params.get("MoveRotZ", 0)))
+                                w.spin_mdur.setValue(float(params.get("MoveDuration", 0.5)))
                 self.update_all_actuator_dropdowns()
     
                 # Control Logic
@@ -2523,15 +2841,6 @@ class ConveyorWizard(QMainWindow):
                                 except Exception:
                                     traceback.print_exc()
     
-                self.list_sequences.blockSignals(True)
-                self.list_sequences.clear()
-                self.list_sequences.addItem("Start Sequence")
-                for seq in self.logic_rules.get("sequences", []):
-                    self.list_sequences.addItem(seq.get("name", "Custom Sequence"))
-                self.list_sequences.setCurrentRow(0)
-                self.list_sequences.blockSignals(False)
-                self.on_sequence_selected(0)
-                
                 # Mesh Download
                 if mesh_href:
                     vis_id = vis_data.get("id")
@@ -2643,6 +2952,8 @@ class ConveyorWizard(QMainWindow):
             w.spin_z.setValue(axis[2])
             w.spin_speed.setValue(act.get("speed", 1.0))
             w.check_visible.setChecked(act.get("visible", True))
+            w.check_real_actuator.setChecked(act.get("real_actuator_enabled", False))
+            w.edit_real_port.setText(act.get("real_port_id", "R0_0"))
             
         for sns in sensors:
             self.add_sensor(); w = self.sensor_widgets[-1]
@@ -2704,44 +3015,56 @@ class ConveyorWizard(QMainWindow):
         
         # Reset control logic
         self.logic_rules = {"start": [], "sequences": []}
-        self.list_sequences.blockSignals(True)
-        self.list_sequences.clear()
-        self.list_sequences.addItem("Start Sequence")
-        self.list_sequences.setCurrentRow(0)
-        self.list_sequences.blockSignals(False)
-        self.on_sequence_selected(0)
 
         # 6. Update UI
         self.update_validation_ui()
 
-    def delete_aas_by_id(self, shell_id):
+    def delete_aas_by_id(self, shell_id, submodel_ids=None):
         encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
         def checked_delete(url):
-            r = requests.delete(url, timeout=5)
-            if r.status_code not in [200, 204, 404]:
-                raise Exception(f"Delete failed with status {r.status_code} for {url}")
+            try:
+                r = requests.delete(url, timeout=5)
+                if r.status_code not in [200, 204, 404]:
+                    print(f"Delete returned status {r.status_code} for {url}")
+            except Exception as e:
+                print(f"Delete failed for {url}: {e}")
+
+        # Explicitly delete provided submodels first
+        if submodel_ids:
+            for sm_id in submodel_ids:
+                encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
+                checked_delete(f"http://localhost:8081/submodels/{encoded_sm_id}")
+                checked_delete(f"http://localhost:8083/submodel-descriptors/{encoded_sm_id}")
 
         # Fetch shell to get submodel references
-        shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=5)
-        if shell_res.status_code == 200:
-            shell_data = shell_res.json()
-            submodel_refs = shell_data.get("submodels", [])
-            for ref in submodel_refs:
-                keys = ref.get("keys", [])
-                if keys:
-                    sm_id = keys[0].get("value")
-                    encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
-                    
-                    # Delete from repository
-                    checked_delete(f"http://localhost:8081/submodels/{encoded_sm_id}")
-                    # Delete from registry
-                    checked_delete(f"http://localhost:8083/submodel-descriptors/{encoded_sm_id}")
+        try:
+            shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=5)
+            if shell_res.status_code == 200:
+                shell_data = shell_res.json()
+                submodel_refs = shell_data.get("submodels", [])
+                for ref in submodel_refs:
+                    keys = ref.get("keys", [])
+                    if keys:
+                        sm_id = keys[0].get("value")
+                        encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
+                        
+                        # Delete from repository
+                        checked_delete(f"http://localhost:8081/submodels/{encoded_sm_id}")
+                        # Delete from registry
+                        checked_delete(f"http://localhost:8083/submodel-descriptors/{encoded_sm_id}")
+        except Exception as e:
+            print(f"Could not retrieve shell references: {e}")
         
         # Delete shell from repository
         checked_delete(f"http://localhost:8081/shells/{encoded_shell_id}")
         
-        # Delete shell descriptor from registry
+        # Delete shell descriptor from registry using multi-format encoded IDs to bypass BaSyx variations
+        import urllib.parse
+        raw_url_encoded = urllib.parse.quote_plus(shell_id)
+        standard_b64 = base64.b64encode(shell_id.encode()).decode()
         checked_delete(f"http://localhost:8082/shell-descriptors/{encoded_shell_id}")
+        checked_delete(f"http://localhost:8082/shell-descriptors/{raw_url_encoded}")
+        checked_delete(f"http://localhost:8082/shell-descriptors/{standard_b64}")
 
     def update_validation_ui(self):
         valid_aas = is_valid_aas_id(self.edit_aas_id.text())
@@ -3059,9 +3382,27 @@ class ConveyorWizard(QMainWindow):
             self.actors[link_name] = actor
 
         # Camera setup
-        base_pos = np.array([0.0, 0.0, 0.0])
-        self.plotter.camera.focal_point = base_pos
-        self.plotter.camera.position = base_pos + np.array([3.0, 3.1, 2.0]) 
+        bounds = self.plotter.renderer.ComputeVisiblePropBounds()
+        if all(np.isfinite(b) for b in bounds):
+            center = [
+                (bounds[0] + bounds[1]) / 2.0,
+                (bounds[2] + bounds[3]) / 2.0,
+                (bounds[4] + bounds[5]) / 2.0
+            ]
+            self.plotter.camera.focal_point = center
+            size_x = bounds[1] - bounds[0]
+            size_y = bounds[3] - bounds[2]
+            size_z = bounds[5] - bounds[4]
+            max_dim = max(size_x, size_y, size_z, 1.0)
+            self.plotter.camera.position = [
+                center[0] + max_dim * 1.5,
+                center[1] + max_dim * 1.5,
+                center[2] + max_dim * 1.0
+            ]
+        else:
+            base_pos = np.array([0.0, 0.0, 0.0])
+            self.plotter.camera.focal_point = base_pos
+            self.plotter.camera.position = base_pos + np.array([3.0, 3.1, 2.0]) 
         self.plotter.camera.up = (0, 0, 1)
         self.plotter.camera.reset_clipping_range()
         self.plotter.render()
@@ -3114,7 +3455,27 @@ class ConveyorWizard(QMainWindow):
                 for r in root_nodes: self.add_tree_node(r, None, scene, geo_mats)
             else:
                 pm = pv.wrap(scene); self.meshes["Main"] = pm; self.actors["Main"] = self.plotter.add_mesh(pm, name="Main", pbr=True); QTreeWidgetItem(self.node_tree, ["Main"])
-            self.plotter.reset_camera(); self.plotter.add_axes()
+            # Camera setup for GLB/glTF
+            bounds = self.plotter.renderer.ComputeVisiblePropBounds()
+            if all(np.isfinite(b) for b in bounds):
+                center = [
+                    (bounds[0] + bounds[1]) / 2.0,
+                    (bounds[2] + bounds[3]) / 2.0,
+                    (bounds[4] + bounds[5]) / 2.0
+                ]
+                self.plotter.camera.focal_point = center
+                size_x = bounds[1] - bounds[0]
+                size_y = bounds[3] - bounds[2]
+                size_z = bounds[5] - bounds[4]
+                max_dim = max(size_x, size_y, size_z, 1.0)
+                self.plotter.camera.position = [
+                    center[0] + max_dim * 1.5,
+                    center[1] + max_dim * 1.5,
+                    center[2] + max_dim * 1.0
+                ]
+            else:
+                self.plotter.reset_camera()
+            self.plotter.add_axes()
             self.update_system_transform()
         except Exception as e: QMessageBox.critical(self, "Error", str(e)); traceback.print_exc()
 
@@ -3178,6 +3539,27 @@ class ConveyorWizard(QMainWindow):
                 continue
             actor.user_matrix = M
             
+        # Center camera on the newly positioned object bounds if NOT in global layout preview
+        if not is_preview:
+            bounds = self.plotter.renderer.ComputeVisiblePropBounds()
+            if all(np.isfinite(b) for b in bounds):
+                center = [
+                    (bounds[0] + bounds[1]) / 2.0,
+                    (bounds[2] + bounds[3]) / 2.0,
+                    (bounds[4] + bounds[5]) / 2.0
+                ]
+                self.plotter.camera.focal_point = center
+                size_x = bounds[1] - bounds[0]
+                size_y = bounds[3] - bounds[2]
+                size_z = bounds[5] - bounds[4]
+                max_dim = max(size_x, size_y, size_z, 1.0)
+                
+                # Maintain a relative distance and angle to center
+                self.plotter.camera.position = [
+                    center[0] + max_dim * 1.5,
+                    center[1] + max_dim * 1.5,
+                    center[2] + max_dim * 1.0
+                ]
         self.plotter.render()
 
     def toggle_layout_preview(self, state):
@@ -3538,7 +3920,7 @@ class ConveyorWizard(QMainWindow):
     def next_step(self):
         idx = self.stack.currentIndex()
         if self.model_type == "URDF" and idx == 1:
-            self.stack.setCurrentIndex(5)
+            self.stack.setCurrentIndex(4) # Jump directly to Preview page (former 5, now 4)
             self.update_nav()
         elif idx < self.stack.count() - 1:
             self.stack.setCurrentIndex(idx + 1)
@@ -3548,7 +3930,7 @@ class ConveyorWizard(QMainWindow):
 
     def prev_step(self):
         idx = self.stack.currentIndex()
-        if self.model_type == "URDF" and idx == 5:
+        if self.model_type == "URDF" and idx == 4:
             self.stack.setCurrentIndex(1)
             self.update_nav()
         else:
@@ -3561,21 +3943,18 @@ class ConveyorWizard(QMainWindow):
             urdf_steps = {
                 0: "Step 1 of 3: Model Selection",
                 1: "Step 2 of 3: Basic Info & Transform",
-                5: "Step 3 of 3: Review & Deploy"
+                4: "Step 3 of 3: Review & Deploy"
             }
             self.step_label.setText(urdf_steps.get(idx, f"Step {idx+1} of 3"))
         else:
-            titles = ["Model Selection", "Basic Info & Transform", "Configure Sensors", "Configure Actuators", "Control Logic", "Review & Deploy"]
-            self.step_label.setText(f"Step {idx+1} of 6: {titles[idx]}")
+            titles = ["Model Selection", "Basic Info & Transform", "Configure Sensors", "Configure Actuators", "Review & Deploy"]
+            self.step_label.setText(f"Step {idx+1} of 5: {titles[idx]}")
             
-        if idx != 5:
+        if idx != 4:
             for w in self.actuator_widgets:
                 if w.arrow: self.plotter.remove_actor(w.arrow); w.arrow = None
-        elif idx == 5:
+        elif idx == 4:
             for w in self.actuator_widgets: w.update_visuals()
-            
-        if idx == 4:
-            self.refresh_logic_dropdowns()
             
         self.btn_next.setText("Deploy to AAS" if idx == self.stack.count() - 1 else "Next →"); self.update_json_preview()
             
@@ -3712,7 +4091,7 @@ class ConveyorWizard(QMainWindow):
                     )
                     if reply == QMessageBox.StandardButton.Yes:
                         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-                        self.delete_aas_by_id(shell.id)
+                        self.delete_aas_by_id(shell.id, [sm_geo.id, sm_pos.id, sm_tel.id])
                         time.sleep(0.5)
                         with open(out, 'rb') as f:
                             res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
@@ -3739,16 +4118,39 @@ class ConveyorWizard(QMainWindow):
                 else: raise Exception(f"Upload failed: {res.text}")
                 return
 
+            # Strict Validation of Numeric Fields
+            try:
+                for c in self.config_data["components"]:
+                    for act in c.get("actuators", []):
+                        if "axis" in act:
+                            for val in act["axis"]:
+                                float(str(val).replace(',', '.'))
+                        if "speed" in act:
+                            float(str(act["speed"]).replace(',', '.'))
+                    for sns in c.get("sensors", []):
+                        if "move_position" in sns:
+                            for val in sns["move_position"]:
+                                float(str(val).replace(',', '.'))
+                        if "move_rotation" in sns:
+                            for val in sns["move_rotation"]:
+                                float(str(val).replace(',', '.'))
+                        if "move_duration" in sns:
+                            float(str(sns["move_duration"]).replace(',', '.'))
+            except ValueError as val_err:
+                raise Exception(f"Invalid numeric format detected. Please check your coordinate/duration values for commas or invalid characters: {val_err}")
+
             shell = model.AssetAdministrationShell(asset_information=model.AssetInformation(asset_kind=model.AssetKind.INSTANCE, global_asset_id=f"http://acplt.org/Assets/{kfn}"), id_=f"https://acplt.org/AAS_{kfn}", id_short=aid)
             vs = model.Submodel(id_=f"https://acplt.org/Submodels/Visual_{kfn}", id_short="VisualStructure")
             vp = model.Submodel(id_=f"https://acplt.org/Submodels/Pins_{kfn}", id_short="VirtualPins")
             bm = model.Submodel(id_=f"https://acplt.org/Submodels/Behavior_{kfn}", id_short="BehaviorMapping")
-            cl = model.Submodel(id_=f"https://acplt.org/Submodels/ControlLogic_{kfn}", id_short="ControlLogic")
             sm_aid = model.Submodel(id_=f"https://acplt.org/Submodels/AssetInterfacesDescription_{kfn}", id_short="AssetInterfacesDescription")
             sm_aid.submodel_element.add(model.Property(id_short="Protocol", value_type=model.datatypes.String, value=str(self.combo_comm_protocol.currentText())))
             sm_aid.submodel_element.add(model.Property(id_short="EndpointIP", value_type=model.datatypes.String, value=str(self.edit_comm_ip.text().strip())))
-            sm_aid.submodel_element.add(model.Property(id_short="EndpointPort", value_type=model.datatypes.Integer, value=int(self.spin_comm_port.value())))
-            cl.submodel_element.add(model.Property(id_short="Rules", value_type=model.datatypes.String, value=json.dumps(self.logic_rules)))
+            try:
+                port_val = int(self.spin_comm_port.value())
+                sm_aid.submodel_element.add(model.Property(id_short="EndpointPort", value_type=model.datatypes.Integer, value=port_val))
+            except ValueError:
+                raise Exception("Communication Port must be a valid integer.")
             ic = model.SubmodelElementCollection(id_short="Inputs"); oc = model.SubmodelElementCollection(id_short="Outputs")
             vp.submodel_element.add(ic); vp.submodel_element.add(oc)
             for c in self.config_data["components"]:
@@ -3758,37 +4160,58 @@ class ConveyorWizard(QMainWindow):
                 is_prod = c.get("dynamic", False) or (c["name"] == "Product_ConveyorSystem") or self.check_is_dynamic.isChecked()
                 cc.value.add(model.Property(id_short="DynamicObject", value_type=model.datatypes.Boolean, value=is_prod))
                 tc = model.SubmodelElementCollection(id_short="Transform"); ps = c.get("position", [0,0,0]); rt = c.get("rotation", [0,0,0]); sc = c.get("scale", [1,1,1])
-                for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Pos{a}", value_type=model.datatypes.Double, value=float(ps[i])))
-                for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Rot{a}", value_type=model.datatypes.Double, value=float(rt[i])))
-                for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Scale{a}", value_type=model.datatypes.Double, value=float(sc[i])))
+                for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Pos{a}", value_type=model.datatypes.Double, value=float(str(ps[i]).replace(',', '.'))))
+                for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Rot{a}", value_type=model.datatypes.Double, value=float(str(rt[i]).replace(',', '.'))))
+                for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Scale{a}", value_type=model.datatypes.Double, value=float(str(sc[i]).replace(',', '.'))))
                 cc.value.add(tc); vs.submodel_element.add(cc)
                 for act in c.get("actuators", []):
-                    pid = act["pin_id"]; tco = act.get("node", c["name"]); ep = [p.id_short for p in ic.value]
+                    pid = act["pin_id"]; tco = act.get("node", c["name"]); ep = [p.id_short for p in oc.value]
                     safe_pid = sanitize_aas_id(pid)
-                    if safe_pid not in ep: ic.value.add(model.Property(id_short=safe_pid, value_type=model.datatypes.Boolean, value=False))
+                    # Actuators are Outputs from the system/PLC perspective
+                    if safe_pid not in ep: oc.value.add(model.Property(id_short=safe_pid, value_type=model.datatypes.Boolean, value=False))
                     bc = model.SubmodelElementCollection(id_short=sanitize_aas_id(f"{pid}_{tco}")); bc.value.add(model.Property(id_short="PinID", value_type=model.datatypes.String, value=pid))
                     bc.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=tco)); bc.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=act.get("behavior")))
                     pc = model.SubmodelElementCollection(id_short="Parameters")
                     if "axis" in act:
-                        for i, a in enumerate(["X", "Y", "Z"]): pc.value.add(model.Property(id_short=f"Axis{a}", value_type=model.datatypes.Double, value=float(act["axis"][i])))
-                    if "speed" in act: pc.value.add(model.Property(id_short="Speed", value_type=model.datatypes.Double, value=float(act["speed"])))
+                        for i, a in enumerate(["X", "Y", "Z"]): pc.value.add(model.Property(id_short=f"Axis{a}", value_type=model.datatypes.Double, value=float(str(act["axis"][i]).replace(',', '.'))))
+                    if "speed" in act: pc.value.add(model.Property(id_short="Speed", value_type=model.datatypes.Double, value=float(str(act["speed"]).replace(',', '.'))))
                     if "visible" in act: pc.value.add(model.Property(id_short="Visible", value_type=model.datatypes.Boolean, value=bool(act["visible"])))
                     if "stop_sensor" in act and act["stop_sensor"]: pc.value.add(model.Property(id_short="StopSensorComponent", value_type=model.datatypes.String, value=act["stop_sensor"]))
+                    pc.value.add(model.Property(id_short="RealActuatorEnabled", value_type=model.datatypes.Boolean, value=bool(act.get("real_actuator_enabled", False))))
+                    pc.value.add(model.Property(id_short="RealPortID", value_type=model.datatypes.String, value=str(act.get("real_port_id", ""))))
                     bc.value.add(pc); bm.submodel_element.add(bc)
                 for sns in c.get("sensors", []):
-                    pid = sns["pin_id"]; tco = sns.get("node", c["name"]); ep = [p.id_short for p in oc.value]; safe_pid = sanitize_aas_id(pid)
-                    if safe_pid not in ep: oc.value.add(model.Property(id_short=safe_pid, value_type=model.datatypes.Boolean, value=False))
+                    pid = sns["pin_id"]; tco = sns.get("node", c["name"]); ep = [p.id_short for p in ic.value]; safe_pid = sanitize_aas_id(pid)
+                    # Sensors are Inputs to the system/PLC perspective
+                    if safe_pid not in ep: ic.value.add(model.Property(id_short=safe_pid, value_type=model.datatypes.Boolean, value=False))
                     bc = model.SubmodelElementCollection(id_short=sanitize_aas_id(f"{pid}_{tco}")); bc.value.add(model.Property(id_short="PinID", value_type=model.datatypes.String, value=pid)); bc.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=tco)); bc.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=sns.get("behavior")))
                     pc = model.SubmodelElementCollection(id_short="Parameters")
                     if "target_filter" in sns: pc.value.add(model.Property(id_short="TargetFilter", value_type=model.datatypes.String, value=sns["target_filter"]))
                     if "visible" in sns: pc.value.add(model.Property(id_short="Visible", value_type=model.datatypes.Boolean, value=bool(sns["visible"])))
                     if "active_low" in sns: pc.value.add(model.Property(id_short="ActiveLow", value_type=model.datatypes.Boolean, value=bool(sns["active_low"])))
-                    if sns.get("snap_product"): pc.value.add(model.Property(id_short="SnapTarget", value_type=model.datatypes.String, value="Product_ConveyorSystem"))
+                    if sns.get("snap_product"):
+                        pc.value.add(model.Property(id_short="SnapTarget", value_type=model.datatypes.Boolean, value=True))
                     pc.value.add(model.Property(id_short="RealSensorEnabled", value_type=model.datatypes.Boolean, value=bool(sns.get("real_sensor_enabled", False))))
                     pc.value.add(model.Property(id_short="RealPortID", value_type=model.datatypes.String, value=str(sns.get("real_port_id", ""))))
+                    # Move-on-state: when sensor reaches move_on_state, Unity moves move_target
+                    # to the given local position/rotation.
+                    if "move_target" in sns:
+                        pc.value.add(model.Property(id_short="MoveTarget", value_type=model.datatypes.String, value=sns["move_target"]))
+                    if "move_on_state" in sns:
+                        pc.value.add(model.Property(id_short="MoveOnState", value_type=model.datatypes.Boolean, value=bool(sns["move_on_state"])))
+                    if "move_mode" in sns:
+                        pc.value.add(model.Property(id_short="MoveMode", value_type=model.datatypes.String, value=sns["move_mode"]))
+                    if "move_position" in sns:
+                        mp = sns["move_position"]
+                        for i, a in enumerate(["X", "Y", "Z"]): pc.value.add(model.Property(id_short=f"MovePos{a}", value_type=model.datatypes.Double, value=float(str(mp[i]).replace(',', '.'))))
+                    if "move_rotation" in sns:
+                        mr = sns["move_rotation"]
+                        for i, a in enumerate(["X", "Y", "Z"]): pc.value.add(model.Property(id_short=f"MoveRot{a}", value_type=model.datatypes.Double, value=float(str(mr[i]).replace(',', '.'))))
+                    if "move_duration" in sns:
+                        pc.value.add(model.Property(id_short="MoveDuration", value_type=model.datatypes.Double, value=float(str(sns["move_duration"]).replace(',', '.'))))
                     bc.value.add(pc); bm.submodel_element.add(bc)
-            shell.submodel.add(model.ModelReference.from_referable(vs)); shell.submodel.add(model.ModelReference.from_referable(vp)); shell.submodel.add(model.ModelReference.from_referable(bm)); shell.submodel.add(model.ModelReference.from_referable(cl)); shell.submodel.add(model.ModelReference.from_referable(sm_aid))
-            obj_store = model.DictObjectStore(); obj_store.add(shell); obj_store.add(vs); obj_store.add(vp); obj_store.add(bm); obj_store.add(cl); obj_store.add(sm_aid); fr = RobustFileRepo()
+            shell.submodel.add(model.ModelReference.from_referable(vs)); shell.submodel.add(model.ModelReference.from_referable(vp)); shell.submodel.add(model.ModelReference.from_referable(bm)); shell.submodel.add(model.ModelReference.from_referable(sm_aid))
+            obj_store = model.DictObjectStore(); obj_store.add(shell); obj_store.add(vs); obj_store.add(vp); obj_store.add(bm); obj_store.add(sm_aid); fr = RobustFileRepo()
             import tempfile
             bd = os.path.dirname(self.glb_path)
             ae = ['.obj', '.mtl', '.stl', '.png', '.jpg', '.jpeg', '.dae', '.fbx', '.glb', '.gltf', '.bin']
@@ -3808,7 +4231,7 @@ class ConveyorWizard(QMainWindow):
                             with open(lp, 'rb') as tf:
                                 co = tf.read()
                             ap = posixpath.normpath(posixpath.join("/aasx/kit", rp)); fr.add_file(ap, co)
-            for sm in [vs, vp, bm, cl, sm_aid]:
+            for sm in [vs, vp, bm, sm_aid]:
                 for el in sm.submodel_element:
                     if isinstance(el, model.File) and el.value and not el.value.startswith("/aasx/"): el.value = posixpath.normpath(posixpath.join("/aasx/kit", el.value))
                     elif isinstance(el, model.SubmodelElementCollection):
@@ -3816,7 +4239,10 @@ class ConveyorWizard(QMainWindow):
                             if isinstance(se, model.File) and se.value and not se.value.startswith("/aasx/"): se.value = posixpath.normpath(posixpath.join("/aasx/kit", se.value))
             os.makedirs("aasx_packages", exist_ok=True); out = os.path.join("aasx_packages", f"{kfn}_Kit.aasx")
             with aasx.AASXWriter(out) as w: w.write_aas(shell.id, obj_store, fr, aid)
-            with open(out, 'rb') as f: res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
+            
+            # Post to BaSyx Server
+            with open(out, 'rb') as f: 
+                res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
             
             is_conflict = False
             if res.status_code == 409:
@@ -3835,46 +4261,147 @@ class ConveyorWizard(QMainWindow):
                 if reply == QMessageBox.StandardButton.Yes:
                     QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
                     # Delete the existing AAS
-                    self.delete_aas_by_id(shell.id)
+                    self.delete_aas_by_id(shell.id, [vs.id, vp.id, bm.id, sm_aid.id])
                     time.sleep(0.5)  # Wait for BaSyx database to complete deletion & release file locks
                     # Retry upload
                     with open(out, 'rb') as f:
                         res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
-                    if res.status_code in [200, 201, 204]:
-                        requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, cl, sm_aid]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
-                        while QApplication.overrideCursor() is not None:
-                            QApplication.restoreOverrideCursor()
-                        QMessageBox.information(self, "Success", f"AAS Kit deployed (overwritten) successfully!")
-                        self.reset_wizard()
-                        self.stack.setCurrentIndex(0)
-                        self.update_nav()
-                    else:
-                        raise Exception(f"Upload failed after overwrite: {res.text}")
+                    
+                    if res.status_code not in [200, 201, 204]:
+                        raise Exception(f"BaSyx Upload failed (HTTP {res.status_code}): {res.text}")
+                        
+                    reg_res = requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, sm_aid]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                    if reg_res.status_code not in [200, 201, 204, 409]:
+                        raise Exception(f"BaSyx Registry failed (HTTP {reg_res.status_code}): {reg_res.text}")
+                        
+                    while QApplication.overrideCursor() is not None:
+                        QApplication.restoreOverrideCursor()
+                    QMessageBox.information(self, "Success", f"AAS Kit deployed (overwritten) successfully!")
+                    self.reset_wizard()
+                    self.stack.setCurrentIndex(0)
+                    self.update_nav()
                 else:
                     return
             elif res.status_code in [200, 201, 204]:
-                requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, cl, sm_aid]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                reg_res = requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, sm_aid]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                if reg_res.status_code not in [200, 201, 204, 409]:
+                    raise Exception(f"BaSyx Registry failed (HTTP {reg_res.status_code}): {reg_res.text}")
+                    
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
                 QMessageBox.information(self, "Success", f"AAS Kit deployed successfully!")
                 self.reset_wizard()
                 self.stack.setCurrentIndex(0)
                 self.update_nav()
-            else: raise Exception(f"Upload failed: {res.text}")
+            else:
+                raise Exception(f"BaSyx Upload failed (HTTP {res.status_code}): {res.text}")
+            return
         except Exception as e:
             while QApplication.overrideCursor() is not None:
                 QApplication.restoreOverrideCursor()
-            traceback.print_exc(); QMessageBox.critical(self, "Error", str(e))
+            traceback.print_exc()
+            QMessageBox.critical(self, "Deployment Error", f"Failed to deploy AAS Kit to BaSyx server.\n\nDetails:\n{str(e)}")
         finally:
             self.btn_next.setEnabled(True); self.btn_next.setText("Deploy to AAS")
             while QApplication.overrideCursor() is not None:
                 QApplication.restoreOverrideCursor()
 
+class TriggerRow(QWidget):
+    def __init__(self, parent=None, catalog=None, initial_sensor="", initial_value=True, on_delete=None, on_changed=None, initial_kit=None):
+        super().__init__(parent)
+        self.catalog = catalog or []
+        self.on_delete = on_delete
+        self.on_changed = on_changed
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        
+        self.combo_sensor = QComboBox()
+        self.combo_sensor.addItems(self.catalog)
+        
+        target_text = f"{initial_kit} - {initial_sensor}" if initial_kit and initial_sensor else initial_sensor
+        if target_text in self.catalog:
+            self.combo_sensor.setCurrentText(target_text)
+        elif initial_sensor in self.catalog:
+            self.combo_sensor.setCurrentText(initial_sensor)
+        else:
+            for item in self.catalog:
+                if item.endswith(f" - {initial_sensor}"):
+                    self.combo_sensor.setCurrentText(item)
+                    break
+                    
+        self.check_val = QCheckBox("Is Active")
+        self.check_val.setChecked(initial_value)
+        
+        self.btn_del = QPushButton("❌")
+        self.btn_del.setFixedWidth(30)
+        self.btn_del.setStyleSheet("background-color: #a93226;")
+        
+        layout.addWidget(self.combo_sensor, stretch=2)
+        layout.addWidget(self.check_val)
+        layout.addWidget(self.btn_del)
+        
+        self.combo_sensor.currentTextChanged.connect(self._notify_change)
+        self.check_val.toggled.connect(self._notify_change)
+        if self.on_delete:
+            self.btn_del.clicked.connect(lambda: self.on_delete(self))
+            
+    def _notify_change(self):
+        if self.on_changed:
+            self.on_changed()
+            
+    def get_data(self):
+        text = self.combo_sensor.currentText()
+        parts = text.split(" - ", 1) if " - " in text else ("", text.strip())
+        return {
+            "kit": parts[0].strip(),
+            "sensor": parts[1].strip(),
+            "value": self.check_val.isChecked()
+        }
+
+class DragDropTreeWidget(QTreeWidget):
+    def __init__(self, parent=None, on_dropped=None):
+        super().__init__(parent)
+        self.on_dropped = on_dropped
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+
+    def dropEvent(self, event):
+        dragged_item = self.currentItem()
+        if not dragged_item:
+            super().dropEvent(event)
+            return
+
+        target_item = self.itemAt(event.position().toPoint())
+        if not target_item:
+            parent = self.invisibleRootItem()
+            index = parent.childCount()
+        else:
+            target_data = target_item.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(target_data, dict) and "_container" in target_data:
+                parent = target_item
+                index = parent.childCount()
+            else:
+                parent = target_item.parent() or self.invisibleRootItem()
+                index = parent.indexOfChild(target_item)
+
+        current_parent = dragged_item.parent() or self.invisibleRootItem()
+        current_parent.removeChild(dragged_item)
+        parent.insertChild(index, dragged_item)
+        self.setCurrentItem(dragged_item)
+        
+        event.accept()
+        if self.on_dropped:
+            self.on_dropped()
+
 class AASRulesEditorDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Program Deployed AAS Rules")
-        self.resize(1000, 700)
+        self.setWindowTitle("Program Deployed AAS Rules (Scratch AST)")
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint | Qt.WindowType.WindowMinimizeButtonHint)
+        self.resize(1100, 750)
         
         self.logic_rules = {"start": [], "sequences": []}
         self.sensors_catalog = []
@@ -3884,21 +4411,21 @@ class AASRulesEditorDialog(QDialog):
         self.apply_styles()
         self.setup_ui()
         self.load_aas_list()
-        
+
     def apply_styles(self):
         self.setStyleSheet("""
             QDialog { background-color: #1e1e1e; }
             QWidget { background-color: #1e1e1e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
             QLabel { font-size: 13px; font-weight: 500; }
-            QLineEdit, QDoubleSpinBox, QComboBox, QTextEdit { 
+            QLineEdit, QDoubleSpinBox, QSpinBox, QComboBox, QTextEdit { 
                 background-color: #2d2d2d; border: 1px solid #3d3d3d; border-radius: 4px; padding: 6px; color: white; 
             }
-            QPushButton { background-color: #007acc; color: white; border: none; border-radius: 4px; padding: 8px 16px; font-weight: bold; }
+            QPushButton { background-color: #007acc; color: white; border: none; border-radius: 4px; padding: 8px 14px; font-weight: bold; }
             QPushButton:hover { background-color: #008be5; }
             QGroupBox { border: 1px solid #3d3d3d; border-radius: 8px; margin-top: 15px; padding-top: 20px; font-weight: bold; background-color: #252526; }
             QGroupBox[active="true"] { border: 2px solid #007acc; background-color: #2d2d30; }
-            QListWidget { background-color: #252526; border: 1px solid #3d3d3d; border-radius: 4px; }
-            QListWidget::item:selected { background-color: #094771; }
+            QTreeWidget, QListWidget { background-color: #252526; border: 1px solid #3d3d3d; border-radius: 4px; }
+            QTreeWidget::item:selected, QListWidget::item:selected { background-color: #094771; }
             QSplitter::handle { background-color: #333; }
             QScrollArea { border: none; background-color: transparent; }
         """)
@@ -3916,7 +4443,6 @@ class AASRulesEditorDialog(QDialog):
         self.combo_aas.currentIndexChanged.connect(self.on_aas_changed)
         aas_layout.addWidget(self.combo_aas)
         
-        # Add button to create a new AAS
         self.btn_create_aas = QPushButton("Create New AAS")
         self.btn_create_aas.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; font-size: 12px; padding: 6px 12px;")
         self.btn_create_aas.clicked.connect(self.create_new_aas)
@@ -3934,6 +4460,8 @@ class AASRulesEditorDialog(QDialog):
         layout_a = QVBoxLayout(panel_a)
         layout_a.setContentsMargins(10, 15, 10, 10)
         self.list_sequences = QListWidget()
+        self.list_sequences.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.list_sequences.model().rowsMoved.connect(self.on_sequences_reordered)
         self.list_sequences.addItem("Start Sequence")
         layout_a.addWidget(self.list_sequences)
         
@@ -3971,35 +4499,47 @@ class AASRulesEditorDialog(QDialog):
         self.btn_add_trigger = QPushButton("➕ Add Trigger Condition")
         layout_b.addWidget(self.btn_add_trigger)
         
-        # Panel C: Right (Sequence Steps)
-        self.group_steps = QGroupBox("Sequence Steps")
+        # Panel C: Right (Sequence Steps Tree & Controls)
+        self.group_steps = QGroupBox("Control Logic Steps (AST)")
         layout_c = QVBoxLayout(self.group_steps)
         layout_c.setContentsMargins(10, 15, 10, 10)
         
-        self.list_steps = QListWidget()
-        layout_c.addWidget(self.list_steps)
+        self.tree_steps = DragDropTreeWidget(on_dropped=self.on_tree_steps_dropped)
+        self.tree_steps.setHeaderLabels(["Step Type / Logic", "Details"])
+        self.tree_steps.setColumnWidth(0, 220)
+        layout_c.addWidget(self.tree_steps)
         
-        btn_add_step_layout = QHBoxLayout()
-        self.btn_add_set_act = QPushButton("Add Set Actuator")
-        self.btn_add_wait_until = QPushButton("Add Wait Until")
-        self.btn_add_wait_time = QPushButton("Add Wait Time")
-        btn_add_step_layout.addWidget(self.btn_add_set_act)
-        btn_add_step_layout.addWidget(self.btn_add_wait_until)
-        btn_add_step_layout.addWidget(self.btn_add_wait_time)
+        # Grid of block creation buttons (Scratch-like)
+        btn_add_step_layout = QGridLayout()
+        self.btn_add_set_act = QPushButton("⚡ Set Actuator")
+        self.btn_add_wait_time = QPushButton("⏱️ Wait Time")
+        self.btn_add_wait_until = QPushButton("⏳ Wait Until")
+        self.btn_add_if = QPushButton("🔀 If / Then")
+        self.btn_add_if_else = QPushButton("🔀 If / Else")
+        self.btn_add_while = QPushButton("🔄 While Loop")
+        self.btn_add_repeat_times = QPushButton("🔁 Repeat N Times")
+        self.btn_add_set_var = QPushButton("📝 Set Variable")
+        self.btn_add_call_http = QPushButton("📞 Call HTTP")
+
+        btn_add_step_layout.addWidget(self.btn_add_set_act, 0, 0)
+        btn_add_step_layout.addWidget(self.btn_add_wait_time, 0, 1)
+        btn_add_step_layout.addWidget(self.btn_add_wait_until, 0, 2)
+        btn_add_step_layout.addWidget(self.btn_add_if, 0, 3)
+        btn_add_step_layout.addWidget(self.btn_add_if_else, 1, 0)
+        btn_add_step_layout.addWidget(self.btn_add_while, 1, 1)
+        btn_add_step_layout.addWidget(self.btn_add_repeat_times, 1, 2)
+        btn_add_step_layout.addWidget(self.btn_add_set_var, 1, 3)
+        btn_add_step_layout.addWidget(self.btn_add_call_http, 2, 0)
         layout_c.addLayout(btn_add_step_layout)
         
         btn_control_layout = QHBoxLayout()
-        self.btn_move_up = QPushButton("Move Up")
-        self.btn_move_down = QPushButton("Move Down")
         self.btn_delete_step = QPushButton("Delete Step")
         self.btn_delete_step.setStyleSheet("background-color: #a93226;")
-        btn_control_layout.addWidget(self.btn_move_up)
-        btn_control_layout.addWidget(self.btn_move_down)
         btn_control_layout.addWidget(self.btn_delete_step)
         layout_c.addLayout(btn_control_layout)
         
         # Bottom Edit Pane
-        self.group_step_edit = QGroupBox("Edit Selected Step")
+        self.group_step_edit = QGroupBox("Edit Selected Block")
         self.step_edit_layout = QVBoxLayout(self.group_step_edit)
         self.step_edit_layout.setContentsMargins(10, 15, 10, 10)
         self.step_edit_stack = QStackedWidget()
@@ -4012,73 +4552,93 @@ class AASRulesEditorDialog(QDialog):
         self.splitter.addWidget(self.group_steps)
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 1)
-        self.splitter.setStretchFactor(2, 2)
+        self.splitter.setStretchFactor(2, 3)
         
-        # Step Edit Stack Pages
-        # Page 0: Empty
+        # Stack Pages
+        # 0: Empty
         page_empty = QWidget()
         layout_empty = QVBoxLayout(page_empty)
-        lbl_empty = QLabel("Select a step to edit properties")
+        lbl_empty = QLabel("Select a step or block in the tree to edit")
         lbl_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout_empty.addWidget(lbl_empty)
         self.step_edit_stack.addWidget(page_empty)
         
-        # Page 1: set_actuator
+        # 1: set_actuator
         page_actuator = QWidget()
         layout_actuator = QFormLayout(page_actuator)
         layout_actuator.setContentsMargins(0, 0, 0, 0)
-        layout_actuator.setSpacing(5)
         self.edit_step_actuator_combo = QComboBox()
         self.edit_step_actuator_val = QCheckBox("Active / On")
         layout_actuator.addRow("Actuator:", self.edit_step_actuator_combo)
         layout_actuator.addRow("Target State:", self.edit_step_actuator_val)
         self.step_edit_stack.addWidget(page_actuator)
         
-        # Page 2: wait_time
+        # 2: wait_time
         page_time = QWidget()
         layout_time = QFormLayout(page_time)
         layout_time.setContentsMargins(0, 0, 0, 0)
-        layout_time.setSpacing(5)
         self.edit_step_wait_time_spin = QDoubleSpinBox()
         self.edit_step_wait_time_spin.setRange(0.0, 3600.0)
         self.edit_step_wait_time_spin.setSingleStep(0.1)
         self.edit_step_wait_time_spin.setSuffix(" seconds")
-        self.edit_step_wait_time_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         layout_time.addRow("Delay:", self.edit_step_wait_time_spin)
         self.step_edit_stack.addWidget(page_time)
         
-        # Page 3: wait_until
-        page_until = QWidget()
-        layout_until = QVBoxLayout(page_until)
-        layout_until.setContentsMargins(0, 0, 0, 0)
-        layout_until.setSpacing(5)
-        
-        until_op_layout = QHBoxLayout()
-        until_op_layout.addWidget(QLabel("Operator:"))
-        self.edit_step_wait_until_op = QComboBox()
-        self.edit_step_wait_until_op.addItems(["AND", "OR"])
-        until_op_layout.addWidget(self.edit_step_wait_until_op)
-        until_op_layout.addStretch()
-        layout_until.addLayout(until_op_layout)
-        
-        self.scroll_step_wait_until = QScrollArea()
-        self.scroll_step_wait_until.setWidgetResizable(True)
-        self.scroll_step_wait_until.setMinimumHeight(100)
-        self.step_wait_until_container = QWidget()
-        self.step_wait_until_layout = QVBoxLayout(self.step_wait_until_container)
-        self.step_wait_until_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.step_wait_until_layout.setContentsMargins(0, 0, 0, 0)
-        self.step_wait_until_layout.setSpacing(5)
-        self.scroll_step_wait_until.setWidget(self.step_wait_until_container)
-        layout_until.addWidget(self.scroll_step_wait_until)
-        
-        self.btn_add_step_wait_until_cond = QPushButton("➕ Add Sensor Condition")
-        layout_until.addWidget(self.btn_add_step_wait_until_cond)
-        self.step_edit_stack.addWidget(page_until)
+        # 3: Condition Editor (used for wait_until, if, while)
+        page_cond = QWidget()
+        layout_cond = QFormLayout(page_cond)
+        layout_cond.setContentsMargins(0, 0, 0, 0)
+        self.edit_cond_sensor_combo = QComboBox()
+        self.edit_cond_val_combo = QComboBox()
+        self.edit_cond_val_combo.addItems(["True (Active)", "False (Inactive)"])
+        self.edit_cond_timeout_spin = QDoubleSpinBox()
+        self.edit_cond_timeout_spin.setRange(0.1, 3600.0)
+        self.edit_cond_timeout_spin.setValue(15.0)
+        self.edit_cond_timeout_spin.setSuffix(" seconds")
+        self.lbl_cond_timeout = QLabel("Timeout:")
+        layout_cond.addRow("Sensor:", self.edit_cond_sensor_combo)
+        layout_cond.addRow("Target Condition State:", self.edit_cond_val_combo)
+        layout_cond.addRow(self.lbl_cond_timeout, self.edit_cond_timeout_spin)
+        self.step_edit_stack.addWidget(page_cond)
+
+        # 4: repeat_times
+        page_repeat = QWidget()
+        layout_repeat = QFormLayout(page_repeat)
+        layout_repeat.setContentsMargins(0, 0, 0, 0)
+        self.edit_repeat_times_spin = QSpinBox()
+        self.edit_repeat_times_spin.setRange(1, 9999)
+        layout_repeat.addRow("Repeat Count:", self.edit_repeat_times_spin)
+        self.step_edit_stack.addWidget(page_repeat)
+
+        # 5: set_variable
+        page_var = QWidget()
+        layout_var = QFormLayout(page_var)
+        layout_var.setContentsMargins(0, 0, 0, 0)
+        self.edit_var_name = QLineEdit()
+        self.edit_var_value = QLineEdit()
+        layout_var.addRow("Variable Name:", self.edit_var_name)
+        layout_var.addRow("Value:", self.edit_var_value)
+        self.step_edit_stack.addWidget(page_var)
+
+        # 6: call_http_service
+        page_http = QWidget()
+        layout_http = QFormLayout(page_http)
+        layout_http.setContentsMargins(0, 0, 0, 0)
+        self.edit_http_url = QLineEdit()
+        self.edit_http_url.setPlaceholderText("http://localhost:8080/api/do-something")
+        self.combo_http_method = QComboBox()
+        self.combo_http_method.addItems(["POST", "GET", "PUT"])
+        self.edit_http_payload = QTextEdit()
+        self.edit_http_payload.setPlaceholderText('{"key": "value"}')
+        self.edit_http_payload.setMaximumHeight(80)
+        layout_http.addRow("URL/Endpoint:", self.edit_http_url)
+        layout_http.addRow("Method:", self.combo_http_method)
+        layout_http.addRow("Payload (JSON):", self.edit_http_payload)
+        self.step_edit_stack.addWidget(page_http)
         
         # Bottom save/close bar
         btn_bar = QHBoxLayout()
-        self.btn_save = QPushButton("Save & Deploy")
+        self.btn_save = QPushButton("Save & Deploy Rules (AAS)")
         self.btn_save.setMinimumHeight(40)
         self.btn_save.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
         self.btn_save.clicked.connect(self.save_and_deploy)
@@ -4099,230 +4659,146 @@ class AASRulesEditorDialog(QDialog):
         self.combo_trigger_op.currentTextChanged.connect(self.save_trigger_changes)
         self.btn_add_trigger.clicked.connect(self.add_trigger_condition)
         
-        self.list_steps.currentRowChanged.connect(self.update_step_edit_pane)
-        self.btn_add_set_act.clicked.connect(self.add_set_actuator_step)
-        self.btn_add_wait_time.clicked.connect(self.add_wait_time_step)
-        self.btn_add_wait_until.clicked.connect(self.add_wait_until_step)
-        
-        self.btn_move_up.clicked.connect(self.move_step_up)
-        self.btn_move_down.clicked.connect(self.move_step_down)
-        self.btn_delete_step.clicked.connect(self.delete_step)
-        
-        self.edit_step_actuator_combo.currentTextChanged.connect(self.save_current_step_changes)
-        self.edit_step_actuator_val.toggled.connect(self.save_current_step_changes)
-        self.edit_step_wait_time_spin.valueChanged.connect(self.save_current_step_changes)
-        self.edit_step_wait_until_op.currentTextChanged.connect(self.save_current_step_changes)
-        self.btn_add_step_wait_until_cond.clicked.connect(self.add_step_condition)
-        
-        # Initialize visibility & status
-        self.group_triggers.setVisible(False)
+        self.tree_steps.itemSelectionChanged.connect(self.update_step_edit_pane)
+        self.btn_add_set_act.clicked.connect(lambda: self.add_step_node("set_actuator"))
+        self.btn_add_wait_time.clicked.connect(lambda: self.add_step_node("wait_time"))
+        self.btn_add_wait_until.clicked.connect(lambda: self.add_step_node("wait_until"))
+        self.btn_add_if.clicked.connect(lambda: self.add_step_node("if"))
+        self.btn_add_if_else.clicked.connect(lambda: self.add_step_node("if_else"))
+        self.btn_add_while.clicked.connect(lambda: self.add_step_node("while"))
+        self.btn_add_repeat_times.clicked.connect(lambda: self.add_step_node("repeat_times"))
+        self.btn_add_set_var.clicked.connect(lambda: self.add_step_node("set_variable"))
+        self.btn_add_call_http.clicked.connect(lambda: self.add_step_node("call_http_service"))
+        self.btn_delete_step.clicked.connect(self.delete_step_node)
         self.btn_del_seq.setEnabled(False)
         self.step_edit_stack.setCurrentIndex(0)
 
+        # Connect edit widgets to auto-save on change
+        self.edit_step_actuator_combo.currentTextChanged.connect(self.save_current_step_changes)
+        self.edit_step_actuator_val.toggled.connect(self.save_current_step_changes)
+        self.edit_step_wait_time_spin.valueChanged.connect(self.save_current_step_changes)
+        self.edit_cond_sensor_combo.currentTextChanged.connect(self.save_current_step_changes)
+        self.edit_cond_val_combo.currentIndexChanged.connect(self.save_current_step_changes)
+        self.edit_cond_timeout_spin.valueChanged.connect(self.save_current_step_changes)
+        self.edit_repeat_times_spin.valueChanged.connect(self.save_current_step_changes)
+        self.edit_var_name.textChanged.connect(self.save_current_step_changes)
+        self.edit_var_value.textChanged.connect(self.save_current_step_changes)
+        self.edit_http_url.textChanged.connect(self.save_current_step_changes)
+        self.combo_http_method.currentTextChanged.connect(self.save_current_step_changes)
+        self.edit_http_payload.textChanged.connect(self.save_current_step_changes)
+
     def create_new_aas(self):
-        # 1. Ask for idShort
-        id_short, ok1 = QInputDialog.getText(
-            self, "Create New AAS", 
-            "Enter AAS Name (idShort):", 
-            QLineEdit.EchoMode.Normal, "NewResource"
-        )
-        if not ok1 or not id_short.strip():
-            return
-            
+        id_short, ok1 = QInputDialog.getText(self, "Create New AAS", "Enter AAS Name (idShort):", QLineEdit.EchoMode.Normal, "NewResource")
+        if not ok1 or not id_short.strip(): return
         id_short = id_short.strip()
         default_id = f"https://acplt.org/AAS_{sanitize_aas_id(id_short)}"
-        
-        # 2. Ask for id
-        shell_id, ok2 = QInputDialog.getText(
-            self, "Create New AAS", 
-            "Enter AAS Identifier (ID):", 
-            QLineEdit.EchoMode.Normal, default_id
-        )
-        if not ok2 or not shell_id.strip():
-            return
-            
+        shell_id, ok2 = QInputDialog.getText(self, "Create New AAS", "Enter AAS Identifier (ID):", QLineEdit.EchoMode.Normal, default_id)
+        if not ok2 or not shell_id.strip(): return
         shell_id = shell_id.strip()
         
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            # Step A: POST Shell to AAS Repository (this auto-registers the shell in registry)
             shell_payload = {
-                "id": shell_id,
-                "idShort": id_short,
-                "modelType": "AssetAdministrationShell",
-                "assetInformation": {
-                    "assetKind": "Instance",
-                    "globalAssetId": f"http://acplt.org/Assets/{sanitize_aas_id(id_short)}"
-                },
+                "id": shell_id, "idShort": id_short, "modelType": "AssetAdministrationShell",
+                "assetInformation": {"assetKind": "Instance", "globalAssetId": f"http://acplt.org/Assets/{sanitize_aas_id(id_short)}"},
                 "submodels": []
             }
-            res_shell = requests.post(
-                "http://localhost:8081/shells", 
-                json=shell_payload, 
-                headers={"Content-Type": "application/json"}, 
-                timeout=5
-            )
+            res_shell = requests.post("http://localhost:8081/shells", json=shell_payload, headers={"Content-Type": "application/json"}, timeout=5)
             if res_shell.status_code not in [200, 201]:
-                if res_shell.status_code == 409:
-                    raise Exception("An AAS with this ID already exists in the repository.")
-                raise Exception(f"Failed to create shell in repository: {res_shell.text}")
+                if res_shell.status_code == 409: raise Exception("An AAS with this ID already exists.")
+                raise Exception(f"Failed shell creation: {res_shell.text}")
                 
-            # Step B: Create the empty ControlLogic submodel in Submodel Repository
             sm_id = f"https://acplt.org/Submodels/ControlLogic_{sanitize_aas_id(id_short)}"
             submodel_payload = {
-                "id": sm_id,
-                "idShort": "ControlLogic",
-                "modelType": "Submodel",
-                "submodelElements": [
-                    {
-                        "idShort": "Rules",
-                        "modelType": "Property",
-                        "value": json.dumps({"start": [], "sequences": []}),
-                        "valueType": "xs:string"
-                    }
-                ]
+                "id": sm_id, "idShort": "ControlLogic", "modelType": "Submodel",
+                "submodelElements": [{"idShort": "Rules", "modelType": "Property", "value": json.dumps({"start": [], "sequences": []}), "valueType": "xs:string"}]
             }
-            res_sm = requests.post(
-                "http://localhost:8081/submodels", 
-                json=submodel_payload, 
-                headers={"Content-Type": "application/json"}, 
-                timeout=5
-            )
+            res_sm = requests.post("http://localhost:8081/submodels", json=submodel_payload, headers={"Content-Type": "application/json"}, timeout=5)
             if res_sm.status_code not in [200, 201]:
-                # Cleanup shell
                 requests.delete(f"http://localhost:8081/shells/{encode_id(shell_id)}", timeout=5)
-                raise Exception(f"AAS Shell created, but failed to create ControlLogic submodel: {res_sm.text}")
+                raise Exception(f"Failed submodel creation: {res_sm.text}")
                 
-            # Step C: Link submodel to shell in Repository (this auto-updates registry)
-            link_payload = {
-                "type": "ModelReference",
-                "keys": [
-                    {
-                        "type": "Submodel",
-                        "value": sm_id
-                    }
-                ]
-            }
-            res_link = requests.post(
-                f"http://localhost:8081/shells/{encode_id(shell_id)}/submodel-refs", 
-                json=link_payload, 
-                headers={"Content-Type": "application/json"}, 
-                timeout=5
-            )
+            link_payload = {"type": "ModelReference", "keys": [{"type": "Submodel", "value": sm_id}]}
+            res_link = requests.post(f"http://localhost:8081/shells/{encode_id(shell_id)}/submodel-refs", json=link_payload, headers={"Content-Type": "application/json"}, timeout=5)
             if res_link.status_code not in [200, 201, 204]:
-                # Cleanup submodel and shell
                 requests.delete(f"http://localhost:8081/submodels/{encode_id(sm_id)}", timeout=5)
                 requests.delete(f"http://localhost:8081/shells/{encode_id(shell_id)}", timeout=5)
-                raise Exception(f"Failed to link ControlLogic submodel to shell: {res_link.text}")
+                raise Exception(f"Failed linking submodel: {res_link.text}")
                 
-            # Allow some time for registry synchronization
             time.sleep(0.5)
-            
-            while QApplication.overrideCursor() is not None:
-                QApplication.restoreOverrideCursor()
-            QMessageBox.information(self, "Success", f"AAS '{id_short}' created and registered successfully!")
-            
-            # Reload list and select it
+            while QApplication.overrideCursor() is not None: QApplication.restoreOverrideCursor()
+            QMessageBox.information(self, "Success", f"AAS '{id_short}' created!")
             self.load_aas_list()
-            # Select the newly created AAS in the combo box
             for index in range(self.combo_aas.count()):
                 data = self.combo_aas.itemData(index)
                 if data and data.get("id") == shell_id:
-                    self.combo_aas.setCurrentIndex(index)
-                    break
+                    self.combo_aas.setCurrentIndex(index); break
         except Exception as e:
-            while QApplication.overrideCursor() is not None:
-                QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "Error", f"An error occurred while creating AAS: {e}")
+            while QApplication.overrideCursor() is not None: QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "Error", f"Error creating AAS: {e}")
 
     def load_aas_list(self):
-        self.combo_aas.blockSignals(True)
-        self.combo_aas.clear()
+        self.combo_aas.blockSignals(True); self.combo_aas.clear()
         try:
             res = requests.get("http://localhost:8082/shell-descriptors", timeout=5)
             if res.status_code == 200:
                 shells = res.json().get("result", [])
-                for s in shells:
-                    self.combo_aas.addItem(f"{s.get('idShort')} ({s.get('id')})", s)
+                for s in shells: self.combo_aas.addItem(f"{s.get('idShort')} ({s.get('id')})", s)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not connect to registry: {e}")
         self.combo_aas.blockSignals(False)
         if self.combo_aas.count() > 0:
-            self.combo_aas.setCurrentIndex(0)
-            self.on_aas_changed()
+            self.combo_aas.setCurrentIndex(0); self.on_aas_changed()
 
-    def get_current_kit(self):
-        return self.target_kit
+    def get_current_kit(self): return self.target_kit
 
     def build_catalog(self):
-        self.sensors_catalog = []
-        self.actuators_catalog = []
+        self.sensors_catalog = []; self.actuators_catalog = []
         try:
             res = requests.get("http://localhost:8082/shell-descriptors", timeout=5)
-            if res.status_code != 200:
-                return
+            if res.status_code != 200: return
             shells = res.json().get("result", [])
-            
             act_types = ["Conveyor", "RotateContinuous", "TranslateContinuous", "Piston", "Linear"]
             sens_types = ["TriggerZone", "Presence", "Proximity"]
-            
             for s in shells:
-                shell_id = s.get("id")
-                kit_name = s.get("idShort", "AAS")
+                shell_id = s.get("id"); kit_name = s.get("idShort", "AAS")
                 encoded_shell_id = encode_id(shell_id)
-                
                 try:
                     shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=2)
-                    if shell_res.status_code != 200:
-                        continue
+                    if shell_res.status_code != 200: continue
                     submodel_refs = shell_res.json().get("submodels", [])
                     for ref in submodel_refs:
                         keys = ref.get("keys", [])
-                        if not keys:
-                            continue
+                        if not keys: continue
                         sm_id = keys[0].get("value")
-                        encoded_sm_id = encode_id(sm_id)
-                        sm_res = requests.get(f"http://localhost:8081/submodels/{encoded_sm_id}", timeout=2)
-                        if sm_res.status_code != 200:
-                            continue
+                        sm_res = requests.get(f"http://localhost:8081/submodels/{encode_id(sm_id)}", timeout=2)
+                        if sm_res.status_code != 200: continue
                         sm_data = sm_res.json()
                         id_short = sm_data.get("idShort", "")
                         if "BehaviorMapping" in id_short or "Behavior" in id_short:
                             for el in sm_data.get("submodelElements", []):
                                 if el["modelType"] == "SubmodelElementCollection":
                                     props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
-                                    b_type = props.get("Type", "")
-                                    pin_id = props.get("PinID", "")
+                                    b_type = props.get("Type", ""); pin_id = props.get("PinID", "")
                                     if pin_id:
                                         item_str = f"{kit_name} - {pin_id}"
-                                        if b_type in act_types:
-                                            self.actuators_catalog.append(item_str)
-                                        elif b_type in sens_types:
-                                            self.sensors_catalog.append(item_str)
-                except Exception as e:
-                    print(f"Error fetching catalog for shell {kit_name}: {e}")
-        except Exception as e:
-            print(f"Error building catalog: {e}")
+                                        if b_type in act_types: self.actuators_catalog.append(item_str)
+                                        elif b_type in sens_types: self.sensors_catalog.append(item_str)
+                except Exception as e: print(f"Error fetching catalog: {e}")
+        except Exception as e: print(f"Error building catalog: {e}")
 
     def on_aas_changed(self):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             self.build_catalog()
-            
             item_data = self.combo_aas.currentData()
             if not item_data:
                 self.logic_rules = {"start": [], "sequences": []}
-                self.list_sequences.clear()
-                self.list_steps.clear()
-                return
+                self.list_sequences.clear(); self.tree_steps.clear(); return
             
-            shell_id = item_data.get("id")
-            kit_name = item_data.get("idShort", "AAS")
+            shell_id = item_data.get("id"); kit_name = item_data.get("idShort", "AAS")
             self.target_kit = kit_name
-            
-            encoded_shell_id = encode_id(shell_id)
-            shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=5)
-            
+            shell_res = requests.get(f"http://localhost:8081/shells/{encode_id(shell_id)}", timeout=5)
             self.logic_rules = {"start": [], "sequences": []}
             if shell_res.status_code == 200:
                 submodel_refs = shell_res.json().get("submodels", [])
@@ -4331,65 +4807,94 @@ class AASRulesEditorDialog(QDialog):
                     if keys:
                         sm_id = keys[0].get("value")
                         if "ControlLogic" in sm_id or "Logic" in sm_id:
-                            encoded_sm_id = encode_id(sm_id)
-                            sm_res = requests.get(f"http://localhost:8081/submodels/{encoded_sm_id}", timeout=5)
+                            sm_res = requests.get(f"http://localhost:8081/submodels/{encode_id(sm_id)}", timeout=5)
                             if sm_res.status_code == 200:
-                                sm_data = sm_res.json()
-                                for el in sm_data.get("submodelElements", []):
+                                for el in sm_res.json().get("submodelElements", []):
                                     if el["idShort"] == "Rules":
                                         val = el.get("value", "")
                                         if val:
-                                            try:
-                                                self.logic_rules = json.loads(val)
-                                            except Exception:
-                                                traceback.print_exc()
+                                            try: self.logic_rules = json.loads(val)
+                                            except Exception: traceback.print_exc()
                                                 
-            self.list_sequences.blockSignals(True)
-            self.list_sequences.clear()
+            self.list_sequences.blockSignals(True); self.list_sequences.clear()
             self.list_sequences.addItem("Start Sequence")
             for seq in self.logic_rules.get("sequences", []):
                 self.list_sequences.addItem(seq.get("name", "Custom Sequence"))
-            self.list_sequences.setCurrentRow(0)
-            self.list_sequences.blockSignals(False)
-            
+            self.list_sequences.setCurrentRow(0); self.list_sequences.blockSignals(False)
             self.on_sequence_selected(0)
-            self.refresh_logic_dropdowns()
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load AAS rules: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to load rules: {e}")
         finally:
-            while QApplication.overrideCursor() is not None:
-                QApplication.restoreOverrideCursor()
+            while QApplication.overrideCursor() is not None: QApplication.restoreOverrideCursor()
 
-    def update_json_preview(self):
-        pass
-
-    def refresh_logic_dropdowns(self):
+    def save_trigger_changes(self):
+        row = self.list_sequences.currentRow()
+        if row <= 0: return
+        seq_idx = row - 1
+        if seq_idx < 0 or seq_idx >= len(self.logic_rules["sequences"]): return
+        seq = self.logic_rules["sequences"][seq_idx]
+        if "trigger" not in seq or not isinstance(seq["trigger"], dict):
+            seq["trigger"] = {"operator": "AND", "conditions": []}
+        seq["trigger"]["operator"] = self.combo_trigger_op.currentText()
+        triggers = []
         for i in range(self.triggers_layout.count()):
             w = self.triggers_layout.itemAt(i).widget()
-            if isinstance(w, TriggerRow):
-                curr_text = w.combo_sensor.currentText()
-                w.combo_sensor.blockSignals(True)
-                w.combo_sensor.clear()
-                w.combo_sensor.addItems(self.sensors_catalog)
-                w.combo_sensor.setCurrentText(curr_text)
-                w.combo_sensor.blockSignals(False)
-                
-        curr_act = self.edit_step_actuator_combo.currentText()
-        self.edit_step_actuator_combo.blockSignals(True)
-        self.edit_step_actuator_combo.clear()
-        self.edit_step_actuator_combo.addItems(self.actuators_catalog)
-        self.edit_step_actuator_combo.setCurrentText(curr_act)
-        self.edit_step_actuator_combo.blockSignals(False)
-        
-        for i in range(self.step_wait_until_layout.count()):
-            w = self.step_wait_until_layout.itemAt(i).widget()
-            if isinstance(w, TriggerRow):
-                curr_text = w.combo_sensor.currentText()
-                w.combo_sensor.blockSignals(True)
-                w.combo_sensor.clear()
-                w.combo_sensor.addItems(self.sensors_catalog)
-                w.combo_sensor.setCurrentText(curr_text)
-                w.combo_sensor.blockSignals(False)
+            if isinstance(w, TriggerRow): triggers.append(w.get_data())
+        seq["trigger"]["conditions"] = triggers
+
+    def add_trigger_condition(self):
+        row = self.list_sequences.currentRow()
+        if row <= 0: return
+        rule_options = [f"[Rule] {s['name']}" for s in self.logic_rules.get("sequences", [])]
+        combined_options = self.sensors_catalog + rule_options
+        row_widget = TriggerRow(
+            self, combined_options, initial_sensor="", initial_value=True,
+            on_delete=lambda w=None: self.delete_trigger_condition(row_widget),
+            on_changed=self.save_trigger_changes
+        )
+        self.triggers_layout.addWidget(row_widget)
+        self.save_trigger_changes()
+
+    def delete_trigger_condition(self, row_widget):
+        row_widget.deleteLater()
+        QTimer.singleShot(50, self.save_trigger_changes)
+
+    def on_sequence_selected(self, row):
+        if row == 0:
+            self.group_triggers.setVisible(False)
+            self.refresh_steps_tree()
+        elif row > 0 and (row - 1) < len(self.logic_rules["sequences"]):
+            self.group_triggers.setVisible(True)
+            seq = self.logic_rules["sequences"][row - 1]
+            if "trigger" not in seq or not isinstance(seq["trigger"], dict):
+                seq["trigger"] = {"operator": "AND", "conditions": []}
+            self.combo_trigger_op.blockSignals(True)
+            self.combo_trigger_op.setCurrentText(seq["trigger"].get("operator", "AND"))
+            self.combo_trigger_op.blockSignals(False)
+            
+            while self.triggers_layout.count() > 0:
+                child = self.triggers_layout.takeAt(0)
+                if child.widget(): child.widget().deleteLater()
+                    
+            rule_options = [f"[Rule] {s['name']}" for s in self.logic_rules.get("sequences", [])]
+            combined_options = self.sensors_catalog + rule_options
+
+            for cond in seq["trigger"].get("conditions", []):
+                initial_sens = f"[Rule] {cond['sequence']}" if "sequence" in cond else cond.get("sensor", "")
+                initial_kit = None if "sequence" in cond else cond.get("kit")
+                row_widget = TriggerRow(
+                    self, combined_options, initial_sensor=initial_sens,
+                    initial_value=cond.get("value", True),
+                    on_delete=lambda w=None: self.delete_trigger_condition(row_widget),
+                    on_changed=self.save_trigger_changes, initial_kit=initial_kit
+                )
+                self.triggers_layout.addWidget(row_widget)
+            self.refresh_steps_tree()
+        else:
+            self.group_triggers.setVisible(False)
+            self.tree_steps.clear()
+            self.step_edit_stack.setCurrentIndex(0)
+        self.btn_del_seq.setEnabled(row > 0)
 
     def get_current_steps_list(self):
         row = self.list_sequences.currentRow()
@@ -4399,233 +4904,6 @@ class AASRulesEditorDialog(QDialog):
             return self.logic_rules["sequences"][row - 1]["steps"]
         return None
 
-    def refresh_steps_list(self):
-        self.list_steps.blockSignals(True)
-        self.list_steps.clear()
-        steps = self.get_current_steps_list()
-        if steps is not None:
-            for step in steps:
-                text = self.get_step_display_text(step)
-                self.list_steps.addItem(text)
-        self.list_steps.blockSignals(False)
-        self.update_step_edit_pane()
-
-    def get_step_display_text(self, step):
-        t = step.get("type")
-        if t == "set_actuator":
-            kit = step.get("kit", "")
-            act = step.get("actuator", "None")
-            val = step.get("value", False)
-            if kit:
-                return f"Set Actuator: [{kit}] - {act} -> {val}"
-            return f"Set Actuator: {act} -> {val}"
-        elif t == "wait_time":
-            val = step.get("seconds", 0.0)
-            return f"Wait Time: {val}s"
-        elif t == "wait_until":
-            op = step.get("operator", "AND")
-            conds = step.get("conditions", [])
-            cond_strs = []
-            for c in conds:
-                kit_str = f"[{c.get('kit')}] - " if c.get("kit") else ""
-                cond_strs.append(f"{kit_str}{c.get('sensor')}=={c.get('value')}")
-            cond_str = ", ".join(cond_strs)
-            return f"Wait Until: {op} ({cond_str})"
-        return "Unknown Step"
-
-    def block_step_edit_signals(self, block):
-        self.edit_step_actuator_combo.blockSignals(block)
-        self.edit_step_actuator_val.blockSignals(block)
-        self.edit_step_wait_time_spin.blockSignals(block)
-        self.edit_step_wait_until_op.blockSignals(block)
-
-    def update_step_edit_pane(self):
-        step_row = self.list_steps.currentRow()
-        steps = self.get_current_steps_list()
-        
-        if steps is None or step_row < 0 or step_row >= len(steps):
-            self.step_edit_stack.setCurrentIndex(0)
-            return
-            
-        step = steps[step_row]
-        t = step.get("type")
-        
-        self.block_step_edit_signals(True)
-        
-        if t == "set_actuator":
-            self.step_edit_stack.setCurrentIndex(1)
-            self.edit_step_actuator_combo.clear()
-            self.edit_step_actuator_combo.addItems(self.actuators_catalog)
-            
-            target_kit = step.get("kit") or self.get_current_kit()
-            target_act = step.get("actuator", "")
-            target_text = f"{target_kit} - {target_act}" if target_kit and target_act else target_act
-            
-            if target_text in self.actuators_catalog:
-                self.edit_step_actuator_combo.setCurrentText(target_text)
-            elif target_act in self.actuators_catalog:
-                self.edit_step_actuator_combo.setCurrentText(target_act)
-            else:
-                matched = False
-                for item in self.actuators_catalog:
-                    if item.endswith(f" - {target_act}"):
-                        self.edit_step_actuator_combo.setCurrentText(item)
-                        matched = True
-                        break
-                if not matched and self.actuators_catalog:
-                    self.edit_step_actuator_combo.setCurrentIndex(0)
-            self.edit_step_actuator_val.setChecked(bool(step.get("value", False)))
-            
-        elif t == "wait_time":
-            self.step_edit_stack.setCurrentIndex(2)
-            self.edit_step_wait_time_spin.setValue(float(step.get("seconds", 0.0)))
-            
-        elif t == "wait_until":
-            self.step_edit_stack.setCurrentIndex(3)
-            self.edit_step_wait_until_op.setCurrentText(step.get("operator", "AND"))
-            while self.step_wait_until_layout.count() > 0:
-                child = self.step_wait_until_layout.takeAt(0)
-                if child.widget():
-                    child.widget().deleteLater()
-                    
-            for cond in step.get("conditions", []):
-                row_widget = TriggerRow(
-                    self,
-                    self.sensors_catalog,
-                    initial_sensor=cond.get("sensor", ""),
-                    initial_value=cond.get("value", True),
-                    on_delete=lambda w=None: self.delete_step_condition(row_widget),
-                    on_changed=self.save_current_step_changes,
-                    initial_kit=cond.get("kit")
-                )
-                self.step_wait_until_layout.addWidget(row_widget)
-                
-        else:
-            self.step_edit_stack.setCurrentIndex(0)
-            
-        self.block_step_edit_signals(False)
-
-    def delete_step_condition(self, row_widget):
-        row_widget.deleteLater()
-        QTimer.singleShot(50, self.save_current_step_changes)
-
-    def save_current_step_changes(self):
-        step_row = self.list_steps.currentRow()
-        steps = self.get_current_steps_list()
-        
-        if steps is None or step_row < 0 or step_row >= len(steps):
-            return
-            
-        step = steps[step_row]
-        t = step.get("type")
-        
-        default_kit = self.get_current_kit()
-            
-        if t == "set_actuator":
-            text = self.edit_step_actuator_combo.currentText()
-            if " - " in text:
-                parts = text.split(" - ", 1)
-                step["kit"] = parts[0].strip()
-                step["actuator"] = parts[1].strip()
-            else:
-                step["kit"] = default_kit
-                step["actuator"] = text.strip()
-            step["value"] = self.edit_step_actuator_val.isChecked()
-        elif t == "wait_time":
-            step["seconds"] = self.edit_step_wait_time_spin.value()
-        elif t == "wait_until":
-            step["operator"] = self.edit_step_wait_until_op.currentText()
-            conds = []
-            for i in range(self.step_wait_until_layout.count()):
-                w = self.step_wait_until_layout.itemAt(i).widget()
-                if isinstance(w, TriggerRow):
-                    conds.append(w.get_data())
-            step["conditions"] = conds
-            
-        self.list_steps.item(step_row).setText(self.get_step_display_text(step))
-
-    def save_trigger_changes(self):
-        row = self.list_sequences.currentRow()
-        if row <= 0:
-            return
-            
-        seq_idx = row - 1
-        if seq_idx < 0 or seq_idx >= len(self.logic_rules["sequences"]):
-            return
-            
-        seq = self.logic_rules["sequences"][seq_idx]
-        if "trigger" not in seq or not isinstance(seq["trigger"], dict):
-            seq["trigger"] = {"operator": "AND", "conditions": []}
-            
-        seq["trigger"]["operator"] = self.combo_trigger_op.currentText()
-        
-        triggers = []
-        for i in range(self.triggers_layout.count()):
-            w = self.triggers_layout.itemAt(i).widget()
-            if isinstance(w, TriggerRow):
-                triggers.append(w.get_data())
-        seq["trigger"]["conditions"] = triggers
-
-    def add_trigger_condition(self):
-        row = self.list_sequences.currentRow()
-        if row <= 0:
-            return
-            
-        row_widget = TriggerRow(
-            self,
-            self.sensors_catalog,
-            initial_sensor="",
-            initial_value=True,
-            on_delete=lambda w=None: self.delete_trigger_condition(row_widget),
-            on_changed=self.save_trigger_changes
-        )
-        self.triggers_layout.addWidget(row_widget)
-        self.save_trigger_changes()
-        
-    def delete_trigger_condition(self, row_widget):
-        row_widget.deleteLater()
-        QTimer.singleShot(50, self.save_trigger_changes)
-
-    def on_sequence_selected(self, row):
-        self.save_current_step_changes()
-        
-        if row == 0:
-            self.group_triggers.setVisible(False)
-            self.refresh_steps_list()
-        elif row > 0 and (row - 1) < len(self.logic_rules["sequences"]):
-            self.group_triggers.setVisible(True)
-            seq = self.logic_rules["sequences"][row - 1]
-            if "trigger" not in seq or not isinstance(seq["trigger"], dict):
-                seq["trigger"] = {"operator": "AND", "conditions": []}
-            
-            self.combo_trigger_op.blockSignals(True)
-            self.combo_trigger_op.setCurrentText(seq["trigger"].get("operator", "AND"))
-            self.combo_trigger_op.blockSignals(False)
-            
-            while self.triggers_layout.count() > 0:
-                child = self.triggers_layout.takeAt(0)
-                if child.widget():
-                    child.widget().deleteLater()
-                    
-            for cond in seq["trigger"].get("conditions", []):
-                row_widget = TriggerRow(
-                    self,
-                    self.sensors_catalog,
-                    initial_sensor=cond.get("sensor", ""),
-                    initial_value=cond.get("value", True),
-                    on_delete=lambda w=None: self.delete_trigger_condition(row_widget),
-                    on_changed=self.save_trigger_changes,
-                    initial_kit=cond.get("kit")
-                )
-                self.triggers_layout.addWidget(row_widget)
-                
-            self.refresh_steps_list()
-        else:
-            self.group_triggers.setVisible(False)
-            self.list_steps.clear()
-            self.step_edit_stack.setCurrentIndex(0)
-            
-        self.btn_del_seq.setEnabled(row > 0)
 
     def add_sequence(self):
         name, ok = QInputDialog.getText(self, "Add Sequence", "Enter sequence name:")
@@ -4635,25 +4913,393 @@ class AASRulesEditorDialog(QDialog):
             if name in existing:
                 QMessageBox.warning(self, "Warning", "A sequence with this name already exists.")
                 return
-            
             self.logic_rules["sequences"].append({
-                "name": name,
-                "trigger": {"operator": "AND", "conditions": []},
-                "steps": []
+                "name": name, "trigger": {"operator": "AND", "conditions": []}, "steps": []
             })
             self.list_sequences.addItem(name)
-            self.list_sequences.setCurrentRow(self.list_sequences.count() - 1)
+    def add_step_node(self, step_type):
+        steps = self.get_current_steps_list()
+        if steps is None: return
+
+        selected_item = self.tree_steps.currentItem()
+        target_list = steps
+
+        if selected_item:
+            data = selected_item.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(data, dict):
+                if "_container" in data:
+                    container = data["_container"]
+                    parent_id = data.get("_parent_id")
+                    
+                    # Search tree for step matching parent_id in steps hierarchy
+                    def find_step_by_id(current_list, target_id):
+                        if not isinstance(current_list, list): return None
+                        for s in current_list:
+                            if isinstance(s, dict):
+                                if s.get("_id") == target_id: return s
+                                for sub in ["then", "else", "body"]:
+                                    res = find_step_by_id(s.get(sub, []), target_id)
+                                    if res: return res
+                        return None
+                        
+                    parent_step = find_step_by_id(steps, parent_id)
+                    if parent_step:
+                        if container not in parent_step or not isinstance(parent_step[container], list):
+                            parent_step[container] = []
+                        target_list = parent_step[container]
+
+                elif data.get("type") in ["if", "if_else"]:
+                    target_id = data.get("_id")
+                    def find_step_by_id(current_list, tid):
+                        if not isinstance(current_list, list): return None
+                        for s in current_list:
+                            if isinstance(s, dict):
+                                if s.get("_id") == tid: return s
+                                for sub in ["then", "else", "body"]:
+                                    res = find_step_by_id(s.get(sub, []), tid)
+                                    if res: return res
+                        return None
+                    target_step = find_step_by_id(steps, target_id)
+                    if target_step:
+                        if "then" not in target_step or not isinstance(target_step["then"], list):
+                            target_step["then"] = []
+                        target_list = target_step["then"]
+
+                elif data.get("type") in ["while", "repeat_while", "repeat_times"]:
+                    target_id = data.get("_id")
+                    def find_step_by_id(current_list, tid):
+                        if not isinstance(current_list, list): return None
+                        for s in current_list:
+                            if isinstance(s, dict):
+                                if s.get("_id") == tid: return s
+                                for sub in ["then", "else", "body"]:
+                                    res = find_step_by_id(s.get(sub, []), tid)
+                                    if res: return res
+                        return None
+                    target_step = find_step_by_id(steps, target_id)
+                    if target_step:
+                        if "body" not in target_step or not isinstance(target_step["body"], list):
+                            target_step["body"] = []
+                        target_list = target_step["body"]
+
+        import uuid
+        act_text = self.actuators_catalog[0] if self.actuators_catalog else "Motor_1"
+        kit, act = (act_text.split(" - ", 1)) if " - " in act_text else (self.get_current_kit(), act_text)
+        sens_text = self.sensors_catalog[0] if self.sensors_catalog else "Sensor_1"
+        sens_kit, sens = (sens_text.split(" - ", 1)) if " - " in sens_text else (self.get_current_kit(), sens_text)
+ 
+        new_step = {"_id": str(uuid.uuid4())}
+        if step_type == "set_actuator":
+            new_step.update({"type": "set_actuator", "kit": kit, "actuator": act, "value": False})
+        elif step_type == "wait_time":
+            new_step.update({"type": "wait_time", "seconds": 1.0})
+        elif step_type == "wait_until":
+            new_step.update({"type": "wait_until", "condition": {"sensor": sens, "value": True, "kit": sens_kit}})
+        elif step_type in ["if", "if_else"]:
+            new_step.update({
+                "type": step_type,
+                "condition": {"sensor": sens, "value": True, "kit": sens_kit},
+                "then": []
+            })
+            if step_type == "if_else": new_step["else"] = []
+        elif step_type == "while":
+            new_step.update({"type": "while", "condition": {"sensor": sens, "value": True, "kit": sens_kit}, "body": []})
+        elif step_type == "repeat_times":
+            new_step.update({"type": "repeat_times", "times": 5, "body": []})
+        elif step_type == "set_variable":
+            new_step.update({"type": "set_variable", "variable": "counter", "value": 0})
+        elif step_type == "call_http_service":
+            new_step.update({"type": "call_http_service", "url": "http://localhost:8080/api/skill", "method": "POST", "payload": "{}"})
+
+        target_list.append(new_step)
+        self.refresh_steps_tree()
+
+    def keyPressEvent(self, event):
+        if event.key() in [Qt.Key.Key_Delete, Qt.Key.Key_Backspace]:
+            if self.tree_steps.hasFocus():
+                self.delete_step_node()
+                return
+        super().keyPressEvent(event)
+
+    def delete_step_node(self):
+        item = self.tree_steps.currentItem()
+        if not item: return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        
+        target_id = None
+        if isinstance(data, dict):
+            if "_container" in data:
+                target_id = data.get("_parent_id")
+            else:
+                target_id = data.get("_id")
+
+        if not target_id: return
+
+        steps = self.get_current_steps_list()
+        def remove_recursive(current_list, tid):
+            if not isinstance(current_list, list): return False
+            for elem in list(current_list):
+                if isinstance(elem, dict):
+                    if elem.get("_id") == tid:
+                        current_list.remove(elem)
+                        return True
+                    for sub in ["then", "else", "body"]:
+                        if sub in elem and remove_recursive(elem[sub], tid):
+                            return True
+            return False
+
+        if remove_recursive(steps, target_id):
+            self.refresh_steps_tree()
+
+    def update_step_edit_pane(self):
+        item = self.tree_steps.currentItem()
+        if not item:
+            self.step_edit_stack.setCurrentIndex(0); return
+
+        step = item.data(0, Qt.ItemDataRole.UserRole)
+        if not isinstance(step, dict) or "_container" in step:
+            self.step_edit_stack.setCurrentIndex(0); return
+
+        t = step.get("type")
+        self.block_step_edit_signals(True)
+
+        if t == "set_actuator":
+            self.step_edit_stack.setCurrentIndex(1)
+            self.edit_step_actuator_combo.clear(); self.edit_step_actuator_combo.addItems(self.actuators_catalog)
+            target_act = step.get("actuator", "")
+            for i in range(self.edit_step_actuator_combo.count()):
+                if self.edit_step_actuator_combo.itemText(i).endswith(target_act):
+                    self.edit_step_actuator_combo.setCurrentIndex(i); break
+            self.edit_step_actuator_val.setChecked(bool(step.get("value", False)))
+
+        elif t == "wait_time":
+            self.step_edit_stack.setCurrentIndex(2)
+            self.edit_step_wait_time_spin.setValue(float(step.get("seconds", 0.0)))
+
+        elif t in ["wait_until", "if", "if_else", "while"]:
+            self.step_edit_stack.setCurrentIndex(3)
+            is_wait_until = (t == "wait_until")
+            self.lbl_cond_timeout.setVisible(is_wait_until)
+            self.edit_cond_timeout_spin.setVisible(is_wait_until)
+            if is_wait_until:
+                self.edit_cond_timeout_spin.setValue(float(step.get("timeout", 15.0)))
+            self.edit_cond_sensor_combo.clear(); self.edit_cond_sensor_combo.addItems(self.sensors_catalog)
+            target_sens = step.get("condition", {}).get("sensor", "")
+            for i in range(self.edit_cond_sensor_combo.count()):
+                if self.edit_cond_sensor_combo.itemText(i).endswith(target_sens):
+                    self.edit_cond_sensor_combo.setCurrentIndex(i); break
+            cond_val = bool(step.get("condition", {}).get("value", True))
+            self.edit_cond_val_combo.setCurrentIndex(0 if cond_val else 1)
+
+        elif t == "repeat_times":
+            self.step_edit_stack.setCurrentIndex(4)
+            self.edit_repeat_times_spin.setValue(int(step.get("times", 1)))
+
+        elif t == "set_variable":
+            self.step_edit_stack.setCurrentIndex(5)
+            self.edit_var_name.setText(str(step.get("variable", "")))
+            self.edit_var_value.setText(str(step.get("value", "")))
+
+        elif t == "call_http_service":
+            self.step_edit_stack.setCurrentIndex(6)
+            self.edit_http_url.setText(str(step.get("url", "")))
+            self.combo_http_method.setCurrentText(str(step.get("method", "POST")))
+            self.edit_http_payload.setPlainText(str(step.get("payload", "")))
+
+        else:
+            self.step_edit_stack.setCurrentIndex(0)
+
+        self.block_step_edit_signals(False)
+
+    def block_step_edit_signals(self, b):
+        self.edit_step_actuator_combo.blockSignals(b)
+        self.edit_step_actuator_val.blockSignals(b)
+        self.edit_step_wait_time_spin.blockSignals(b)
+        self.edit_cond_sensor_combo.blockSignals(b)
+        self.edit_cond_val_combo.blockSignals(b)
+        self.edit_repeat_times_spin.blockSignals(b)
+        self.edit_var_name.blockSignals(b)
+        self.edit_var_value.blockSignals(b)
+        self.edit_http_url.blockSignals(b)
+        self.combo_http_method.blockSignals(b)
+        self.edit_http_payload.blockSignals(b)
+
+    def save_current_step_changes(self):
+        item = self.tree_steps.currentItem()
+        if not item: return
+        step_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not isinstance(step_data, dict) or "_container" in step_data: return
+        
+        target_id = step_data.get("_id")
+        steps = self.get_current_steps_list()
+        def find_step_by_id(current_list, tid):
+            if not isinstance(current_list, list): return None
+            for s in current_list:
+                if isinstance(s, dict):
+                    if s.get("_id") == tid: return s
+                    for sub in ["then", "else", "body"]:
+                        res = find_step_by_id(s.get(sub, []), tid)
+                        if res: return res
+            return None
+            
+        step = find_step_by_id(steps, target_id)
+        if not step: return
+
+        t = step.get("type")
+
+        if t == "set_actuator":
+            act_text = self.edit_step_actuator_combo.currentText()
+            kit_part, act = (act_text.split(" - ", 1)) if " - " in act_text else ("", act_text)
+            step["kit"] = kit_part
+            step["actuator"] = act
+            step["value"] = self.edit_step_actuator_val.isChecked()
+            
+        elif t == "wait_time":
+            step["seconds"] = self.edit_step_wait_time_spin.value()
+            
+        elif t in ["wait_until", "if", "if_else", "while"]:
+            sens_text = self.edit_cond_sensor_combo.currentText()
+            kit_part, sens = (sens_text.split(" - ", 1)) if " - " in sens_text else ("", sens_text)
+            is_true = (self.edit_cond_val_combo.currentIndex() == 0)
+            step["condition"] = {"sensor": sens, "value": is_true, "kit": kit_part}
+            if t == "wait_until":
+                step["timeout"] = self.edit_cond_timeout_spin.value()
+            
+        elif t == "repeat_times":
+            step["times"] = self.edit_repeat_times_spin.value()
+
+        elif t == "set_variable":
+            step["variable"] = self.edit_var_name.text().strip()
+            val_str = self.edit_var_value.text().strip()
+            if val_str.isdigit(): step["value"] = int(val_str)
+            else:
+                try: step["value"] = float(val_str)
+                except: step["value"] = val_str
+
+        elif t == "call_http_service":
+            step["url"] = self.edit_http_url.text().strip()
+            step["method"] = self.combo_http_method.currentText()
+            step["payload"] = self.edit_http_payload.toPlainText().strip()
+
+        if t == "set_actuator":
+            item.setText(1, f"[{step.get('kit', '')}] {step.get('actuator', '')} -> {step.get('value')}")
+        elif t == "wait_time":
+            item.setText(1, f"{step.get('seconds', 0.0)}s")
+        elif t in ["wait_until", "if", "if_else", "while"]:
+            cond = step.get("condition", {})
+            if t == "wait_until":
+                item.setText(1, f"({cond.get('sensor', '')} == {cond.get('value')}) (timeout: {step.get('timeout', 15.0)}s)")
+            else:
+                item.setText(1, f"({cond.get('sensor', '')} == {cond.get('value')})")
+        elif t == "repeat_times":
+            item.setText(1, f"Count: {step.get('times', 1)}")
+        elif t == "set_variable":
+            item.setText(1, f"{step.get('variable', '')} = {step.get('value', '')}")
+        elif t == "call_http_service":
+            item.setText(1, f"{step.get('method', 'POST')} -> {step.get('url', '')}")
+
+    def get_current_steps_list(self):
+        row = self.list_sequences.currentRow()
+        if row == 0: return self.logic_rules["start"]
+        elif row > 0 and (row - 1) < len(self.logic_rules["sequences"]):
+            return self.logic_rules["sequences"][row - 1]["steps"]
+        return None
+
+    def refresh_steps_tree(self):
+        self.tree_steps.blockSignals(True)
+        self.tree_steps.clear()
+        steps = self.get_current_steps_list()
+        if steps is not None:
+            for step in steps:
+                self.build_tree_node(self.tree_steps.invisibleRootItem(), step)
+        self.tree_steps.expandAll()
+        self.tree_steps.blockSignals(False)
+        self.update_step_edit_pane()
+
+    def build_tree_node(self, parent_item, step):
+        import uuid
+        if "_id" not in step: step["_id"] = str(uuid.uuid4())
+        t = step.get("type")
+        node = QTreeWidgetItem(parent_item)
+        node.setData(0, Qt.ItemDataRole.UserRole, step)
+        node.setFlags(node.flags() | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsDropEnabled)
+        
+        if t == "set_actuator":
+            kit = step.get("kit", "")
+            act = step.get("actuator", "None")
+            val = step.get("value", False)
+            node.setText(0, "⚡ Set Actuator")
+            node.setText(1, f"[{kit}] {act} -> {val}")
+        elif t == "wait_time":
+            val = step.get("seconds", 0.0)
+            node.setText(0, "⏱️ Wait Time")
+            node.setText(1, f"{val}s")
+        elif t == "wait_until":
+            cond = step.get("condition", {})
+            sens = cond.get("sensor", "Sensor")
+            val = cond.get("value", True)
+            timeout = step.get("timeout", 15.0)
+            node.setText(0, "⏳ Wait Until")
+            node.setText(1, f"Sensor '{sens}' == {val} (timeout: {timeout}s)")
+        elif t in ["if", "if_else"]:
+            cond = step.get("condition", {})
+            sens = cond.get("sensor", "Sensor")
+            val = cond.get("value", True)
+            node.setText(0, "🔀 If Block")
+            node.setText(1, f"If ({sens} == {val})")
+            
+            then_node = QTreeWidgetItem(node)
+            then_node.setText(0, "🟢 Then")
+            then_node.setData(0, Qt.ItemDataRole.UserRole, {"_container": "then", "_parent_id": step["_id"]})
+            then_node.setFlags((then_node.flags() & ~Qt.ItemFlag.ItemIsDragEnabled) | Qt.ItemFlag.ItemIsDropEnabled)
+            for s in step.get("then", []): self.build_tree_node(then_node, s)
+            
+            if t == "if_else" or "else" in step:
+                else_node = QTreeWidgetItem(node)
+                else_node.setText(0, "🔴 Else")
+                else_node.setData(0, Qt.ItemDataRole.UserRole, {"_container": "else", "_parent_id": step["_id"]})
+                else_node.setFlags((else_node.flags() & ~Qt.ItemFlag.ItemIsDragEnabled) | Qt.ItemFlag.ItemIsDropEnabled)
+                for s in step.get("else", []): self.build_tree_node(else_node, s)
+        elif t in ["while", "repeat_while"]:
+            cond = step.get("condition", {})
+            sens = cond.get("sensor", "Sensor")
+            val = cond.get("value", True)
+            node.setText(0, "🔄 While Loop")
+            node.setText(1, f"While ({sens} == {val})")
+            
+            body_node = QTreeWidgetItem(node)
+            body_node.setText(0, "🔁 Body")
+            body_node.setData(0, Qt.ItemDataRole.UserRole, {"_container": "body", "_parent_id": step["_id"]})
+            body_node.setFlags((body_node.flags() & ~Qt.ItemFlag.ItemIsDragEnabled) | Qt.ItemFlag.ItemIsDropEnabled)
+            for s in step.get("body", []): self.build_tree_node(body_node, s)
+        elif t == "repeat_times":
+            times = step.get("times", 1)
+            node.setText(0, "🔁 Repeat N Times")
+            node.setText(1, f"Count: {times}")
+            body_node = QTreeWidgetItem(node)
+            body_node.setText(0, "🔁 Body")
+            body_node.setData(0, Qt.ItemDataRole.UserRole, {"_container": "body", "_parent_id": step["_id"]})
+            body_node.setFlags((body_node.flags() & ~Qt.ItemFlag.ItemIsDragEnabled) | Qt.ItemFlag.ItemIsDropEnabled)
+            for s in step.get("body", []): self.build_tree_node(body_node, s)
+        elif t == "set_variable":
+            vname = step.get("variable", "var")
+            vval = step.get("value", "")
+            node.setText(0, "📝 Set Variable")
+            node.setText(1, f"{vname} = {vval}")
+        elif t == "call_http_service":
+            method = step.get("method", "POST")
+            url = step.get("url", "")
+            node.setText(0, "📞 Call HTTP Service")
+            node.setText(1, f"{method} -> {url}")
 
     def delete_sequence(self):
         row = self.list_sequences.currentRow()
         if row <= 0:
             QMessageBox.warning(self, "Warning", "Cannot delete the permanent Start Sequence.")
             return
-            
         seq_idx = row - 1
         reply = QMessageBox.question(
-            self, "Confirm Delete",
-            f"Are you sure you want to delete sequence '{self.logic_rules['sequences'][seq_idx]['name']}'?",
+            self, "Confirm Delete", f"Delete sequence '{self.logic_rules['sequences'][seq_idx]['name']}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -4661,100 +5307,74 @@ class AASRulesEditorDialog(QDialog):
             self.list_sequences.takeItem(row)
             self.list_sequences.setCurrentRow(row - 1)
 
-    def add_set_actuator_step(self):
-        steps = self.get_current_steps_list()
-        if steps is not None:
-            act_text = self.actuators_catalog[0] if self.actuators_catalog else ""
-            if " - " in act_text:
-                parts = act_text.split(" - ", 1)
-                kit = parts[0].strip()
-                act = parts[1].strip()
-            else:
-                kit = self.get_current_kit()
-                act = act_text
-                
-            steps.append({
-                "type": "set_actuator",
-                "kit": kit,
-                "actuator": act,
-                "value": False
-            })
-            self.refresh_steps_list()
-            self.list_steps.setCurrentRow(len(steps) - 1)
+    def on_sequences_reordered(self, parent, start, end, destination, row):
+        new_sequences = []
+        for i in range(self.list_sequences.count()):
+            item = self.list_sequences.item(i)
+            name = item.text()
+            if name == "Start Sequence":
+                if i != 0:
+                    self.list_sequences.blockSignals(True)
+                    self.list_sequences.takeItem(i)
+                    self.list_sequences.insertItem(0, item)
+                    self.list_sequences.setCurrentRow(0)
+                    self.list_sequences.blockSignals(False)
+                continue
+            for seq in self.logic_rules.get("sequences", []):
+                if seq.get("name") == name:
+                    new_sequences.append(seq)
+                    break
+        self.logic_rules["sequences"] = new_sequences
+        self.save_trigger_changes()
 
-    def add_wait_time_step(self):
-        steps = self.get_current_steps_list()
-        if steps is not None:
-            steps.append({
-                "type": "wait_time",
-                "seconds": 1.0
-            })
-            self.refresh_steps_list()
-            self.list_steps.setCurrentRow(len(steps) - 1)
+    def on_tree_steps_dropped(self):
+        steps = self.rebuild_steps_from_tree(self.tree_steps.invisibleRootItem())
+        row = self.list_sequences.currentRow()
+        if row == 0:
+            self.logic_rules["start"] = steps
+        elif row > 0 and (row - 1) < len(self.logic_rules["sequences"]):
+            self.logic_rules["sequences"][row - 1]["steps"] = steps
+        self.save_trigger_changes()
+        self.refresh_steps_tree()
 
-    def add_wait_until_step(self):
-        steps = self.get_current_steps_list()
-        if steps is not None:
-            steps.append({
-                "type": "wait_until",
-                "operator": "AND",
-                "conditions": []
-            })
-            self.refresh_steps_list()
-            self.list_steps.setCurrentRow(len(steps) - 1)
-
-    def add_step_condition(self):
-        step_row = self.list_steps.currentRow()
-        steps = self.get_current_steps_list()
-        if steps is None or step_row < 0 or step_row >= len(steps):
-            return
-        step = steps[step_row]
-        if step.get("type") != "wait_until":
-            return
+    def rebuild_steps_from_tree(self, parent_item):
+        steps_list = []
+        for i in range(parent_item.childCount()):
+            child = parent_item.child(i)
+            data = child.data(0, Qt.ItemDataRole.UserRole)
+            if not isinstance(data, dict):
+                continue
+            if "_container" in data:
+                continue
             
-        row_widget = TriggerRow(
-            self,
-            self.sensors_catalog,
-            initial_sensor="",
-            initial_value=True,
-            on_delete=lambda w=None: self.delete_step_condition(row_widget),
-            on_changed=self.save_current_step_changes
-        )
-        self.step_wait_until_layout.addWidget(row_widget)
-        self.save_current_step_changes()
-
-    def move_step_up(self):
-        step_row = self.list_steps.currentRow()
-        steps = self.get_current_steps_list()
-        if steps is not None and step_row > 0:
-            steps[step_row], steps[step_row - 1] = steps[step_row - 1], steps[step_row]
-            self.refresh_steps_list()
-            self.list_steps.setCurrentRow(step_row - 1)
-
-    def move_step_down(self):
-        step_row = self.list_steps.currentRow()
-        steps = self.get_current_steps_list()
-        if steps is not None and 0 <= step_row < len(steps) - 1:
-            steps[step_row], steps[step_row + 1] = steps[step_row + 1], steps[step_row]
-            self.refresh_steps_list()
-            self.list_steps.setCurrentRow(step_row + 1)
-
-    def delete_step(self):
-        step_row = self.list_steps.currentRow()
-        steps = self.get_current_steps_list()
-        if steps is not None and 0 <= step_row < len(steps):
-            reply = QMessageBox.question(
-                self, "Confirm Delete",
-                "Are you sure you want to delete this step?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                del steps[step_row]
-                self.refresh_steps_list()
-                if step_row < len(steps):
-                    self.list_steps.setCurrentRow(step_row)
-                elif len(steps) > 0:
-                    self.list_steps.setCurrentRow(len(steps) - 1)
+            step = data.copy()
+            t = step.get("type")
+            
+            if t in ["if", "if_else"]:
+                step["then"] = []
+                if t == "if_else":
+                    step["else"] = []
+                for j in range(child.childCount()):
+                    sub_child = child.child(j)
+                    sub_data = sub_child.data(0, Qt.ItemDataRole.UserRole)
+                    if isinstance(sub_data, dict) and "_container" in sub_data:
+                        container = sub_data["_container"]
+                        if container == "then":
+                            step["then"] = self.rebuild_steps_from_tree(sub_child)
+                        elif container == "else" and t == "if_else":
+                            step["else"] = self.rebuild_steps_from_tree(sub_child)
+            elif t in ["while", "repeat_while", "repeat_times"]:
+                step["body"] = []
+                for j in range(child.childCount()):
+                    sub_child = child.child(j)
+                    sub_data = sub_child.data(0, Qt.ItemDataRole.UserRole)
+                    if isinstance(sub_data, dict) and "_container" in sub_data:
+                        container = sub_data["_container"]
+                        if container == "body":
+                            step["body"] = self.rebuild_steps_from_tree(sub_child)
+            
+            steps_list.append(step)
+        return steps_list
 
     def save_and_deploy(self):
         target_kit = self.get_current_kit()
@@ -4764,71 +5384,45 @@ class AASRulesEditorDialog(QDialog):
             
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            self.save_current_step_changes()
             self.save_trigger_changes()
-            
             sm_id = f"https://acplt.org/Submodels/ControlLogic_{sanitize_aas_id(target_kit)}"
             encoded_sm_id = encode_id(sm_id)
             sm_url = f"http://localhost:8081/submodels/{encoded_sm_id}"
             
-            sm_res = requests.get(sm_url, timeout=5)
             payload = {
-                "idShort": "Rules",
-                "modelType": "Property",
-                "value": json.dumps(self.logic_rules),
-                "valueType": "xs:string"
+                "idShort": "Rules", "modelType": "Property",
+                "value": json.dumps(self.logic_rules), "valueType": "xs:string"
             }
             
+            sm_res = requests.get(sm_url, timeout=5)
             if sm_res.status_code == 404:
-                # Submodel doesn't exist. Create it!
                 submodel_payload = {
-                    "id": sm_id,
-                    "idShort": "ControlLogic",
-                    "modelType": "Submodel",
+                    "id": sm_id, "idShort": "ControlLogic", "modelType": "Submodel",
                     "submodelElements": [payload]
                 }
                 create_sm_res = requests.post("http://localhost:8081/submodels", json=submodel_payload, headers={"Content-Type": "application/json"}, timeout=5)
-                if create_sm_res.status_code not in [200, 201]:
-                    raise Exception(f"Failed to create ControlLogic submodel: {create_sm_res.text}")
+                if create_sm_res.status_code not in [200, 201]: raise Exception(f"Failed submodel creation: {create_sm_res.text}")
                     
-                # Link to shell
                 item_data = self.combo_aas.currentData()
                 shell_id = item_data.get("id")
-                encoded_shell_id = encode_id(shell_id)
-                
-                link_payload = {
-                    "type": "ModelReference",
-                    "keys": [
-                        {
-                            "type": "Submodel",
-                            "value": sm_id
-                        }
-                    ]
-                }
-                link_res = requests.post(f"http://localhost:8081/shells/{encoded_shell_id}/submodel-refs", json=link_payload, headers={"Content-Type": "application/json"}, timeout=5)
-                if link_res.status_code not in [200, 201, 204]:
-                    raise Exception(f"Failed to link ControlLogic submodel to shell: {link_res.text}")
+                link_payload = {"type": "ModelReference", "keys": [{"type": "Submodel", "value": sm_id}]}
+                link_res = requests.post(f"http://localhost:8081/shells/{encode_id(shell_id)}/submodel-refs", json=link_payload, headers={"Content-Type": "application/json"}, timeout=5)
+                if link_res.status_code not in [200, 201, 204]: raise Exception(f"Failed linking submodel: {link_res.text}")
             else:
-                # Submodel exists. Check if Rules property exists.
                 rules_url = f"{sm_url}/submodel-elements/Rules"
                 rules_res = requests.get(rules_url, timeout=5)
-                
                 if rules_res.status_code == 404:
                     create_prop_res = requests.post(f"{sm_url}/submodel-elements", json=payload, headers={"Content-Type": "application/json"}, timeout=5)
-                    if create_prop_res.status_code not in [200, 201]:
-                        raise Exception(f"Failed to create Rules property: {create_prop_res.text}")
+                    if create_prop_res.status_code not in [200, 201]: raise Exception(f"Failed property creation: {create_prop_res.text}")
                 else:
                     put_res = requests.put(rules_url, json=payload, headers={"Content-Type": "application/json"}, timeout=5)
-                    if put_res.status_code not in [200, 201, 204]:
-                        raise Exception(f"Failed to update Rules property: {put_res.text}")
+                    if put_res.status_code not in [200, 201, 204]: raise Exception(f"Failed property update: {put_res.text}")
                         
-            while QApplication.overrideCursor() is not None:
-                QApplication.restoreOverrideCursor()
+            while QApplication.overrideCursor() is not None: QApplication.restoreOverrideCursor()
             QMessageBox.information(self, "Success", f"Rules deployed to '{target_kit}' successfully!")
             self.accept()
         except Exception as e:
-            while QApplication.overrideCursor() is not None:
-                QApplication.restoreOverrideCursor()
+            while QApplication.overrideCursor() is not None: QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, "Error", f"Failed to deploy rules: {e}")
 
 if __name__ == "__main__":

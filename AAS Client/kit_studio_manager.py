@@ -70,9 +70,10 @@ class KitStudioManager:
                     target_comp = act.get("node", name)
                     
                     # Only add to virtual pins if it doesn't exist
-                    existing_pins = [p.id_short for p in inputs_coll.value]
+                    # Actuators are Outputs from the system/PLC perspective
+                    existing_pins = [p.id_short for p in outputs_coll.value]
                     if pin_id not in existing_pins:
-                        inputs_coll.value.add(model.Property(id_short=pin_id, value_type=model.datatypes.Boolean, value=False))
+                        outputs_coll.value.add(model.Property(id_short=pin_id, value_type=model.datatypes.Boolean, value=False))
                     
                     # Make behavior mapping ID unique
                     beh_id = f"{pin_id}_{target_comp}".replace(" ", "_")
@@ -94,9 +95,10 @@ class KitStudioManager:
                     target_comp = sens.get("node", name)
                     
                     # Only add to virtual pins if it doesn't exist
-                    existing_pins = [p.id_short for p in outputs_coll.value]
+                    # Sensors are Inputs to the system/PLC perspective
+                    existing_pins = [p.id_short for p in inputs_coll.value]
                     if pin_id not in existing_pins:
-                        outputs_coll.value.add(model.Property(id_short=pin_id, value_type=model.datatypes.Boolean, value=False))
+                        inputs_coll.value.add(model.Property(id_short=pin_id, value_type=model.datatypes.Boolean, value=False))
                     
                     # Make behavior mapping ID unique
                     beh_id = f"{pin_id}_{target_comp}".replace(" ", "_")
@@ -111,6 +113,24 @@ class KitStudioManager:
                     if "snap_target" in sens: params_coll.value.add(model.Property(id_short="SnapTarget", value_type=model.datatypes.String, value=sens["snap_target"]))
                     if "snap_position" in sens:
                         for i, a in enumerate(["X", "Y", "Z"]): params_coll.value.add(model.Property(id_short=f"SnapPos{a}", value_type=model.datatypes.Double, value=float(sens["snap_position"][i])))
+                    # Move-on-state: when sensor reaches move_on_state, Unity moves move_target
+                    # to the given local position/rotation and carries any dynamic product on it.
+                    if "move_target" in sens:
+                        params_coll.value.add(model.Property(id_short="MoveTarget", value_type=model.datatypes.String, value=sens["move_target"]))
+                    if "move_on_state" in sens:
+                        params_coll.value.add(model.Property(id_short="MoveOnState", value_type=model.datatypes.Boolean, value=bool(sens["move_on_state"])))
+                    if "move_position" in sens:
+                        mp = sens["move_position"]
+                        for i, a in enumerate(["X", "Y", "Z"]): params_coll.value.add(model.Property(id_short=f"MovePos{a}", value_type=model.datatypes.Double, value=float(mp[i])))
+                    if "move_rotation" in sens:
+                        mr = sens["move_rotation"]
+                        for i, a in enumerate(["X", "Y", "Z"]): params_coll.value.add(model.Property(id_short=f"MoveRot{a}", value_type=model.datatypes.Double, value=float(mr[i])))
+                    if "move_duration" in sens:
+                        params_coll.value.add(model.Property(id_short="MoveDuration", value_type=model.datatypes.Double, value=float(sens["move_duration"])))
+                    if "real_sensor_enabled" in sens:
+                        params_coll.value.add(model.Property(id_short="RealSensorEnabled", value_type=model.datatypes.Boolean, value=bool(sens["real_sensor_enabled"])))
+                    if "real_port_id" in sens:
+                        params_coll.value.add(model.Property(id_short="RealPortID", value_type=model.datatypes.String, value=str(sens["real_port_id"])))
                     beh_coll.value.add(params_coll)
                     behavior_mapping.submodel_element.add(beh_coll)
 

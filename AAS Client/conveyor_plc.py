@@ -112,7 +112,7 @@ def generate_dashboard(kit_name, inputs, outputs):
     for i, p in enumerate(outputs):
         val = p.get("value", "false")
         color = "green" if str(val).lower() == "true" else "red"
-        table.add_row(f"OUTPUT {i+1} (Actuator)", p.get("idShort"), f"[{color}]{val}[/]")
+        table.add_row(f"OUTPUT (Actuator)", p.get("idShort"), f"[{color}]{val}[/]")
     
     return table
 
