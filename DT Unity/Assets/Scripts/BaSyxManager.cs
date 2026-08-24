@@ -6,10 +6,13 @@ using System.Text;
 using System.Linq;
 using System.Xml.Linq;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEngine.Networking;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.Robotics.UrdfImporter;
+using UnityEngine.SceneManagement;
+using TMPro;
 
 public class BaSyxManager : MonoBehaviour
 {
@@ -17,16 +20,31 @@ public class BaSyxManager : MonoBehaviour
     public string registryUrl = "http://localhost:8082/shell-descriptors";
     public string aasServerUrl = "http://localhost:8081";
 
+    [Header("Error / Warning UI (Passed to Rule Engines)")]
+    public GameObject warningPanel;
+    public TextMeshProUGUI warningTextTMP;
+
     [Header("Settings")]
     public float globalScale = 1.0f;
     public float discoveryInterval = 2f;
     public float positionSyncInterval = 0.1f;
+    public float startupStabilizationDelay = 10.0f;
     public string baseCachePath;
 
     private Dictionary<string, GameObject> instantiatedRobots = new Dictionary<string, GameObject>();
     private HashSet<string> pendingRobotIds = new HashSet<string>();
     private Dictionary<string, bool?> pendingRobotDynamics = new Dictionary<string, bool?>();
     private Dictionary<string, string> kitIdToPinsSubmodelId = new Dictionary<string, string>();
+    private bool readyToSpawnDynamics = false;
+
+    private class PendingRuleEngineInit
+    {
+        public AASRuleEngine engine;
+        public string controlLogicSubmodelId;
+        public AASHttpDriver driver;
+        public string skillServerURL;
+    }
+    private List<PendingRuleEngineInit> pendingRules = new List<PendingRuleEngineInit>();
 
     public string GetVirtualPinsSubmodelId(string kitIdShort)
     {
@@ -53,6 +71,69 @@ public class BaSyxManager : MonoBehaviour
         if (Directory.Exists(baseCachePath)) Directory.Delete(baseCachePath, true);
         Directory.CreateDirectory(baseCachePath);
 
+        StartCoroutine(OrchestratedStartupRoutine());
+    }
+
+    void Update()
+    {
+        if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.rKey.wasPressedThisFrame)
+        {
+            Debug.Log("[BaSyx] 🔄 Reloading current scene...");
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        }
+    }
+
+    IEnumerator OrchestratedStartupRoutine()
+    {
+        // 1. Run initial synchronization to discover and start loading static shells
+        yield return StartCoroutine(SyncRobotsRoutine());
+        
+        // 2. Wait until all discovered static kits (non-dynamic) finish loading and spawning
+        while (true)
+        {
+            bool anyStaticPending = false;
+            foreach (var kvp in pendingRobotDynamics)
+            {
+                if (kvp.Value == false || kvp.Value == null)
+                {
+                    if (pendingRobotIds.Contains(kvp.Key))
+                    {
+                        anyStaticPending = true;
+                        break;
+                    }
+                }
+            }
+            if (!anyStaticPending) break;
+            yield return new WaitForSeconds(0.2f);
+        }
+        
+        // 3. Wait for the designated stabilization delay
+        Debug.Log($"[BaSyx] ⏳ Waiting {startupStabilizationDelay}s for system physics/outputs to stabilize...");
+        yield return new WaitForSeconds(startupStabilizationDelay);
+        
+        // 4. Trigger readyToSpawnDynamics flag so the waiting dynamic kits can now build
+        readyToSpawnDynamics = true;
+        
+        // 5. Wait for all dynamic kits to finish spawning
+        while (pendingRobotIds.Count > 0)
+        {
+            yield return new WaitForSeconds(0.2f);
+        }
+        
+        // 6. Initialize all accumulated rule engines in sequence
+        Debug.Log("[BaSyx] 🚀 Initializing all AAS Rule Engines now!");
+        foreach (var p in pendingRules)
+        {
+            if (p.engine != null)
+            {
+                p.engine.warningPanel = warningPanel;
+                p.engine.warningTextTMP = warningTextTMP;
+                p.engine.Init(aasServerUrl, p.controlLogicSubmodelId, p.driver, p.skillServerURL);
+            }
+        }
+        pendingRules.Clear();
+        
+        // 7. Hand over control to the standard DiscoveryLoop for runtime AAS addition/removal
         StartCoroutine(DiscoveryLoop());
     }
 
@@ -147,6 +228,7 @@ public class BaSyxManager : MonoBehaviour
             string pinSubmodelId = null;
             string behSubmodelId = null;
             string controlLogicSubmodelId = null;
+            string aidSubmodelId = null;
 
             if (shell.submodelDescriptors != null)
             {
@@ -160,6 +242,7 @@ public class BaSyxManager : MonoBehaviour
                     if (sm.idShort == "VirtualPins") pinSubmodelId = sm.id;
                     if (sm.idShort == "BehaviorMapping") behSubmodelId = sm.id;
                     if (sm.idShort == "ControlLogic") controlLogicSubmodelId = sm.id;
+                    if (sm.idShort == "AssetInterfacesDescription") aidSubmodelId = sm.id;
                 }
             }
 
@@ -212,6 +295,7 @@ public class BaSyxManager : MonoBehaviour
                                     if (smDesc.idShort == "VirtualPins") pinSubmodelId = smDesc.id;
                                     if (smDesc.idShort == "BehaviorMapping") behSubmodelId = smDesc.id;
                                     if (smDesc.idShort == "ControlLogic") controlLogicSubmodelId = smDesc.id;
+                                    if (smDesc.idShort == "AssetInterfacesDescription") aidSubmodelId = smDesc.id;
                                 }
                             }
                         }
@@ -219,9 +303,14 @@ public class BaSyxManager : MonoBehaviour
                 }
             }
 
-            if (pinSubmodelId != null && !string.IsNullOrEmpty(shell.idShort))
+            if (pinSubmodelId != null)
             {
-                kitIdToPinsSubmodelId[shell.idShort] = pinSubmodelId;
+                if (!string.IsNullOrEmpty(shell.idShort))
+                {
+                    kitIdToPinsSubmodelId[shell.idShort] = pinSubmodelId;
+                }
+                // Clear all actuators to zero immediately on discovery before spawning objects
+                yield return StartCoroutine(ResetVirtualPinsRoutine(pinSubmodelId));
             }
 
             if (geoSubmodelId == null && visSubmodelId == null && controlLogicSubmodelId != null)
@@ -233,8 +322,13 @@ public class BaSyxManager : MonoBehaviour
 
                 var engine = logicalGo.AddComponent<AASRuleEngine>();
                 var driver = new AASHttpDriver(null, null, aasServerUrl, GetVirtualPinsSubmodelId(shell.idShort));
-                engine.Init(aasServerUrl, controlLogicSubmodelId, driver);
-                Debug.Log($"[BaSyx] Prepared Purely Logical AAS (no GLB): '{shell.idShort}' with AASRuleEngine attached.");
+                pendingRules.Add(new PendingRuleEngineInit {
+                    engine = engine,
+                    controlLogicSubmodelId = controlLogicSubmodelId,
+                    driver = driver,
+                    skillServerURL = ""
+                });
+                Debug.Log($"[BaSyx] Staged Purely Logical AAS (no GLB): '{shell.idShort}' for startup sequence initialization.");
 
                 instantiatedRobots[shell.id] = logicalGo;
                 pendingRobotIds.Remove(shell.id);
@@ -251,6 +345,7 @@ public class BaSyxManager : MonoBehaviour
 
             // --- DETERMINE DYNAMIC PROPERTY ---
             bool isDynamic = false;
+            bool canHaveMultiple = false;
             string elementsJson = null;
 
             if (visSubmodelId != null)
@@ -263,30 +358,54 @@ public class BaSyxManager : MonoBehaviour
                 {
                     elementsJson = req.downloadHandler.text;
                     isDynamic = CheckIsDynamicFromJson(elementsJson);
+                    canHaveMultiple = CheckCanHaveMultipleFromJson(elementsJson);
                 }
             }
             
-            pendingRobotDynamics[shell.id] = isDynamic;
+            // --- READ ASSET INTERFACES DESCRIPTION (AID) ---
+            string kitProtocol = "tcp";
+            string kitEndpointIP = "";
+            int kitEndpointPort = 8888;
+            string skillServerURL = "";
 
-            // If it is dynamic, wait for all non-dynamic/static ones to finish spawning
-            if (isDynamic)
+            if (aidSubmodelId != null)
             {
-                Debug.Log($"[BaSyx] ⏳ Kit '{robotName}' is DYNAMIC. Waiting for all non-dynamic/static kits to spawn...");
-                while (true)
+                string aidUrl = $"{aasServerUrl}/submodels/{Base64Url(aidSubmodelId)}/submodel-elements?level=deep";
+                UnityWebRequest req = UnityWebRequest.Get(aidUrl);
+                yield return req.SendWebRequest();
+                if (req.result == UnityWebRequest.Result.Success)
                 {
-                    bool anyStaticPending = false;
-                    foreach (var kvp in pendingRobotDynamics)
+                    try
                     {
-                        if (kvp.Key == shell.id) continue;
-                        if (kvp.Value == false || kvp.Value == null)
+                        var elements = DeserializeList<SubmodelElement>(req.downloadHandler.text);
+                        foreach (var el in elements)
                         {
-                            anyStaticPending = true;
-                            break;
+                            if (el.idShort == "Protocol" && el.value != null) kitProtocol = el.value.ToString();
+                            if (el.idShort == "EndpointIP" && el.value != null) kitEndpointIP = el.value.ToString();
+                            if (el.idShort == "EndpointPort" && el.value != null)
+                            {
+                                int.TryParse(el.value.ToString(), out kitEndpointPort);
+                            }
+                        }
+                        if (!string.IsNullOrEmpty(kitEndpointIP))
+                        {
+                            skillServerURL = $"http://{kitEndpointIP}:80";
                         }
                     }
-                    if (!anyStaticPending) break;
-                    yield return new WaitForSeconds(0.2f);
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"[BaSyx] Error parsing AID submodel: {ex.Message}");
+                    }
                 }
+            }
+
+            pendingRobotDynamics[shell.id] = isDynamic;
+
+            // If it is dynamic, wait for the global readyToSpawnDynamics trigger
+            if (isDynamic)
+            {
+                Debug.Log($"[BaSyx] ⏳ Kit '{robotName}' is DYNAMIC. Waiting for system stabilization sequence to complete...");
+                yield return new WaitUntil(() => readyToSpawnDynamics);
                 Debug.Log($"[BaSyx] 🚀 Spawning dynamic kit '{robotName}' now.");
             }
 
@@ -326,6 +445,12 @@ public class BaSyxManager : MonoBehaviour
                         robotObj.transform.SetParent(container.transform, false);
                         robotObj.transform.localScale = Vector3.one * globalScale;
 
+                        if (isDynamic)
+                        {
+                            var prodConfig = robotObj.AddComponent<AASProductConfig>();
+                            prodConfig.canHaveMultiple = canHaveMultiple;
+                        }
+
                         var jointInitList = new List<AASRobotSync.JointInitData>();
                         foreach (var jData in importResult.joints)
                         {
@@ -359,28 +484,39 @@ public class BaSyxManager : MonoBehaviour
                         // Virtual IO Sync (for Kits)
                         if (pinSubmodelId != null && behSubmodelId != null)
                         {
+                            AASActuatorController actuatorCtrl = null;
+                            AASSensorController sensorCtrl = null;
+                            bool ioInitSuccess = false;
+
                             try
                             {
                                 var components = new Dictionary<string, GameObject>();
                                 foreach (Transform t in robotObj.GetComponentsInChildren<Transform>()) components[t.name] = t.gameObject;
 
-                                var actuatorCtrl = robotObj.AddComponent<AASActuatorController>();
-                                actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, components);
+                                actuatorCtrl = robotObj.AddComponent<AASActuatorController>();
+                                actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, components, kitProtocol, kitEndpointIP, kitEndpointPort);
 
-                                var sensorCtrl = robotObj.AddComponent<AASSensorController>();
-                                sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, components);
+                                sensorCtrl = robotObj.AddComponent<AASSensorController>();
+                                sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, components, kitProtocol, kitEndpointIP, kitEndpointPort);
 
-                                if (controlLogicSubmodelId != null)
-                                {
-                                    var engine = robotObj.AddComponent<AASRuleEngine>();
-                                    var driver = new AASHttpDriver(sensorCtrl, actuatorCtrl, aasServerUrl, pinSubmodelId);
-                                    engine.Init(aasServerUrl, controlLogicSubmodelId, driver);
-                                    Debug.Log($"[BaSyx] Rule engine attached to URDF kit '{robotName}'");
-                                }
+                                ioInitSuccess = true;
                             }
                             catch (Exception e)
                             {
                                 Debug.LogError($"[BaSyx] Error initializing URDF actuator/sensor controllers: {e.Message}");
+                            }
+
+                            if (ioInitSuccess && controlLogicSubmodelId != null)
+                            {
+                                var engine = robotObj.AddComponent<AASRuleEngine>();
+                                var driver = new AASHttpDriver(sensorCtrl, actuatorCtrl, aasServerUrl, pinSubmodelId);
+                                pendingRules.Add(new PendingRuleEngineInit {
+                                    engine = engine,
+                                    controlLogicSubmodelId = controlLogicSubmodelId,
+                                    driver = driver,
+                                    skillServerURL = skillServerURL
+                                });
+                                Debug.Log($"[BaSyx] Staged Rule Engine for URDF kit '{robotName}' for startup sequence initialization.");
                             }
                         }
 
@@ -422,35 +558,52 @@ public class BaSyxManager : MonoBehaviour
                         kitObj.transform.SetParent(container.transform, false);
                         kitObj.transform.localScale = Vector3.one * globalScale;
 
+                        if (isDynamic)
+                        {
+                            var prodConfig = kitObj.AddComponent<AASProductConfig>();
+                            prodConfig.canHaveMultiple = canHaveMultiple;
+                        }
+
                         instantiatedRobots[shell.id] = kitObj;
                         if (RobotCameraManager.Instance != null) RobotCameraManager.Instance.AddTarget(kitObj.transform);
                         
                         if (pinSubmodelId != null && behSubmodelId != null)
                         {
+                            AASActuatorController actuatorCtrl = null;
+                            AASSensorController sensorCtrl = null;
+                            bool ioInitSuccess = false;
+
                             try
                             {
-                                var actuatorCtrl = kitObj.AddComponent<AASActuatorController>();
-                                actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+                                actuatorCtrl = kitObj.AddComponent<AASActuatorController>();
+                                actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components, kitProtocol, kitEndpointIP, kitEndpointPort);
 
-                                var sensorCtrl = kitObj.AddComponent<AASSensorController>();
-                                sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+                                sensorCtrl = kitObj.AddComponent<AASSensorController>();
+                                sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components, kitProtocol, kitEndpointIP, kitEndpointPort, startupStabilizationDelay);
 
-                                if (controlLogicSubmodelId != null)
-                                {
-                                    var engine = kitObj.AddComponent<AASRuleEngine>();
-                                    var driver = new AASHttpDriver(sensorCtrl, actuatorCtrl, aasServerUrl, pinSubmodelId);
-                                    engine.Init(aasServerUrl, controlLogicSubmodelId, driver);
-                                    Debug.Log($"[BaSyx] Rule engine attached to native GLB kit '{robotName}'");
-                                }
+                                ioInitSuccess = true;
                             }
                             catch (Exception e)
                             {
                                 Debug.LogError($"[BaSyx] Error initializing GLB actuator/sensor controllers: {e.Message}");
                             }
+
+                            if (ioInitSuccess && controlLogicSubmodelId != null)
+                            {
+                                var engine = kitObj.AddComponent<AASRuleEngine>();
+                                var driver = new AASHttpDriver(sensorCtrl, actuatorCtrl, aasServerUrl, pinSubmodelId);
+                                pendingRules.Add(new PendingRuleEngineInit {
+                                    engine = engine,
+                                    controlLogicSubmodelId = controlLogicSubmodelId,
+                                    driver = driver,
+                                    skillServerURL = skillServerURL
+                                });
+                                Debug.Log($"[BaSyx] Staged Rule Engine for native GLB kit '{robotName}' for startup sequence initialization.");
+                            }
                         }
                         
                         Debug.Log($"[BaSyx] ✅ Kit {robotName} prepared via glTF (Native).");
-                        StartCoroutine(SyncKitLoop(shell.id, visSubmodelId, pinSubmodelId, behSubmodelId, controlLogicSubmodelId, robotPath, robotName, elementsJson));
+                        StartCoroutine(SyncKitLoop(shell.id, visSubmodelId, pinSubmodelId, behSubmodelId, controlLogicSubmodelId, aidSubmodelId, robotPath, robotName, elementsJson));
                     }
                 }
             }
@@ -838,7 +991,7 @@ public class BaSyxManager : MonoBehaviour
         return fs.OrderByDescending(f => f.Contains("robot")).ThenByDescending(f => f.EndsWith(".urdf", StringComparison.OrdinalIgnoreCase)).First();
     }
 
-    IEnumerator SyncKitLoop(string shellId, string visSubmodelId, string pinSubmodelId, string behSubmodelId, string controlLogicSubmodelId, string robotPath, string robotName, string initialJson)
+    IEnumerator SyncKitLoop(string shellId, string visSubmodelId, string pinSubmodelId, string behSubmodelId, string controlLogicSubmodelId, string aidSubmodelId, string robotPath, string robotName, string initialJson)
     {
         string lastJson = initialJson;
         string elementsUrl = $"{aasServerUrl}/submodels/{Base64Url(visSubmodelId)}/submodel-elements?level=deep";
@@ -887,20 +1040,53 @@ public class BaSyxManager : MonoBehaviour
                         instantiatedRobots[shellId] = newKit;
                         if (RobotCameraManager.Instance != null) RobotCameraManager.Instance.AddTarget(newKit.transform);
                         
+                        // Parse AID during hot-reload
+                        string kitProtocol = "tcp";
+                        string kitEndpointIP = "";
+                        int kitEndpointPort = 8888;
+                        string skillServerURL = "";
+
+                        if (aidSubmodelId != null)
+                        {
+                            string aidUrl = $"{aasServerUrl}/submodels/{Base64Url(aidSubmodelId)}/submodel-elements?level=deep";
+                            UnityWebRequest aidReq = UnityWebRequest.Get(aidUrl);
+                            yield return aidReq.SendWebRequest();
+                            if (aidReq.result == UnityWebRequest.Result.Success)
+                            {
+                                try
+                                {
+                                    var elements = DeserializeList<SubmodelElement>(aidReq.downloadHandler.text);
+                                    foreach (var el in elements)
+                                    {
+                                        if (el.idShort == "Protocol" && el.value != null) kitProtocol = el.value.ToString();
+                                        if (el.idShort == "EndpointIP" && el.value != null) kitEndpointIP = el.value.ToString();
+                                        if (el.idShort == "EndpointPort" && el.value != null) int.TryParse(el.value.ToString(), out kitEndpointPort);
+                                    }
+                                    if (!string.IsNullOrEmpty(kitEndpointIP)) skillServerURL = $"http://{kitEndpointIP}:80";
+                                }
+                                catch (Exception ex)
+                                {
+                                    Debug.LogError($"[BaSyx] Hot-reload AID parsing error: {ex.Message}");
+                                }
+                            }
+                        }
+
                         if (pinSubmodelId != null && behSubmodelId != null)
                         {
                             var actuatorCtrl = newKit.AddComponent<AASActuatorController>();
-                            actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+                            actuatorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components, kitProtocol, kitEndpointIP, kitEndpointPort);
                             
                             var sensorCtrl = newKit.AddComponent<AASSensorController>();
-                            sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components);
+                            sensorCtrl.Init(aasServerUrl, pinSubmodelId, behSubmodelId, importData.components, kitProtocol, kitEndpointIP, kitEndpointPort);
 
                             if (controlLogicSubmodelId != null)
                             {
                                 var engine = newKit.AddComponent<AASRuleEngine>();
+                                engine.warningPanel = warningPanel;
+                                engine.warningTextTMP = warningTextTMP;
                                 var driver = new AASHttpDriver(sensorCtrl, actuatorCtrl, aasServerUrl, pinSubmodelId);
-                                engine.Init(aasServerUrl, controlLogicSubmodelId, driver);
-                                Debug.Log($"[BaSyx] Rule engine re-attached to hot-reloaded kit '{robotName}'");
+                                engine.Init(aasServerUrl, controlLogicSubmodelId, driver, skillServerURL);
+                                Debug.Log($"[BaSyx] Rule engine re-attached to hot-reloaded kit '{robotName}' with DT skill URL: {skillServerURL}");
                             }
                         }
                         
@@ -946,8 +1132,116 @@ public class BaSyxManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogError($"[BaSyx] Error checking if kit is dynamic: {e}");
+            Debug.LogError($"[BaSyx] Error parsing DynamicObject: {e.Message}");
         }
         return false;
     }
+
+    private bool CheckCanHaveMultipleFromJson(string jsonElements)
+    {
+        try
+        {
+            JToken rootToken = JToken.Parse(jsonElements);
+            JArray elements = null;
+            if (rootToken is JObject obj && obj["result"] != null) 
+                elements = obj["result"] as JArray;
+            else if (rootToken is JArray arr) 
+                elements = arr;
+
+            if (elements == null) return false;
+
+            foreach (var token in elements)
+            {
+                var valueNode = token["value"];
+                if (valueNode != null && valueNode.Type == JTokenType.Array)
+                {
+                    foreach (var prop in valueNode)
+                    {
+                        string idShort = prop["idShort"]?.ToString();
+                        if (idShort != null && idShort.Replace(" ", "").ToLower() == "canhavemultiple")
+                        {
+                            if (prop["value"]?.ToString().ToLower() == "true")
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch {}
+        return false;
+    }
+
+
+    IEnumerator ResetVirtualPinsRoutine(string pinSubmodelId)
+    {
+        string url = $"{aasServerUrl}/submodels/{Base64Url(pinSubmodelId)}/submodel-elements?level=deep";
+        UnityWebRequest req = UnityWebRequest.Get(url);
+        yield return req.SendWebRequest();
+
+        if (req.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogWarning($"[BaSyx] Failed to fetch VirtualPins for reset: {req.error}");
+            yield break;
+        }
+
+        string json = req.downloadHandler.text;
+        JArray elements = null;
+        try
+        {
+            if (json.Trim().StartsWith("{"))
+            {
+                var paged = JObject.Parse(json);
+                elements = paged["result"] as JArray;
+            }
+            else
+            {
+                elements = JArray.Parse(json);
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[BaSyx] JSON Parse error for VirtualPins reset: {e.Message}");
+        }
+
+        if (elements == null) yield break;
+
+        foreach (var element in elements)
+        {
+            string idShort = element["idShort"]?.ToString();
+            if (idShort == "Inputs" || idShort == "Outputs")
+            {
+                var values = element["value"] as JArray;
+                if (values != null)
+                {
+                    foreach (var val in values)
+                    {
+                        string pinId = val["idShort"]?.ToString();
+                        string modelType = val["modelType"]?.ToString();
+                        if (modelType == "Property" && !string.IsNullOrEmpty(pinId))
+                        {
+                            string putUrl = $"{aasServerUrl}/submodels/{Base64Url(pinSubmodelId)}/submodel-elements/{idShort}.{pinId}";
+                            string putJson = $"{{\"idShort\":\"{pinId}\",\"modelType\":\"Property\",\"valueType\":\"xs:boolean\",\"value\":\"false\"}}";
+                            
+                            UnityWebRequest putReq = new UnityWebRequest(putUrl, "PUT");
+                            byte[] bodyRaw = Encoding.UTF8.GetBytes(putJson);
+                            putReq.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                            putReq.downloadHandler = new DownloadHandlerBuffer();
+                            putReq.SetRequestHeader("Content-Type", "application/json");
+                            putReq.timeout = 2;
+                            
+                            yield return putReq.SendWebRequest();
+                        }
+                    }
+                }
+            }
+        }
+        Debug.Log($"[BaSyx] Reset all virtual pins to false for submodel: {pinSubmodelId}");
+    }
+}
+
+public class AASProductConfig : UnityEngine.MonoBehaviour
+{
+    public bool canHaveMultiple;
 }

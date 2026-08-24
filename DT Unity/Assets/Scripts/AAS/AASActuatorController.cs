@@ -23,6 +23,7 @@ public class AASActuatorController : MonoBehaviour
         public float limitMin;
         public float limitMax;
         public bool currentState;
+        public bool realState; // Real-world state from Arduino TCP Sockets
         
         public Vector3 initialPosition;
         public Quaternion initialRotation;
@@ -36,35 +37,47 @@ public class AASActuatorController : MonoBehaviour
         
         public string stopSensorComponent;
         public AASSensorController.SensorPhysicsProxy linkedSensor;
+
+        // Real-world socket connection link (Digital Twin)
+        public bool realActuatorEnabled;
+        public string realPortId; // e.g. "R0_0"
     }
 
     public List<ActuatorBinding> bindings = new List<ActuatorBinding>();
     private bool isInitialized = false;
+    private bool isStabilized = false;
 
-    private static PhysicsMaterial _noFrictionMaterial;
-    private static PhysicsMaterial NoFrictionMaterial {
+    // --- Digital Twin Actuator TCP connection ---
+    private string _kitProtocol = "tcp";
+    private string _kitEndpointIP = "";
+    private int _kitEndpointPort = 8888;
+    private bool _dtActive = false;
+    private Dictionary<string, Action<bool>> _portCallbacks = new Dictionary<string, Action<bool>>();
+
+    private static PhysicsMaterial _highFrictionMaterial;
+    private static PhysicsMaterial HighFrictionMaterial {
         get {
-            if (_noFrictionMaterial == null) {
-                _noFrictionMaterial = new PhysicsMaterial("NoFriction") {
-                    dynamicFriction = 0f,
-                    staticFriction = 0f,
-                    frictionCombine = PhysicsMaterialCombine.Minimum,
+            if (_highFrictionMaterial == null) {
+                _highFrictionMaterial = new PhysicsMaterial("HighFriction") {
+                    dynamicFriction = 1.0f,
+                    staticFriction = 1.0f,
+                    frictionCombine = PhysicsMaterialCombine.Maximum,
                     bounceCombine = PhysicsMaterialCombine.Minimum
                 };
             }
-            return _noFrictionMaterial;
+            return _highFrictionMaterial;
         }
     }
 
     // --- Product-Centric Movement ---
     public class ConveyorContactTracker : MonoBehaviour {
         private Rigidbody rb;
+        public AASActuatorController actuatorCtrl;
         private class ContactInfo {
             public float lastTime;
             public List<ActuatorBinding> bindings;
         }
         private Dictionary<GameObject, ContactInfo> activeContacts = new Dictionary<GameObject, ContactInfo>();
-        private int logThrottle = 0;
 
         void Awake() { rb = GetComponent<Rigidbody>(); }
 
@@ -91,7 +104,6 @@ public class AASActuatorController : MonoBehaviour
                 
                 Vector3 combinedDeltaPos = Vector3.zero;
                 Quaternion combinedDeltaRot = Quaternion.identity;
-                bool isConveyor = false;
                 Vector3 conveyorAxis = Vector3.forward;
                 float conveyorSpeed = 0f;
                 bool conveyorState = false;
@@ -107,31 +119,33 @@ public class AASActuatorController : MonoBehaviour
                             combinedDeltaRot = b.deltaRotation * combinedDeltaRot;
                             
                             if (b.type == "Conveyor") {
-                                isConveyor = true;
-                                if (b.currentState || conveyorSpeed == 0f) {
-                                    conveyorAxis = b.axis;
-                                    conveyorSpeed = b.speed;
-                                    conveyorState = b.currentState;
-                                    conveyorSensor = b.linkedSensor;
+                                if (!actuatorCtrl.isStabilized) {
+                                    conveyorState = false;
+                                    conveyorSpeed = 0f;
+                                } else {
+                                    if (b.currentState || conveyorSpeed == 0f) {
+                                        conveyorAxis = b.axis;
+                                        conveyorSpeed = b.speed;
+                                        conveyorState = b.currentState;
+                                        conveyorSensor = b.linkedSensor;
+                                        
+                                        // Calculate the correct world direction using the conveyor sub-component's transform
+                                        Vector3 worldDir = b.target.transform.TransformDirection(b.axis);
+                                        bool isBlocked = conveyorSensor != null && (conveyorSensor.binding.activeLow ? !conveyorSensor.binding.lastState : conveyorSensor.binding.lastState);
+                                        Vector3 vel = (conveyorState && !isBlocked) ? (worldDir * conveyorSpeed) : Vector3.zero;
+                                        candidateVelocities.Add(vel);
+                                    }
                                 }
                             }
                         }
                         foundBinding = true;
-                        break; // Stop climbing the hierarchy once we found matches for this level
+                        break; 
                     }
                     curr = curr.parent;
                 }
-
                 if (foundBinding) {
                     deltaTranslation += combinedDeltaPos;
                     deltaRotation = combinedDeltaRot * deltaRotation;
-
-                    if (isConveyor) {
-                        Vector3 worldDir = curr.gameObject.transform.TransformDirection(conveyorAxis);
-                        bool isBlocked = conveyorSensor != null && (conveyorSensor.binding.activeLow ? !conveyorSensor.binding.lastState : conveyorSensor.binding.lastState);
-                        Vector3 vel = (conveyorState && !isBlocked) ? (worldDir * conveyorSpeed) : Vector3.zero;
-                        candidateVelocities.Add(vel);
-                    }
                 }
             }
 
@@ -181,37 +195,36 @@ public class AASActuatorController : MonoBehaviour
             }
 
             if (targetVel.sqrMagnitude > 0.001f) {
-                Vector3 finalVel = new Vector3(targetVel.x, rb.linearVelocity.y, targetVel.z);
-                if (rb.IsSleeping()) rb.WakeUp();
-                rb.linearDamping = 0;
-                rb.linearVelocity = finalVel;
+                float velocityY = rb.isKinematic ? 0f : rb.linearVelocity.y;
+                Vector3 finalVel = new Vector3(targetVel.x, velocityY, targetVel.z);
+                
+                if (!rb.isKinematic) {
+                    if (rb.IsSleeping()) rb.WakeUp();
+                    rb.linearDamping = 0;
+                    rb.linearVelocity = finalVel;
+                }
                 
                 targetPosition += finalVel * Time.fixedDeltaTime;
                 hasMovement = true;
             } else {
-                rb.linearVelocity = new Vector3(0, rb.linearVelocity.y, 0);
+                if (!rb.isKinematic) {
+                    rb.linearVelocity = new Vector3(0, rb.linearVelocity.y, 0);
+                }
             }
 
             if (hasMovement) {
-                logThrottle++;
-                if (logThrottle % 10 == 0) {
-                    string contactNames = string.Join(", ", activeContacts.Keys.Select(k => k.name));
-                    Debug.Log($"[ConveyorPhysics] Moving product '{gameObject.name}' (Contacts={activeContacts.Count} [{contactNames}]):\n" +
-                              $"  - deltaTranslation: {deltaTranslation}\n" +
-                              $"  - deltaRotation (Euler): {deltaRotation.eulerAngles}\n" +
-                              $"  - targetVel: {targetVel}\n" +
-                              $"  - rb.rotation before: {rb.rotation.eulerAngles}\n" +
-                              $"  - Moving to Position: {targetPosition}, Rotation: {targetRotation.eulerAngles}");
-                }
                 rb.MovePosition(targetPosition);
                 rb.MoveRotation(targetRotation);
                 
                 // Clear physics angular velocity during kinematic sweep to prevent force buildup
-                rb.angularVelocity = Vector3.zero;
+                if (!rb.isKinematic) {
+                    rb.angularVelocity = Vector3.zero;
+                }
             } else {
-                logThrottle = 0;
                 // Stopped: zero out angular velocity to completely eliminate rotation drift/creep from collisions
-                rb.angularVelocity = Vector3.zero;
+                if (!rb.isKinematic) {
+                    rb.angularVelocity = Vector3.zero;
+                }
             }
 
             foreach (var col in GetComponentsInChildren<Collider>()) col.contactOffset = 0.001f;
@@ -227,12 +240,16 @@ public class AASActuatorController : MonoBehaviour
         }
         void Start() {
             var col = GetComponent<Collider>();
-            if (col != null) col.material = NoFrictionMaterial;
+            if (col != null) col.material = HighFrictionMaterial;
         }
         private void Register(GameObject other) {
             var rb = other.GetComponentInParent<Rigidbody>();
-            if (rb != null && !rb.isKinematic) {
+            if (rb != null) {
+                // If the Rigidbody belongs to the conveyor kit itself, ignore it to prevent moving sensors/rollers.
+                if (rb.transform.IsChildOf(controller.transform)) return;
+
                 var tracker = rb.GetComponent<ConveyorContactTracker>() ?? rb.gameObject.AddComponent<ConveyorContactTracker>();
+                tracker.actuatorCtrl = controller;
                 tracker.NotifyContact(rootConveyor, controller.bindings);
             }
         }
@@ -240,10 +257,115 @@ public class AASActuatorController : MonoBehaviour
         void OnTriggerStay(Collider other) { Register(other.gameObject); }
     }
 
-    public void Init(string serverUrl, string pinsSubmodelId, string behaviorSubmodelId, Dictionary<string, GameObject> componentMap)
+    private void Start()
     {
-        this.pinsUrl = $"{serverUrl}/submodels/{Base64Url(pinsSubmodelId)}/submodel-elements/Inputs";
+        OperationModeManager.OnModeChanged += OnOperationModeChanged;
+    }
+
+    private void OnDestroy()
+    {
+        OperationModeManager.OnModeChanged -= OnOperationModeChanged;
+        StopDTConnection();
+    }
+
+    private void OnOperationModeChanged(OperationMode mode) => ApplyOperationMode(mode);
+
+    private void ApplyOperationMode(OperationMode mode)
+    {
+        if (!isInitialized) return;
+        bool isVC = mode == OperationMode.VirtualCommissioning;
+
+        StopDTConnection();
+        if (!isVC)
+        {
+            if (!string.IsNullOrEmpty(_kitEndpointIP))
+            {
+                StartDTConnection();
+            }
+        }
+        Debug.Log($"[Actuator] 🔄 Mode → {mode} on '{gameObject.name}'");
+    }
+
+    private void StartDTConnection()
+    {
+        string proto = (_kitProtocol ?? "tcp").ToLower().Trim();
+        if (proto != "tcp" && proto != "socket" && proto != "sockets" && proto != "none") return;
+
+        _dtActive = true;
+
+        if (AASArduinoLink.Instance == null)
+        {
+            var go = new GameObject("AASArduinoLink");
+            go.AddComponent<AASArduinoLink>();
+        }
+
+        AASArduinoLink.Instance.StartConnection(_kitEndpointIP, _kitEndpointPort);
+
+        foreach (var binding in bindings)
+        {
+            if (!binding.realActuatorEnabled || string.IsNullOrEmpty(binding.realPortId)) continue;
+
+            var b = binding;
+            Action<bool> cb = (value) => OnArduinoPortChanged(b, value);
+            _portCallbacks[binding.realPortId] = cb;
+            AASArduinoLink.Instance.Subscribe(binding.realPortId, cb);
+        }
+
+        Debug.Log($"[Actuator] 🔗 DT subscribed to ArduinoLink ({_kitEndpointIP}:{_kitEndpointPort}) for {_portCallbacks.Count} actuator port(s) on '{gameObject.name}'");
+    }
+
+    private void StopDTConnection()
+    {
+        _dtActive = false;
+        if (AASArduinoLink.Instance != null)
+        {
+            foreach (var kvp in _portCallbacks)
+                AASArduinoLink.Instance.Unsubscribe(kvp.Key, kvp.Value);
+        }
+        _portCallbacks.Clear();
+    }
+
+    private void OnArduinoPortChanged(ActuatorBinding binding, bool value)
+    {
+        if (!_dtActive) return;
+        binding.realState = value;
+        binding.currentState = value; // Overwrite simulator local state to force matching visual movement
+        Debug.Log($"[Actuator] 📡 DT Actuator state received: '{binding.pinId}' ({binding.realPortId}) = {value}. Overwrote simulator state!");
+        
+        // Push state change to AAS so that it remains in sync with the hardware socket
+        StartCoroutine(UpdateActuatorAASAsync(binding.pinId, value));
+    }
+
+    private IEnumerator UpdateActuatorAASAsync(string pinId, bool value)
+    {
+        string url = $"{pinsUrl}.{pinId}";
+        string json = $"{{\"idShort\":\"{pinId}\",\"modelType\":\"Property\",\"valueType\":\"xs:boolean\",\"value\":\"{value.ToString().ToLower()}\"}}";
+
+        using (UnityWebRequest req = new UnityWebRequest(url, "PUT"))
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+            req.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.timeout = 2;
+
+            yield return req.SendWebRequest();
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogWarning($"[Actuator] ❌ Failed to sync socket value for {pinId} to AAS: {req.error} (URL: {url})");
+            }
+        }
+    }
+
+    public void Init(string serverUrl, string pinsSubmodelId, string behaviorSubmodelId, Dictionary<string, GameObject> componentMap, 
+                    string protocol = "tcp", string ip = "", int port = 8888, float delay = 10.0f)
+    {
+        this.pinsUrl = $"{serverUrl}/submodels/{Base64Url(pinsSubmodelId)}/submodel-elements/Outputs";
         this.behaviorUrl = $"{serverUrl}/submodels/{Base64Url(behaviorSubmodelId)}/submodel-elements";
+        this._kitProtocol = protocol;
+        this._kitEndpointIP = ip;
+        this._kitEndpointPort = port;
+        isStabilized = true;
         StartCoroutine(LoadBindingsRoutine(componentMap));
     }
 
@@ -268,6 +390,8 @@ public class AASActuatorController : MonoBehaviour
                     float speed = 1f;
                     float min = 0f, max = 0f;
                     string stopSensorComponent = null;
+                    bool realActuatorEnabled = false;
+                    string realPortId = "";
                     foreach (var val in values)
                     {
                         string id = val["idShort"]?.ToString();
@@ -288,6 +412,8 @@ public class AASActuatorController : MonoBehaviour
                                 if (pid == "LimitMin") min = fv;
                                 if (pid == "LimitMax") max = fv;
                                 if (pid == "StopSensorComponent") stopSensorComponent = p["value"]?.ToString();
+                                if (pid == "RealActuatorEnabled") realActuatorEnabled = p["value"]?.ToString().ToLower() == "true";
+                                if (pid == "RealPortID") realPortId = p["value"]?.ToString();
                             }
                         }
                     }
@@ -306,7 +432,9 @@ public class AASActuatorController : MonoBehaviour
                             initialRotation = target.transform.localRotation,
                             lastPosition = target.transform.position,
                             lastRotation = target.transform.rotation,
-                            stopSensorComponent = stopSensorComponent
+                            stopSensorComponent = stopSensorComponent,
+                            realActuatorEnabled = realActuatorEnabled,
+                            realPortId = realPortId
                         };
                         bindings.Add(binding);
                         if (type == "Conveyor" || type == "RotateContinuous" || type == "TranslateContinuous") {
@@ -334,6 +462,9 @@ public class AASActuatorController : MonoBehaviour
             }
 
             StartCoroutine(PollingLoop());
+            
+            // Connect to real hardware actuators if in DT mode
+            ApplyOperationMode(OperationModeManager.Current);
         }
     }
 
@@ -400,10 +531,17 @@ public class AASActuatorController : MonoBehaviour
         return clean.Trim().ToLower();
     }
 
+
     IEnumerator PollingLoop()
     {
         while (true)
         {
+            if (OperationModeManager.Current == OperationMode.DigitalTwin)
+            {
+                yield return new WaitForSeconds(1.0f);
+                continue;
+            }
+
             UnityWebRequest req = UnityWebRequest.Get(pinsUrl + "?level=deep");
             yield return req.SendWebRequest();
             if (req.result == UnityWebRequest.Result.Success)
@@ -452,7 +590,7 @@ public class AASActuatorController : MonoBehaviour
 
     void FixedUpdate()
     {
-        if (!isInitialized) return;
+        if (!isInitialized || !isStabilized) return;
         foreach (var b in bindings) {
             if (b.target == null) continue;
             

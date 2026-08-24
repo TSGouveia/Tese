@@ -249,6 +249,9 @@ public class AASKitImporter : MonoBehaviour
                         col.sharedMaterial = NoFrictionMaterial;
                     }
                     
+                    // Add marker component to identify as dynamic product
+                    compObj.AddComponent<AAS.DynamicProduct>();
+                    
                     Debug.Log($"[AASKitImporter] 📦 Activated Dynamic Product physics for '{compName}'.");
                 }
             }

@@ -9,7 +9,8 @@ using Newtonsoft.Json.Linq;
 public interface IAASDriver
 {
     void WriteActuator(string kitId, string pinId, bool value);
-    bool ReadSensor(string kitId, string pinId);
+    bool ReadSensor(string kitId, string pinId, bool useReal = false);
+    bool ReadSensorFromAAS(string kitId, string pinId);
 }
 
 public class AASHttpDriver : IAASDriver
@@ -59,21 +60,30 @@ public class AASHttpDriver : IAASDriver
             Debug.LogWarning($"[AASHttpDriver] Kit GameObject '{kitId}' not found in scene for WriteActuator.");
         }
 
-        // Send asynchronous HTTP PUT request
-        StaticCoroutineRunner.Start(UpdateActuatorAAS(kitId, pinId, value));
+        // Skip updating AAS via HTTP PUT when in Digital Twin mode (visual-only local feedback)
+        if (OperationModeManager.Current != OperationMode.DigitalTwin)
+        {
+            StaticCoroutineRunner.Start(UpdateActuatorAAS(kitId, pinId, value));
+        }
     }
 
-    public bool ReadSensor(string kitId, string pinId)
+    public bool ReadSensor(string kitId, string pinId, bool useReal = false)
     {
         GameObject kitGo = FindKitGameObject(kitId);
         if (kitGo != null)
         {
+            var controller = kitGo.GetComponent<AASSensorController>();
+            if (controller != null && controller.GetSensorState(pinId, out bool state, useReal))
+            {
+                return state;
+            }
+
             var proxies = kitGo.GetComponentsInChildren<AASSensorController.SensorPhysicsProxy>(true);
             foreach (var proxy in proxies)
             {
                 if (proxy != null && proxy.binding != null && proxy.binding.pinId == pinId)
                 {
-                    return proxy.binding.lastState;
+                    return useReal ? proxy.binding.realState : proxy.binding.lastState;
                 }
             }
         }
@@ -90,22 +100,35 @@ public class AASHttpDriver : IAASDriver
         GameObject exact = GameObject.Find(kitId);
         if (exact != null) return exact;
 
-        // Try case-insensitive search
+        // Try exact match with Clone suffix
+        GameObject exactClone = GameObject.Find(kitId + "(Clone)");
+        if (exactClone != null) return exactClone;
+
+        // Try case-insensitive search but prefer objects without "LogicalAAS_" prefix
         var allGo = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+        GameObject fallback = null;
         foreach (var go in allGo)
         {
             if (go != null && go.name.IndexOf(kitId, StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return go;
+                if (go.name.StartsWith("LogicalAAS_"))
+                {
+                    if (fallback == null) fallback = go;
+                }
+                else
+                {
+                    return go;
+                }
             }
         }
-        return null;
+        return fallback;
     }
 
-    private bool ReadSensorFromAAS(string kitId, string pinId)
+    public bool ReadSensorFromAAS(string kitId, string pinId)
     {
         string base64SubmodelId = Base64Url("https://acplt.org/Submodels/Pins_" + kitId);
-        string url = $"{baseRepoUrl}/submodels/{base64SubmodelId}/submodel-elements/Outputs.{pinId}";
+        // Inputs = sensor readings (what enters the PLC/system)
+        string url = $"{baseRepoUrl}/submodels/{base64SubmodelId}/submodel-elements/Inputs.{pinId}";
         try
         {
             var request = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(url);
@@ -141,7 +164,8 @@ public class AASHttpDriver : IAASDriver
     private IEnumerator UpdateActuatorAAS(string kitId, string pinId, bool value)
     {
         string base64SubmodelId = Base64Url("https://acplt.org/Submodels/Pins_" + kitId);
-        string url = $"{baseRepoUrl}/submodels/{base64SubmodelId}/submodel-elements/Inputs.{pinId}";
+        // Outputs = actuator commands (what the PLC/system drives)
+        string url = $"{baseRepoUrl}/submodels/{base64SubmodelId}/submodel-elements/Outputs.{pinId}";
         string json = $"{{\"idShort\":\"{pinId}\",\"modelType\":\"Property\",\"valueType\":\"xs:boolean\",\"value\":\"{value.ToString().ToLower()}\"}}";
 
         using (UnityWebRequest req = new UnityWebRequest(url, "PUT"))
