@@ -7,3 +7,10 @@ AAS Client/AAS_Robot_Studio.exe
 gha-creds-*.json
 /.github
 .aider*
+
+__pycache__/
+*.pyc
+.pytest_cache/
+AAS Docker/influxdb/data/
+DT Unity/Assets/_Recovery/
+AAS Client/conveyor_wizard_original.py
