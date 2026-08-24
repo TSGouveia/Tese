@@ -24,13 +24,12 @@ def encode_id(id_str):
 def get_pin(kit_name, collection, pin_id):
     """
     Reads the value of a virtual pin from the AAS VirtualPins submodel.
-    Maps:
-      - 'Inputs' (PLC inputs / sensors) -> reads from AAS 'Outputs' (simulation outputs)
-      - 'Outputs' (PLC outputs / actuators) -> reads from AAS 'Inputs' (simulation inputs)
+    Convention (system/PLC perspective):
+      - 'Inputs'  = sensors  (what enters the PLC)
+      - 'Outputs' = actuators (what the PLC commands)
     """
-    aas_collection = "Outputs" if collection == "Inputs" else "Inputs"
     submodel_id = f"https://acplt.org/Submodels/Pins_{kit_name}"
-    url = f"{AAS_SERVER}/submodels/{encode_id(submodel_id)}/submodel-elements/{aas_collection}.{pin_id}"
+    url = f"{AAS_SERVER}/submodels/{encode_id(submodel_id)}/submodel-elements/{collection}.{pin_id}"
     try:
         res = requests.get(url, timeout=2)
         if res.status_code == 200:
@@ -46,13 +45,12 @@ def get_pin(kit_name, collection, pin_id):
 def set_pin(kit_name, collection, pin_id, value):
     """
     Writes the value of a virtual pin to the AAS VirtualPins submodel.
-    Maps:
-      - 'Inputs' (PLC inputs / sensors) -> writes to AAS 'Outputs' (simulation outputs)
-      - 'Outputs' (PLC outputs / actuators) -> writes to AAS 'Inputs' (simulation inputs)
+    Convention (system/PLC perspective):
+      - 'Inputs'  = sensors  (what enters the PLC)
+      - 'Outputs' = actuators (what the PLC commands)
     """
-    aas_collection = "Outputs" if collection == "Inputs" else "Inputs"
     submodel_id = f"https://acplt.org/Submodels/Pins_{kit_name}"
-    url = f"{AAS_SERVER}/submodels/{encode_id(submodel_id)}/submodel-elements/{aas_collection}.{pin_id}"
+    url = f"{AAS_SERVER}/submodels/{encode_id(submodel_id)}/submodel-elements/{collection}.{pin_id}"
     payload = {
         "idShort": pin_id,
         "modelType": "Property",
