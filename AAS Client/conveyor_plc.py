@@ -143,16 +143,16 @@ if __name__ == "__main__":
                 console.print("[white][R][/] Refresh Table")
                 console.print("[white][0][/] Back to Kit Selection")
                 
-                # In Conveyor-Centric view, we control the INPUTS of the conveyor
-                for i, p in enumerate(inputs):
+                # Control Actuators (Outputs)
+                for i, p in enumerate(outputs):
                     console.print(f"[bold cyan][{i+1}][/] Toggle {p.get('idShort')}")
                 
-                opt = Prompt.ask("\nEnter Choice", choices=["R", "0", "r"] + [str(i+1) for i in range(len(inputs))])
+                opt = Prompt.ask("\nEnter Choice", choices=["R", "0", "r"] + [str(i+1) for i in range(len(outputs))])
                 if opt == "0": break
                 if opt.lower() == "r": continue
                 
                 idx = int(opt) - 1
-                success = toggle_pin(kit["pins_id"], "Inputs", inputs[idx]["idShort"], inputs[idx]["value"])
+                success = toggle_pin(kit["pins_id"], "Outputs", outputs[idx]["idShort"], outputs[idx]["value"])
                 if not success: console.print("[red]Update failed![/]"); time.sleep(1)
                 
     except KeyboardInterrupt:
