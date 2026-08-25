@@ -332,8 +332,9 @@ public class AASActuatorController : MonoBehaviour
         binding.currentState = value; // Overwrite simulator local state to force matching visual movement
         Debug.Log($"[Actuator] 📡 DT Actuator state received: '{binding.pinId}' ({binding.realPortId}) = {value}. Overwrote simulator state!");
         
-        // Push state change to AAS so that it remains in sync with the hardware socket
-        StartCoroutine(UpdateActuatorAASAsync(binding.pinId, value));
+        // We no longer push state change to AAS here in DT mode.
+        // The Digital Twin should only reflect the real world, not write actuator commands back to AAS,
+        // which could conflict with the real PLC.
     }
 
     private IEnumerator UpdateActuatorAASAsync(string pinId, bool value)

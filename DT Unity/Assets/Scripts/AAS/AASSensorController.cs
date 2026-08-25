@@ -227,7 +227,14 @@ public class AASSensorController : MonoBehaviour
                             proxy.onStateChange += (state, isOverlapping, sensorObj, productObj) =>
                             {
                                 if (!isStabilized) return;
-                                StartCoroutine(UpdateAASPin(binding, state, isOverlapping, sensorObj, productObj));
+                                
+                                // Only push virtual physics states to AAS if NOT in Digital Twin mode.
+                                // In DT mode, the real physical PLC updates the AAS.
+                                if (OperationModeManager.Current != OperationMode.DigitalTwin)
+                                {
+                                    StartCoroutine(UpdateAASPin(binding, state, isOverlapping, sensorObj, productObj));
+                                }
+                                
                                 // Trigger move-on-state if configured
                                 if (binding.hasMoveConfig && state == binding.moveOnState.Value)
                                 {
@@ -302,7 +309,7 @@ public class AASSensorController : MonoBehaviour
         // Enable / disable physics-based sensors
         foreach (var proxy in GetComponentsInChildren<SensorPhysicsProxy>(true))
         {
-            if (isVC) proxy.ResetAndEnable();
+            if (isVC || mode == OperationMode.DigitalTwin) proxy.ResetAndEnable();
             else      proxy.enabled = false;
         }
 
@@ -450,11 +457,22 @@ public class AASSensorController : MonoBehaviour
 
         Rigidbody targetRb = null;
 
-        // Find the dynamic product marked by AAS configuration
-        var dynamicProduct = FindFirstObjectByType<AAS.DynamicProduct>();
-        if (dynamicProduct != null)
+        // Find the closest dynamic product marked by AAS configuration
+        var dynamicProducts = FindObjectsByType<AAS.DynamicProduct>(FindObjectsSortMode.None);
+        float minDist = float.MaxValue;
+
+        foreach (var dp in dynamicProducts)
         {
-            targetRb = dynamicProduct.GetComponentInParent<Rigidbody>() ?? dynamicProduct.GetComponent<Rigidbody>();
+            var rb = dp.GetComponentInParent<Rigidbody>() ?? dp.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                float d = Vector3.Distance(rb.position, sensorTrans.position);
+                if (d < minDist)
+                {
+                    minDist = d;
+                    targetRb = rb;
+                }
+            }
         }
 
         if (targetRb == null)
