@@ -14,16 +14,15 @@ PINS_SM_ID = f"https://acplt.org/Submodels/Pins_{KIT_NAME}"
 PINS_URL = f"{AAS_SERVER}/submodels/{encode_id(PINS_SM_ID)}/submodel-elements"
 
 def get_pin(collection, pin_id):
-    res = requests.get(f"{PINS_URL}/{collection}/value", timeout=2)
+    url = f"{PINS_URL}/{collection}.{pin_id}"
+    res = requests.get(url, timeout=2)
     if res.status_code == 200:
-        pins = res.json()
-        for p in pins:
-            if p['idShort'] == pin_id:
-                return p['value']
+        data = res.json()
+        return data.get('value') == 'true'
     return None
 
 def set_pin(collection, pin_id, value):
-    url = f"{PINS_URL}/{collection}/{pin_id}"
+    url = f"{PINS_URL}/{collection}.{pin_id}"
     payload = {
         "idShort": pin_id,
         "modelType": "Property",
