@@ -411,6 +411,12 @@ public class AASSensorController : MonoBehaviour
         bool sensorActive = binding.activeLow ? !state : state;
         Debug.Log($"[Sensor] 📡 DT Port '{binding.realPortId}' changed state. Logical Pin: '{binding.pinId}' = {sensorActive} (Raw Electrical: {state})");
         
+        var sensorObj = FindTargetComponent(_componentMap, binding.componentName);
+        GameObject productObj = binding.currentProductAtSensor;
+
+        // In DT mode, Unity acts as the bridge to AAS, so we must push the hardware state to AAS!
+        StartCoroutine(UpdateAASPin(binding, sensorActive, sensorActive, sensorObj, productObj));
+
         // If product exits the real sensor, register it as lastDetectedProduct
         if (!sensorActive)
         {
