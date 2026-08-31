@@ -245,6 +245,10 @@ public class AASActuatorController : MonoBehaviour
         private void Register(GameObject other) {
             var rb = other.GetComponentInParent<Rigidbody>();
             if (rb != null) {
+                // Only move actual dynamic products (e.g. materials/parts), never sensors or static parts of other kits
+                if (rb.GetComponent<AAS.DynamicProduct>() == null && 
+                    rb.GetComponentInChildren<AAS.DynamicProduct>() == null) return;
+
                 // If the Rigidbody belongs to the conveyor kit itself, ignore it to prevent moving sensors/rollers.
                 if (rb.transform.IsChildOf(controller.transform)) return;
 
@@ -530,7 +534,7 @@ public class AASActuatorController : MonoBehaviour
         // 4. Fourth priority: Loose containment
         foreach (var obj in allObjects)
         {
-            if (obj.name.ToLower().Contains(compName.ToLower()) || compName.ToLower().Contains(obj.name.ToLower()))
+            if (obj.name.ToLower().Contains(compName.ToLower()))
                 return obj;
         }
 
