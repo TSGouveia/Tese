@@ -179,16 +179,7 @@ public class AASRuleEngine : MonoBehaviour
 
                     if (OperationModeManager.Current == OperationMode.DigitalTwin)
                     {
-                        // DT mode: real hardware drives actuation via skill server.
-                        // Unity invokes the skill (fire-and-forget) so the real system runs,
-                        // then also executes local visual-only behaviours (move, snap, etc.).
-                        if (!string.IsNullOrEmpty(_skillServerURL) && _skillServerURL != "none" && !_skillServerURL.Equals("http://:80"))
-                        {
-                            StartCoroutine(InvokeSkillRoutine(name));
-                        }
-
-                        if (steps != null)
-                            StartCoroutine(ExecuteSequenceRoutine(name, steps, dtMode: true));
+                        StartCoroutine(ExecuteDTSequenceWithSkillRoutine(name, steps));
                     }
                     else
                     {
@@ -216,6 +207,30 @@ public class AASRuleEngine : MonoBehaviour
             Debug.Log($"[RuleEngine] ✅ Skill '{sequenceName}': {req.downloadHandler.text}");
         else
             Debug.LogWarning($"[RuleEngine] ❌ Skill '{sequenceName}' failed: {req.error}");
+    }
+
+    private IEnumerator ExecuteDTSequenceWithSkillRoutine(string seqName, JArray steps)
+    {
+        activeSequences.Add(seqName);
+        Debug.Log($"[RuleEngine] 🚀 Sequence '{seqName}' [DT Mode - Real + Simulator]");
+
+        Coroutine skillCoroutine = null;
+        if (!string.IsNullOrEmpty(_skillServerURL) && _skillServerURL != "none" && !_skillServerURL.Equals("http://:80"))
+        {
+            skillCoroutine = StartCoroutine(InvokeSkillRoutine(seqName));
+        }
+
+        Coroutine simCoroutine = null;
+        if (steps != null)
+        {
+            simCoroutine = StartCoroutine(ExecuteBlockRoutine(seqName, steps, dtMode: true));
+        }
+
+        if (skillCoroutine != null) yield return skillCoroutine;
+        if (simCoroutine != null) yield return simCoroutine;
+
+        Debug.Log($"[RuleEngine] ✅ Sequence complete on both Real and Simulator: '{seqName}'");
+        activeSequences.Remove(seqName);
     }
 
     private IEnumerator ExecuteSequenceRoutine(string seqName, JArray steps, bool dtMode = false)

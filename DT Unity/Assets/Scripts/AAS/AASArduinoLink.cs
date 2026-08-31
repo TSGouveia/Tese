@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
@@ -14,7 +14,7 @@ using Newtonsoft.Json.Linq;
 /// Architecture:
 ///   Arduino A (192.168.10.1:8888) <-> ConnectionState thread A
 ///   Arduino B (192.168.10.2:9000) <-> ConnectionState thread B
-///          \                    /
+///          \\                    /
 ///           AASArduinoLink.Instance
 ///                    |
 ///        port callbacks -> all controllers
@@ -47,6 +47,7 @@ public class AASArduinoLink : MonoBehaviour
 
     private readonly object _connLock = new object();
     private readonly Dictionary<string, ConnectionState> _connections = new();
+    private bool _allowConnections = false;
 
     private static string Key(string ip, int port) => $"{ip}:{port}";
 
@@ -97,21 +98,52 @@ public class AASArduinoLink : MonoBehaviour
         string key = Key(ip, port);
         lock (_connLock)
         {
-            if (_connections.TryGetValue(key, out var existing) && existing.running)
+            if (_connections.TryGetValue(key, out var existing))
             {
-                Debug.Log($"[ArduinoLink] Already connected to {key}, skipping.");
+                if (_allowConnections && !existing.running)
+                {
+                    StartThread(existing);
+                }
                 return;
             }
 
-            var cs = new ConnectionState { ip = ip, port = port, running = true };
-            cs.thread = new Thread(() => ReceiveLoop(cs))
-            {
-                IsBackground = true,
-                Name         = $"ArduinoLink_{key}"
-            };
+            var cs = new ConnectionState { ip = ip, port = port, running = false };
             _connections[key] = cs;
-            cs.thread.Start();
-            Debug.Log($"[ArduinoLink] Starting TCP connection to {key}");
+            Debug.Log($"[ArduinoLink] Registered connection endpoint for {key}");
+            
+            if (_allowConnections)
+            {
+                StartThread(cs);
+            }
+        }
+    }
+
+    private void StartThread(ConnectionState cs)
+    {
+        string key = Key(cs.ip, cs.port);
+        cs.running = true;
+        cs.thread = new Thread(() => ReceiveLoop(cs))
+        {
+            IsBackground = true,
+            Name         = $"ArduinoLink_{key}"
+        };
+        cs.thread.Start();
+        Debug.Log($"[ArduinoLink] Thread started for TCP connection to {key}");
+    }
+
+    public void ConnectAll()
+    {
+        lock (_connLock)
+        {
+            Debug.Log($"[ArduinoLink] ConnectAll() called. Allowing connections and starting {_connections.Count} pending connections.");
+            _allowConnections = true;
+            foreach (var cs in _connections.Values)
+            {
+                if (!cs.running)
+                {
+                    StartThread(cs);
+                }
+            }
         }
     }
 
@@ -138,6 +170,7 @@ public class AASArduinoLink : MonoBehaviour
         {
             all = new List<ConnectionState>(_connections.Values);
             _connections.Clear();
+            _allowConnections = false;
         }
         foreach (var cs in all)
         {
@@ -158,12 +191,13 @@ public class AASArduinoLink : MonoBehaviour
         {
             try
             {
+                Debug.Log($"[ArduinoLink-LOG] Attempting TCP connection to {cs.ip}:{cs.port}");
                 cs.client = new System.Net.Sockets.TcpClient();
                 cs.client.Connect(cs.ip, cs.port);
                 cs.client.ReceiveTimeout = 0;
 
                 using var stream = cs.client.GetStream();
-                Debug.Log($"[ArduinoLink] Connected to {cs.ip}:{cs.port}");
+                Debug.Log($"[ArduinoLink-LOG] Connected successfully to {cs.ip}:{cs.port}");
 
                 var buf        = new StringBuilder();
                 int braceDepth = 0;
@@ -189,7 +223,7 @@ public class AASArduinoLink : MonoBehaviour
             {
                 if (cs.running)
                 {
-                    Debug.LogWarning($"[ArduinoLink] TCP error ({cs.ip}:{cs.port}): {ex.Message} — retrying in 3s");
+                    Debug.LogWarning($"[ArduinoLink-LOG] TCP error ({cs.ip}:{cs.port}): {ex.Message} - retrying in 3s");
                     Thread.Sleep(3000);
                 }
             }
@@ -205,13 +239,49 @@ public class AASArduinoLink : MonoBehaviour
     {
         try
         {
-            var obj   = JObject.Parse(json);
-            string id = obj["Port"]?.ToString();
-            int raw   = obj["Value"] != null ? (int)obj["Value"] : -1;
-            if (id != null && raw >= 0)
-                _queue.Enqueue((id, raw == 1));
+            Debug.Log($"[ArduinoLink-LOG] Received JSON: '{json}'");
+            var obj = JObject.Parse(json);
+            
+            // Handle both "Port" and "port"
+            string id = (obj["Port"] ?? obj["port"])?.ToString();
+            
+            bool val = false;
+            var valToken = obj["Value"] ?? obj["value"];
+            if (valToken != null)
+            {
+                if (valToken.Type == JTokenType.Boolean)
+                {
+                    val = (bool)valToken;
+                }
+                else if (valToken.Type == JTokenType.Integer)
+                {
+                    val = (int)valToken == 1;
+                }
+                else
+                {
+                    string strVal = valToken.ToString().ToLower();
+                    val = (strVal == "1" || strVal == "true");
+                }
+                
+                if (id != null)
+                {
+                    Debug.Log($"[ArduinoLink-LOG] Enqueuing event: Port='{id}', Value={val}");
+                    _queue.Enqueue((id, val));
+                }
+                else
+                {
+                    Debug.LogWarning($"[ArduinoLink-LOG] Port ID is null in JSON: '{json}'");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[ArduinoLink-LOG] Value token is null in JSON: '{json}'");
+            }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[ArduinoLink-LOG] Exception parsing JSON '{json}': {ex.Message}\n{ex.StackTrace}");
+        }
     }
 
     // -----------------------------------------------------------------------

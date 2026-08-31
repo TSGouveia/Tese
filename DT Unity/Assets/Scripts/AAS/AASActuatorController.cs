@@ -288,6 +288,13 @@ public class AASActuatorController : MonoBehaviour
 
     private void StartDTConnection()
     {
+        if (OperationModeManager.Current == OperationMode.DigitalTwin && !BaSyxManager.IsStartupComplete)
+        {
+            Debug.Log($"[Actuator] ⏳ DT Connection for '{gameObject.name}' delayed until BaSyxManager startup is complete.");
+            StartCoroutine(WaitAndStartDTConnection());
+            return;
+        }
+
         string proto = (_kitProtocol ?? "tcp").ToLower().Trim();
         if (proto != "tcp" && proto != "socket" && proto != "sockets" && proto != "none") return;
 
@@ -312,6 +319,20 @@ public class AASActuatorController : MonoBehaviour
         }
 
         Debug.Log($"[Actuator] 🔗 DT subscribed to ArduinoLink ({_kitEndpointIP}:{_kitEndpointPort}) for {_portCallbacks.Count} actuator port(s) on '{gameObject.name}'");
+    }
+
+    private IEnumerator WaitAndStartDTConnection()
+    {
+        while (!BaSyxManager.IsStartupComplete)
+        {
+            yield return new WaitForSeconds(0.5f);
+        }
+
+        if (OperationModeManager.Current == OperationMode.DigitalTwin && _dtActive == false)
+        {
+            Debug.Log($"[Actuator] 🚀 BaSyxManager startup complete. Activating DT Connection for '{gameObject.name}'.");
+            StartDTConnection();
+        }
     }
 
     private void StopDTConnection()
@@ -591,6 +612,8 @@ public class AASActuatorController : MonoBehaviour
     void FixedUpdate()
     {
         if (!isInitialized || !isStabilized) return;
+        if (OperationModeManager.Current == OperationMode.DigitalTwin && !BaSyxManager.IsStartupComplete) return;
+
         foreach (var b in bindings) {
             if (b.target == null) continue;
             

@@ -16,6 +16,8 @@ using TMPro;
 
 public class BaSyxManager : MonoBehaviour
 {
+    public static bool IsStartupComplete { get; private set; } = false;
+
     [Header("BaSyx Infrastructure")]
     public string registryUrl = "http://localhost:8082/shell-descriptors";
     public string aasServerUrl = "http://localhost:8081";
@@ -120,18 +122,52 @@ public class BaSyxManager : MonoBehaviour
             yield return new WaitForSeconds(0.2f);
         }
         
-        // 6. Initialize all accumulated rule engines in sequence
-        Debug.Log("[BaSyx] 🚀 Initializing all AAS Rule Engines now!");
-        foreach (var p in pendingRules)
+        // 6. Initialize all accumulated rule engines in sequence (only in Virtual Commissioning)
+        if (OperationModeManager.Current == OperationMode.VirtualCommissioning)
         {
-            if (p.engine != null)
+            Debug.Log("[BaSyx] 🚀 Initializing all AAS Rule Engines now!");
+            foreach (var p in pendingRules)
             {
-                p.engine.warningPanel = warningPanel;
-                p.engine.warningTextTMP = warningTextTMP;
-                p.engine.Init(aasServerUrl, p.controlLogicSubmodelId, p.driver, p.skillServerURL);
+                if (p.engine != null)
+                {
+                    p.engine.warningPanel = warningPanel;
+                    p.engine.warningTextTMP = warningTextTMP;
+                    p.engine.Init(aasServerUrl, p.controlLogicSubmodelId, p.driver, p.skillServerURL);
+                }
             }
+            pendingRules.Clear();
         }
-        pendingRules.Clear();
+        else
+        {
+            Debug.Log("[BaSyx] ⏸️ Digital Twin mode active: skipping AAS Rule Engines initialization at startup.");
+        }
+        
+        IsStartupComplete = true;
+        Debug.Log("[BaSyx] 🎉 Orchestrated Startup is fully complete! Systems are ready.");
+        
+        yield return new WaitForSeconds(3.0f);
+        if (AASArduinoLink.Instance != null)
+        {
+            AASArduinoLink.Instance.ConnectAll();
+        }
+
+        if (OperationModeManager.Current == OperationMode.DigitalTwin)
+        {
+            // Wait 4 more seconds for snaps and initial sensor synchronization to finish
+            yield return new WaitForSeconds(4.0f);
+            
+            Debug.Log("[BaSyx] 🚀 Startup delay over: Initializing AAS Rule Engines in Digital Twin mode.");
+            foreach (var p in pendingRules)
+            {
+                if (p.engine != null)
+                {
+                    p.engine.warningPanel = warningPanel;
+                    p.engine.warningTextTMP = warningTextTMP;
+                    p.engine.Init(aasServerUrl, p.controlLogicSubmodelId, p.driver, p.skillServerURL);
+                }
+            }
+            pendingRules.Clear();
+        }
         
         // 7. Hand over control to the standard DiscoveryLoop for runtime AAS addition/removal
         StartCoroutine(DiscoveryLoop());
