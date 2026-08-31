@@ -275,112 +275,76 @@ public class AASRuleEngine : MonoBehaviour
                 }
 
                  case "wait_until":
-                {
-                    JToken condToken = step["condition"] ?? step;
-                    // Default synchronization timeout in DT mode: 3 seconds to let the other side catch up
-                    float timeoutSec = step["timeout"]?.ToObject<float>() ?? 3.0f;
-                    if (timeoutSec <= 0.001f) timeoutSec = 3.0f;
-                    
-                    float? simTriggerTime = null;
-                    float? realTriggerTime = null;
-
-                    while (true)
-                    {
-                        bool condSim = EvaluateCondition(condToken, forceRealAAS: false, useRealState: false);
-                        bool condReal = EvaluateCondition(condToken, forceRealAAS: false, useRealState: true);
-                        
-                        // Condition is fully met when both are satisfied in DT mode
-                        bool condMet = dtMode ? (condSim && condReal) : condSim;
-
-                        if (condMet)
-                        {
-                            break;
-                        }
-
-                        if (dtMode)
-                        {
-                            // Scenario A: Simulator arrived at sensor, but real hardware has not
-                            if (condSim && !condReal)
-                            {
-                                if (!simTriggerTime.HasValue)
-                                {
-                                    simTriggerTime = Time.time;
-                                }
-                            }
-                            else
-                            {
-                                simTriggerTime = null;
-                            }
-
-                            // Scenario B: Real hardware arrived at sensor, but simulator has not
-                            if (condReal && !condSim)
-                            {
-                                if (!realTriggerTime.HasValue)
-                                {
-                                    realTriggerTime = Time.time;
-                                }
-
-                                if (Time.time - realTriggerTime.Value > timeoutSec)
-                                {
-                                    // Periodic Recovery Snap: Every 5 seconds after timeout, try to find the dynamic product 
-                                    // and teleport it to this target sensor to force visual recovery.
-                                    float timeSinceStart = Time.time - realTriggerTime.Value;
-                                    if (Mathf.FloorToInt(timeSinceStart) % 5 == 0 && Time.frameCount % 30 == 0) // run once per interval
-                                    {
-                                        string sensorName = condToken["sensor"]?.ToString();
-                                        string kitName = condToken["kit"]?.ToString();
-                                        if (string.IsNullOrEmpty(kitName)) kitName = GetLocalKitName();
-
-                                        GameObject kitGo = GameObject.Find(kitName);
-                                        if (kitGo != null)
-                                        {
-                                            var sensorCtrl = kitGo.GetComponent<AASSensorController>();
-                                            if (sensorCtrl != null)
-                                            {
-                                                var resolvedSensorObj = sensorCtrl.transform.Find(sensorName)?.gameObject;
-                                                if (resolvedSensorObj == null) resolvedSensorObj = GameObject.Find(sensorName);
-
-                                                GameObject prodGo = null;
-                                                var dynamicProduct = FindFirstObjectByType<AAS.DynamicProduct>();
-                                                if (dynamicProduct != null)
-                                                {
-                                                    prodGo = dynamicProduct.gameObject;
-                                                }
-
-                                                if (prodGo != null && resolvedSensorObj != null)
-                                                {
-                                                    Rigidbody rb = prodGo.GetComponentInParent<Rigidbody>();
-                                                    if (rb != null)
-                                                    {
-                                                        rb.position = new Vector3(resolvedSensorObj.transform.position.x, rb.position.y, resolvedSensorObj.transform.position.z);
-                                                        rb.rotation = Quaternion.Euler(0, resolvedSensorObj.transform.eulerAngles.y, 0);
-                                                        
-                                                        // Toggle kinematic state to force PhysX to clear all accumulated solver forces/velocities
-                                                        bool wasKinematic = rb.isKinematic;
-                                                        rb.isKinematic = true;
-                                                        rb.isKinematic = wasKinematic;
-
-                                                        rb.linearVelocity = Vector3.zero;
-                                                        rb.angularVelocity = Vector3.zero;
-                                                        rb.ResetCenterOfMass();
-                                                        rb.ResetInertiaTensor();
-                                                        Physics.SyncTransforms();
-                                                        
-                                                        Debug.Log($"[RuleEngine] 🔄 Recovery Snap: Teleported '{prodGo.name}' to '{sensorName}' sensor position. Physics Reset.");
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        yield return new WaitForSeconds(0.1f);
-                    }
-                    break;
-                }
-
+                 {
+                     JToken condToken = step["condition"] ?? step;
+ 
+                     while (true)
+                     {
+                         bool condSim = EvaluateCondition(condToken, forceRealAAS: false, useRealState: false);
+                         bool condReal = EvaluateCondition(condToken, forceRealAAS: false, useRealState: true);
+                         
+                         if (dtMode)
+                         {
+                             if (condReal)
+                             {
+                                 // Immediate Sync Snap to keep simulator in sync with real hardware
+                                 string sensorName = condToken["sensor"]?.ToString();
+                                 string kitName = condToken["kit"]?.ToString();
+                                 if (!string.IsNullOrEmpty(sensorName))
+                                 {
+                                     if (string.IsNullOrEmpty(kitName)) kitName = GetLocalKitName();
+                                     GameObject kitGo = GameObject.Find(kitName);
+                                     if (kitGo != null)
+                                     {
+                                         var sensorCtrl = kitGo.GetComponent<AASSensorController>();
+                                         if (sensorCtrl != null)
+                                         {
+                                             var resolvedSensorObj = sensorCtrl.transform.Find(sensorName)?.gameObject;
+                                             if (resolvedSensorObj == null) resolvedSensorObj = GameObject.Find(sensorName);
+ 
+                                             GameObject prodGo = null;
+                                             var dynamicProduct = FindFirstObjectByType<AAS.DynamicProduct>();
+                                             if (dynamicProduct != null)
+                                             {
+                                                 prodGo = dynamicProduct.gameObject;
+                                             }
+ 
+                                             if (prodGo != null && resolvedSensorObj != null && sensorCtrl.HasSnapConfig(sensorName))
+                                             {
+                                                 Rigidbody rb = prodGo.GetComponentInParent<Rigidbody>();
+                                                 if (rb != null)
+                                                 {
+                                                     rb.position = new Vector3(resolvedSensorObj.transform.position.x, rb.position.y, resolvedSensorObj.transform.position.z);
+                                                     rb.rotation = Quaternion.Euler(0, resolvedSensorObj.transform.eulerAngles.y, 0);
+                                                     
+                                                     bool wasKinematic = rb.isKinematic;
+                                                     rb.isKinematic = true;
+                                                     rb.isKinematic = wasKinematic;
+                                                     rb.linearVelocity = Vector3.zero;
+                                                     rb.angularVelocity = Vector3.zero;
+                                                     Physics.SyncTransforms();
+                                                     
+                                                     Debug.Log($"[RuleEngine] ⚡ DT Sync Snap: Teleported '{prodGo.name}' to '{sensorName}' because real sensor triggered.");
+                                                 }
+                                             }
+                                         }
+                                     }
+                                 }
+                                 break;
+                             }
+                         }
+                         else
+                         {
+                             if (condSim)
+                             {
+                                 break;
+                             }
+                         }
+ 
+                         yield return new WaitForSeconds(0.1f);
+                     }
+                     break;
+                 }
                 case "if":
                 case "if_else":
                 {
@@ -506,7 +470,7 @@ public class AASRuleEngine : MonoBehaviour
                     req.downloadHandler = new DownloadHandlerBuffer();
                 }
 
-                req.timeout = 10;
+                req.timeout = 60;
                 yield return req.SendWebRequest();
 
                 if (req.result == UnityWebRequest.Result.Success)

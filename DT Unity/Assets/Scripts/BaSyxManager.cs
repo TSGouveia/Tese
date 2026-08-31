@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -352,8 +352,8 @@ public class BaSyxManager : MonoBehaviour
             if (geoSubmodelId == null && visSubmodelId == null && controlLogicSubmodelId != null)
             {
                 GameObject logicalGo = new GameObject("LogicalAAS_" + shell.idShort);
-                GameObject container = GameObject.Find("AAS_Robots_Container");
-                if (container == null) container = new GameObject("AAS_Robots_Container");
+                GameObject container = GameObject.Find("AAS_Kits_Container");
+                if (container == null) container = new GameObject("AAS_Kits_Container");
                 logicalGo.transform.SetParent(container.transform, false);
 
                 var engine = logicalGo.AddComponent<AASRuleEngine>();
@@ -476,8 +476,8 @@ public class BaSyxManager : MonoBehaviour
                             Debug.LogError($"[BaSyx] Error preparing URDF robot: {e.Message}");
                         }
 
-                        GameObject container = GameObject.Find("AAS_Robots_Container");
-                        if (container == null) container = new GameObject("AAS_Robots_Container");
+                        GameObject container = GameObject.Find("AAS_Kits_Container");
+                        if (container == null) container = new GameObject("AAS_Kits_Container");
                         robotObj.transform.SetParent(container.transform, false);
                         robotObj.transform.localScale = Vector3.one * globalScale;
 
@@ -589,8 +589,8 @@ public class BaSyxManager : MonoBehaviour
                     if (importData != null && importData.root != null)
                     {
                         GameObject kitObj = importData.root;
-                        GameObject container = GameObject.Find("AAS_Robots_Container");
-                        if (container == null) container = new GameObject("AAS_Robots_Container");
+                        GameObject container = GameObject.Find("AAS_Kits_Container");
+                        if (container == null) container = new GameObject("AAS_Kits_Container");
                         kitObj.transform.SetParent(container.transform, false);
                         kitObj.transform.localScale = Vector3.one * globalScale;
 
@@ -1068,8 +1068,8 @@ public class BaSyxManager : MonoBehaviour
                     GameObject newKit = importData?.root;
                     if (newKit != null)
                     {
-                        GameObject container = GameObject.Find("AAS_Robots_Container");
-                        if (container == null) container = new GameObject("AAS_Robots_Container");
+                        GameObject container = GameObject.Find("AAS_Kits_Container");
+                        if (container == null) container = new GameObject("AAS_Kits_Container");
                         newKit.transform.SetParent(container.transform, false);
                         newKit.transform.localScale = Vector3.one * globalScale;
                         

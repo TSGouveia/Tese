@@ -101,6 +101,18 @@ public class AASSensorController : MonoBehaviour
         return false;
     }
 
+    public bool HasSnapConfig(string sensorName)
+    {
+        foreach (var kvp in componentToSensor)
+        {
+            if (kvp.Value.pinId == sensorName || kvp.Value.componentName == sensorName)
+            {
+                return kvp.Value.hasSnap;
+            }
+        }
+        return false;
+    }
+
     void OnDestroy()
     {
         OperationModeManager.OnModeChanged -= OnOperationModeChanged;
@@ -221,6 +233,7 @@ public class AASSensorController : MonoBehaviour
                             };
                             componentToSensor[compName] = binding;
                             
+                            
                             // Setup Unity Physics Proxy
                             var proxy = target.AddComponent<SensorPhysicsProxy>();
                             proxy.binding = binding;
@@ -243,27 +256,25 @@ public class AASSensorController : MonoBehaviour
                                 }
                             };
 
-                            // IMPORTANT: Sensors need a Rigidbody (Kinematic) to guarantee trigger events
-                            if (target.GetComponent<Rigidbody>() == null) {
-                                var rb = target.AddComponent<Rigidbody>();
-                                rb.isKinematic = true;
-                                rb.useGravity = false;
-                            }
-
-                            // Ensure collider is set correctly
-                            var colliders = target.GetComponentsInChildren<Collider>();
-                            if (colliders.Length == 0) {
-                                var box = target.AddComponent<BoxCollider>();
-                                box.isTrigger = (type == "TriggerZone");
-                            }
-
-                            foreach (var c in target.GetComponentsInChildren<Collider>())
-                            {
-                                if (type == "TriggerZone") 
-                                {
-                                    c.isTrigger = true;
-                                }
-                            }
+                             // IMPORTANT: Sensors need a Rigidbody (Kinematic) to guarantee trigger events and prevent physics pushes
+                             var rb = target.GetComponent<Rigidbody>();
+                             if (rb == null) {
+                                 rb = target.AddComponent<Rigidbody>();
+                             }
+                             rb.isKinematic = true;
+                             rb.useGravity = false;
+ 
+                             // Ensure collider is set correctly
+                             var colliders = target.GetComponentsInChildren<Collider>();
+                             if (colliders.Length == 0) {
+                                 var box = target.AddComponent<BoxCollider>();
+                                 box.isTrigger = true;
+                             }
+ 
+                             foreach (var c in target.GetComponentsInChildren<Collider>())
+                             {
+                                 c.isTrigger = true;
+                             }
 
                             // Auto-hide or show the sensor mesh based on visibility if explicitly defined in AAS
                             if (visibleParam.HasValue)
@@ -491,6 +502,7 @@ public class AASSensorController : MonoBehaviour
             Debug.LogWarning($"[DT-LOG] ⚠️ Snap: no dynamic product found in scene with 'DynamicProduct' component.");
             yield break;
         }
+
  
         // Keep track of the currently snapped product on this sensor binding
         binding.currentProductAtSensor = targetRb.gameObject;
@@ -631,7 +643,7 @@ public class AASSensorController : MonoBehaviour
         // 4. Fourth priority: Loose containment
         foreach (var obj in allObjects)
         {
-            if (obj.name.ToLower().Contains(compName.ToLower()) || compName.ToLower().Contains(obj.name.ToLower()))
+            if (obj.name.ToLower().Contains(compName.ToLower()))
                 return obj;
         }
 
@@ -909,7 +921,7 @@ public class AASSensorController : MonoBehaviour
 
         private void OnTriggerEnter(Collider other)
         {
-            if (binding.type != "TriggerZone") return;
+            if (binding.type != "TriggerZone" && binding.type != "ContactSensor") return;
             if (MatchesFilter(other))
             {
                 touching.Add(other);
@@ -919,7 +931,7 @@ public class AASSensorController : MonoBehaviour
 
         private void OnTriggerExit(Collider other)
         {
-            if (binding.type != "TriggerZone") return;
+            if (binding.type != "TriggerZone" && binding.type != "ContactSensor") return;
             if (MatchesFilter(other))
             {
                 touching.Remove(other);
@@ -955,6 +967,14 @@ public class AASSensorController : MonoBehaviour
             string t = other.gameObject.tag;
             string filter = binding.targetFilter;
 
+            // If the filter is "Metal" (product sensor), it must only match dynamic products
+            if (filter.Equals("Metal", StringComparison.OrdinalIgnoreCase))
+            {
+                bool isProduct = other.GetComponentInParent<AAS.DynamicProduct>() != null || 
+                                 other.GetComponentInChildren<AAS.DynamicProduct>() != null;
+                if (!isProduct) return false;
+            }
+
             bool nameMatch = n.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
             bool tagMatch = t.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
             
@@ -987,5 +1007,7 @@ public class AASSensorController : MonoBehaviour
         }
     }
 
+
+ 
     string Base64Url(string i) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(i)).Replace("+", "-").Replace("/", "_").TrimEnd('=');
 }
