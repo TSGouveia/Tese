@@ -27,7 +27,7 @@ public class AASSensorController : MonoBehaviour
         public string snapTarget;
         public Vector3 snapPosition;
         public bool hasSnap;
-        public float lastSnapTime = 0f; // Cooldown timer to prevent infinite re-snaps
+        public float lastSnapTime = -99f; // Cooldown timer to prevent infinite re-snaps
 
         // --- Move-On-State ---
         // When the sensor reaches moveOnState, the component named moveTargetName
@@ -161,7 +161,7 @@ public class AASSensorController : MonoBehaviour
                                 if (pid == "TargetFilter") filter = p["value"]?.ToString();
                                 if (pid == "ActiveLow") activeLow = p["value"]?.ToString().ToLower() == "true";
                                 if (pid == "Visible") visibleParam = p["value"]?.ToString().ToLower() == "true";
-                                if (pid == "SnapTarget") { hasSnap = true; }
+                                if (pid == "SnapTarget") { snapTarget = p["value"]?.ToString(); hasSnap = true; }
                                 // Move-on-state params
                                 if (pid == "MoveTarget") moveTargetName = p["value"]?.ToString();
                                 if (pid == "MoveMode")   moveMode = p["value"]?.ToString() ?? "Both";
@@ -235,8 +235,8 @@ public class AASSensorController : MonoBehaviour
                                     StartCoroutine(UpdateAASPin(binding, state, isOverlapping, sensorObj, productObj));
                                 }
                                 
-                                // Trigger move-on-state if configured
-                                if (binding.hasMoveConfig && state == binding.moveOnState.Value)
+                                // Trigger move-on-state if configured (only in non-DT modes, since DT handles this via hardware events)
+                                if (OperationModeManager.Current != OperationMode.DigitalTwin && binding.hasMoveConfig && state == binding.moveOnState.Value)
                                 {
                                     if (binding.activeMoveCoroutine != null) StopCoroutine(binding.activeMoveCoroutine);
                                     binding.activeMoveCoroutine = StartCoroutine(ExecuteMoveRoutine(binding));
@@ -334,6 +334,13 @@ public class AASSensorController : MonoBehaviour
     // -----------------------------------------------------------------------
     private void StartDTConnection()
     {
+        if (OperationModeManager.Current == OperationMode.DigitalTwin && !BaSyxManager.IsStartupComplete)
+        {
+            Debug.Log($"[Sensor] ⏳ DT Connection for '{gameObject.name}' delayed until BaSyxManager startup is complete.");
+            StartCoroutine(WaitAndStartDTConnection());
+            return;
+        }
+
         string proto = (_kitProtocol ?? "tcp").ToLower().Trim();
         if (proto != "tcp" && proto != "socket" && proto != "sockets" && proto != "none")
         {
@@ -368,6 +375,20 @@ public class AASSensorController : MonoBehaviour
         }
 
         Debug.Log($"[Sensor] 🔗 DT subscribed to ArduinoLink ({_kitEndpointIP}:{_kitEndpointPort}) for {_portCallbacks.Count} port(s) on '{gameObject.name}'");
+    }
+
+    private IEnumerator WaitAndStartDTConnection()
+    {
+        while (!BaSyxManager.IsStartupComplete)
+        {
+            yield return new WaitForSeconds(0.5f);
+        }
+
+        if (OperationModeManager.Current == OperationMode.DigitalTwin && _dtActive == false)
+        {
+            Debug.Log($"[Sensor] 🚀 BaSyxManager startup complete. Activating DT Connection for '{gameObject.name}'.");
+            StartDTConnection();
+        }
     }
 
     public bool IsInitialDTSyncComplete()
@@ -409,32 +430,12 @@ public class AASSensorController : MonoBehaviour
     private void OnDTSensorStateChanged(SensorBinding binding, bool state)
     {
         bool sensorActive = binding.activeLow ? !state : state;
-        Debug.Log($"[Sensor] 📡 DT Port '{binding.realPortId}' changed state. Logical Pin: '{binding.pinId}' = {sensorActive} (Raw Electrical: {state})");
-        
-        var sensorObj = FindTargetComponent(_componentMap, binding.componentName);
-        GameObject productObj = binding.currentProductAtSensor;
-
-        // In DT mode, Unity acts as the bridge to AAS, so we must push the hardware state to AAS!
-        StartCoroutine(UpdateAASPin(binding, sensorActive, sensorActive, sensorObj, productObj));
-
-        // If product exits the real sensor, register it as lastDetectedProduct
-        if (!sensorActive)
-        {
-            if (binding.currentProductAtSensor != null)
-            {
-                var rb = binding.currentProductAtSensor.GetComponentInParent<Rigidbody>();
-                if (rb != null)
-                {
-                    lastDetectedProduct = rb;
-                    Debug.Log($"[Sensor] 🎯 Last exited product registered via DT hardware socket: '{rb.gameObject.name}'");
-                }
-                binding.currentProductAtSensor = null;
-            }
-        }
+        Debug.Log($"[DT-LOG] 📡 OnDTSensorStateChanged called for realPortId='{binding.realPortId}', pinId='{binding.pinId}'. state={state}, activeLow={binding.activeLow} -> sensorActive={sensorActive}");
 
         // --- MOVE CONFIG LOGIC ---
         if (binding.hasMoveConfig && binding.moveOnState.HasValue && state == binding.moveOnState.Value)
         {
+            Debug.Log($"[DT-LOG] 🔀 Starting ExecuteMoveRoutine for targetName='{binding.moveTargetName}'");
             if (binding.activeMoveCoroutine != null) StopCoroutine(binding.activeMoveCoroutine);
             binding.activeMoveCoroutine = StartCoroutine(ExecuteMoveRoutine(binding));
         }
@@ -443,36 +444,40 @@ public class AASSensorController : MonoBehaviour
         if (sensorActive && binding.hasSnap && (Time.time - binding.lastSnapTime > 1.5f))
         {
             binding.lastSnapTime = Time.time;
-            var sensorObj = FindTargetComponent(_componentMap, binding.componentName);
+            GameObject sensorObj = FindTargetComponent(_componentMap, binding.componentName);
             StartCoroutine(DTSnapWithDelayRoutine(binding, sensorObj));
         }
     }
 
     private IEnumerator DTSnapWithDelayRoutine(SensorBinding binding, GameObject sensorObj)
     {
+        Debug.Log($"[DT-LOG] DTSnapWithDelayRoutine started. SensorObj={sensorObj?.name}");
         yield return new WaitForSeconds(0.3f);
-
+ 
         GameObject resolvedSensorObj = sensorObj;
         if (resolvedSensorObj == null)
         {
             // Try to search for the sensor component in the scene using its binding name
             resolvedSensorObj = FindTargetComponent(_componentMap, binding.componentName);
+            Debug.Log($"[DT-LOG] DTSnap resolvedSensorObj (fallback)={resolvedSensorObj?.name}");
         }
-
+ 
         Transform sensorTrans = resolvedSensorObj != null ? resolvedSensorObj.transform : transform;
-
+ 
         Rigidbody targetRb = null;
-
+ 
         // Find the closest dynamic product marked by AAS configuration
         var dynamicProducts = FindObjectsByType<AAS.DynamicProduct>(FindObjectsSortMode.None);
+        Debug.Log($"[DT-LOG] DTSnap: found {dynamicProducts.Length} dynamic products in scene.");
         float minDist = float.MaxValue;
-
+ 
         foreach (var dp in dynamicProducts)
         {
             var rb = dp.GetComponentInParent<Rigidbody>() ?? dp.GetComponent<Rigidbody>();
             if (rb != null)
             {
                 float d = Vector3.Distance(rb.position, sensorTrans.position);
+                Debug.Log($"[DT-LOG] DTSnap: checking product '{dp.name}', dist={d:F4}");
                 if (d < minDist)
                 {
                     minDist = d;
@@ -480,19 +485,20 @@ public class AASSensorController : MonoBehaviour
                 }
             }
         }
-
+ 
         if (targetRb == null)
         {
-            Debug.LogWarning($"[DT] ⚠️ Snap: no dynamic product found in scene with 'DynamicProduct' component.");
+            Debug.LogWarning($"[DT-LOG] ⚠️ Snap: no dynamic product found in scene with 'DynamicProduct' component.");
             yield break;
         }
-
+ 
         // Keep track of the currently snapped product on this sensor binding
         binding.currentProductAtSensor = targetRb.gameObject;
-
+        Debug.Log($"[DT-LOG] DTSnap closest product: '{targetRb.name}' at distance {minDist:F4}");
+ 
         Vector3 snapPos;
         float targetY = (targetRb.position.y < -1.0f) ? (sensorTrans.position.y + 0.05f) : targetRb.position.y;
-
+ 
         if (binding.snapPosition.sqrMagnitude < 0.0001f)
         {
             if (resolvedSensorObj != null)
@@ -504,10 +510,11 @@ public class AASSensorController : MonoBehaviour
         {
             snapPos = new Vector3(binding.snapPosition.x, binding.snapPosition.y, -binding.snapPosition.z);
         }
-
+ 
         float dist = Vector3.Distance(targetRb.position, snapPos);
         float angle = Quaternion.Angle(targetRb.rotation, Quaternion.Euler(0, sensorTrans.eulerAngles.y, 0));
-
+        Debug.Log($"[DT-LOG] DTSnap target pos: {snapPos}, current pos: {targetRb.position}, dist={dist:F4}, angle={angle:F2}");
+ 
         if (dist > 0.02f || angle > 2f)
         {
             targetRb.position = snapPos;
@@ -517,14 +524,18 @@ public class AASSensorController : MonoBehaviour
             bool wasKinematic = targetRb.isKinematic;
             targetRb.isKinematic = true;
             targetRb.isKinematic = wasKinematic;
-
+ 
             targetRb.linearVelocity = Vector3.zero;
             targetRb.angularVelocity = Vector3.zero;
             targetRb.ResetCenterOfMass();
             targetRb.ResetInertiaTensor();
             Physics.SyncTransforms();
             
-            Debug.Log($"[DT] ⚡ DT SNAP! Teleported '{targetRb.name}' → {snapPos} via {binding.pinId} (Dist={dist:F4}, Angle={angle:F2}º) - Physics Reset");
+            Debug.Log($"[DT-LOG] ⚡ DT SNAP SUCCESS! Teleported '{targetRb.name}' → {snapPos} via {binding.pinId} (Dist={dist:F4}, Angle={angle:F2}º) - Physics Reset");
+        }
+        else
+        {
+            Debug.Log($"[DT-LOG] DTSnap: no teleport needed (already close enough: dist={dist:F4}, angle={angle:F2})");
         }
     }
 
@@ -692,15 +703,21 @@ public class AASSensorController : MonoBehaviour
     // -------------------------------------------------------------------------
     private IEnumerator ExecuteMoveRoutine(SensorBinding binding)
     {
+        Debug.Log($"[DT-LOG] 🔀 ExecuteMoveRoutine started for moveTargetName='{binding.moveTargetName}' (pinId='{binding.pinId}')");
         GameObject targetObj = FindTargetComponent(_componentMap, binding.moveTargetName);
         if (targetObj == null)
         {
-            Debug.LogWarning($"[Sensor] ⚠️ MoveOnState: target component '{binding.moveTargetName}' not found.");
+            Debug.LogWarning($"[DT-LOG] ⚠️ MoveOnState: target component '{binding.moveTargetName}' not found.");
             yield break;
         }
 
         Vector3 targetLocalPos = binding.moveTargetLocalPos;
         Quaternion targetLocalRot = Quaternion.Euler(binding.moveTargetLocalRot);
+
+        bool doPosition = binding.moveMode != "Rotation";
+        bool doRotation = binding.moveMode != "Position";
+
+        Debug.Log($"[DT-LOG] 🔀 ExecuteMoveRoutine config: moveMode={binding.moveMode}, doPos={doPosition}, doRot={doRotation}, targetPos={targetLocalPos}, targetRot={binding.moveTargetLocalRot}, duration={binding.moveDuration}. Current pose: pos={targetObj.transform.localPosition}, rot={targetObj.transform.localRotation.eulerAngles}");
 
         // Record dynamic products overlapping the target BEFORE the move so we can carry them
         var products = FindDynamicProductsOn(targetObj);
@@ -721,9 +738,6 @@ public class AASSensorController : MonoBehaviour
                 rb.rotation = targetObj.transform.rotation * relRot;
             }
         }
-
-        bool doPosition = binding.moveMode != "Rotation";
-        bool doRotation = binding.moveMode != "Position";
 
         if (binding.moveDuration <= 0f)
         {

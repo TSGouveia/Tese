@@ -18,6 +18,15 @@ public class ModeSelectorUI : MonoBehaviour
     [Tooltip("Button that toggles between VC and DT modes.")]
     public Button toggleModeButton;
 
+    [Header("Configuration")]
+    [Tooltip("The operation mode that the system should start in.")]
+    public OperationMode initialMode = OperationMode.VirtualCommissioning;
+
+    void Awake()
+    {
+        OperationModeManager.SetMode(initialMode);
+    }
+
     void Start()
     {
         if (toggleModeButton != null)
