@@ -1,0 +1,30 @@
+﻿@startuml
+top to bottom direction
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #E0F2FE
+    BorderColor #0284C7
+    FontColor #0C4A6E
+}
+skinparam actor {
+    BackgroundColor #FEF9C3
+    BorderColor #CA8A04
+}
+
+actor "Automation Engineer" as Eng
+
+rectangle "Step 2 · System Info, Comm & Transform" {
+    usecase "Set Kit Name & AAS ID" as UC2A
+    usecase "Set Description & Dynamic Flag" as UC2B
+    usecase "Configure Comm Protocol\n(None / Sockets)" as UC2C
+    usecase "Set Endpoint IP & Port" as UC2D
+    usecase "Define 3D Transform\n(Pos / Rot / Scale)" as UC2E
+
+    UC2C ..> UC2D : <<include>>
+}
+
+Eng --> UC2A
+Eng --> UC2B
+Eng --> UC2C
+Eng --> UC2E
+@enduml

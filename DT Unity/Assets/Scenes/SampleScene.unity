@@ -1500,6 +1500,7 @@ MonoBehaviour:
   activeModeText: {fileID: 794195288}
   buttonActionText: {fileID: 902184330}
   toggleModeButton: {fileID: 1462926225}
+  initialMode: 1
 --- !u!1 &1678076616
 GameObject:
   m_ObjectHideFlags: 0

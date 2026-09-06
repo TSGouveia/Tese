@@ -2559,7 +2559,7 @@ class ConveyorWizard(QMainWindow):
             self.plotter.reset_camera()
             self.plotter.camera.up = (0, 1, 0)
             while QApplication.overrideCursor() is not None:
-                QApplication.restoreOverrideCursor()
+                    QApplication.restoreOverrideCursor()
             QMessageBox.information(self, "Success", f"Factory layout loaded! Rendered {loaded_count} active AAS resources.")
         except Exception as ex:
             while QApplication.overrideCursor() is not None:
@@ -3020,51 +3020,70 @@ class ConveyorWizard(QMainWindow):
         self.update_validation_ui()
 
     def delete_aas_by_id(self, shell_id, submodel_ids=None):
-        encoded_shell_id = base64.urlsafe_b64encode(shell_id.encode()).decode().rstrip("=")
-        def checked_delete(url):
-            try:
-                r = requests.delete(url, timeout=5)
-                if r.status_code not in [200, 204, 404]:
-                    print(f"Delete returned status {r.status_code} for {url}")
-            except Exception as e:
-                print(f"Delete failed for {url}: {e}")
+        import urllib.parse
+        import base64
+        
+        def get_all_encodings(raw_id):
+            encodings = []
+            if not raw_id:
+                return encodings
+            # 1. Base64 URL-safe (padded and unpadded)
+            b64_url = base64.urlsafe_b64encode(raw_id.encode()).decode()
+            encodings.append(b64_url)
+            encodings.append(b64_url.rstrip("="))
+            # 2. Standard Base64 (padded and unpadded)
+            b64_std = base64.b64encode(raw_id.encode()).decode()
+            encodings.append(b64_std)
+            encodings.append(b64_std.rstrip("="))
+            # 3. URL Encoded
+            encodings.append(urllib.parse.quote_plus(raw_id))
+            encodings.append(urllib.parse.quote(raw_id))
+            return list(set(encodings))
 
-        # Explicitly delete provided submodels first
+        def try_delete_all_variants(base_url, raw_id):
+            for enc in get_all_encodings(raw_id):
+                url = f"{base_url}/{enc}"
+                try:
+                    r = requests.delete(url, timeout=5)
+                    if r.status_code in [200, 204]:
+                        print(f"Successfully deleted {url}")
+                except Exception as e:
+                    print(f"Delete failed for {url}: {e}")
+
+        # Fetch shell to get submodel references before we delete it
+        found_submodels = []
+        for enc_shell in get_all_encodings(shell_id):
+            try:
+                shell_res = requests.get(f"http://localhost:8081/shells/{enc_shell}", timeout=5)
+                if shell_res.status_code == 200:
+                    shell_data = shell_res.json()
+                    submodel_refs = shell_data.get("submodels", [])
+                    for ref in submodel_refs:
+                        keys = ref.get("keys", [])
+                        if keys:
+                            sm_id = keys[0].get("value")
+                            if sm_id and sm_id not in found_submodels:
+                                found_submodels.append(sm_id)
+                    break
+            except Exception as e:
+                print(f"Could not retrieve shell references for encoding {enc_shell}: {e}")
+
+        # Delete submodels found in the shell
+        for sm_id in found_submodels:
+            try_delete_all_variants("http://localhost:8081/submodels", sm_id)
+            try_delete_all_variants("http://localhost:8082/submodel-descriptors", sm_id)
+            try_delete_all_variants("http://localhost:8083/submodel-descriptors", sm_id)
+
+        # Explicitly delete provided submodels
         if submodel_ids:
             for sm_id in submodel_ids:
-                encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
-                checked_delete(f"http://localhost:8081/submodels/{encoded_sm_id}")
-                checked_delete(f"http://localhost:8083/submodel-descriptors/{encoded_sm_id}")
+                try_delete_all_variants("http://localhost:8081/submodels", sm_id)
+                try_delete_all_variants("http://localhost:8082/submodel-descriptors", sm_id)
+                try_delete_all_variants("http://localhost:8083/submodel-descriptors", sm_id)
 
-        # Fetch shell to get submodel references
-        try:
-            shell_res = requests.get(f"http://localhost:8081/shells/{encoded_shell_id}", timeout=5)
-            if shell_res.status_code == 200:
-                shell_data = shell_res.json()
-                submodel_refs = shell_data.get("submodels", [])
-                for ref in submodel_refs:
-                    keys = ref.get("keys", [])
-                    if keys:
-                        sm_id = keys[0].get("value")
-                        encoded_sm_id = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
-                        
-                        # Delete from repository
-                        checked_delete(f"http://localhost:8081/submodels/{encoded_sm_id}")
-                        # Delete from registry
-                        checked_delete(f"http://localhost:8083/submodel-descriptors/{encoded_sm_id}")
-        except Exception as e:
-            print(f"Could not retrieve shell references: {e}")
-        
-        # Delete shell from repository
-        checked_delete(f"http://localhost:8081/shells/{encoded_shell_id}")
-        
-        # Delete shell descriptor from registry using multi-format encoded IDs to bypass BaSyx variations
-        import urllib.parse
-        raw_url_encoded = urllib.parse.quote_plus(shell_id)
-        standard_b64 = base64.b64encode(shell_id.encode()).decode()
-        checked_delete(f"http://localhost:8082/shell-descriptors/{encoded_shell_id}")
-        checked_delete(f"http://localhost:8082/shell-descriptors/{raw_url_encoded}")
-        checked_delete(f"http://localhost:8082/shell-descriptors/{standard_b64}")
+        # Delete shell from repository and registry
+        try_delete_all_variants("http://localhost:8081/shells", shell_id)
+        try_delete_all_variants("http://localhost:8082/shell-descriptors", shell_id)
 
     def update_validation_ui(self):
         valid_aas = is_valid_aas_id(self.edit_aas_id.text())
@@ -4075,12 +4094,28 @@ class ConveyorWizard(QMainWindow):
                 shell.submodel.add(model.ModelReference.from_referable(sm_tel))
                 os.makedirs("aasx_packages", exist_ok=True); out = os.path.join("aasx_packages", f"{kfn}_Twin.aasx")
                 with aasx.AASXWriter(out) as w: w.write_aas(shell.id, obj_store, file_repo, aid)
-                res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), open(out, 'rb'), 'application/octet-stream')}, timeout=10)
-                is_conflict = False
-                if res.status_code == 409:
-                    is_conflict = True
-                elif "Duplicate element id detected" in res.text or "CollidingIdentifierException" in res.text:
-                    is_conflict = True
+                # Check for existence beforehand to detect conflict reliably
+                existing_exists = False
+                try:
+                    enc_shell = base64.urlsafe_b64encode(shell.id.encode()).decode().rstrip("=")
+                    if requests.get(f"http://localhost:8081/shells/{enc_shell}", timeout=3).status_code == 200:
+                        existing_exists = True
+                    else:
+                        for sm in [sm_geo, sm_pos, sm_tel]:
+                            enc_sm = base64.urlsafe_b64encode(sm.id.encode()).decode().rstrip("=")
+                            if requests.get(f"http://localhost:8081/submodels/{enc_sm}", timeout=3).status_code == 200:
+                                existing_exists = True
+                                break
+                except Exception:
+                    pass
+
+                is_conflict = existing_exists
+                res = None
+                if not is_conflict:
+                    res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), open(out, 'rb'), 'application/octet-stream')}, timeout=10)
+                    if res.status_code == 409 or (res.text and ("Duplicate element id" in res.text or "CollidingIdentifierException" in res.text)):
+                        is_conflict = True
+                
                 if is_conflict:
                     while QApplication.overrideCursor() is not None:
                         QApplication.restoreOverrideCursor()
@@ -4240,15 +4275,28 @@ class ConveyorWizard(QMainWindow):
             os.makedirs("aasx_packages", exist_ok=True); out = os.path.join("aasx_packages", f"{kfn}_Kit.aasx")
             with aasx.AASXWriter(out) as w: w.write_aas(shell.id, obj_store, fr, aid)
             
-            # Post to BaSyx Server
-            with open(out, 'rb') as f: 
-                res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
-            
-            is_conflict = False
-            if res.status_code == 409:
-                is_conflict = True
-            elif "Duplicate element id detected" in res.text or "CollidingIdentifierException" in res.text:
-                is_conflict = True
+            # Check for existence beforehand to detect conflict reliably
+            existing_exists = False
+            try:
+                enc_shell = base64.urlsafe_b64encode(shell.id.encode()).decode().rstrip("=")
+                if requests.get(f"http://localhost:8081/shells/{enc_shell}", timeout=3).status_code == 200:
+                    existing_exists = True
+                else:
+                    for sm in [vs, vp, bm, sm_aid]:
+                        enc_sm = base64.urlsafe_b64encode(sm.id.encode()).decode().rstrip("=")
+                        if requests.get(f"http://localhost:8081/submodels/{enc_sm}", timeout=3).status_code == 200:
+                            existing_exists = True
+                            break
+            except Exception:
+                pass
+
+            is_conflict = existing_exists
+            res = None
+            if not is_conflict:
+                with open(out, 'rb') as f: 
+                    res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
+                if res.status_code == 409 or (res.text and ("Duplicate element id" in res.text or "CollidingIdentifierException" in res.text)):
+                    is_conflict = True
  
             if is_conflict:
                 while QApplication.overrideCursor() is not None:

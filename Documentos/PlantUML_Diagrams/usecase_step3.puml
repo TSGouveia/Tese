@@ -1,0 +1,40 @@
+﻿@startuml
+top to bottom direction
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #E0F2FE
+    BorderColor #0284C7
+    FontColor #0C4A6E
+}
+skinparam actor {
+    BackgroundColor #FEF9C3
+    BorderColor #CA8A04
+}
+
+actor "Automation Engineer" as Eng
+
+rectangle "Step 3 · Sensors Configuration - Inputs" {
+    usecase "Add Input Sensor" as UC3A
+    usecase "Assign Sensor Pin ID" as UC3B
+    usecase "Select Detection Node from Tree" as UC3C
+    usecase "Choose Behavior\n(TriggerZone / Proximity)" as UC3D
+    usecase "Set Target Filter Tag" as UC3E
+    usecase "Configure ActiveLow Flag" as UC3F
+    usecase "Enable Snap Product on Detect" as UC3G
+    usecase "Map Real Hardware Port ID" as UC3H
+    usecase "Configure Move-on-State\n(position / rotation)" as UC3I
+    usecase "Remove Sensor" as UC3J
+
+    UC3A ..> UC3B : <<include>>
+    UC3A ..> UC3C : <<include>>
+    UC3A ..> UC3D : <<include>>
+    UC3E ..> UC3D : <<extend>>
+    UC3F ..> UC3D : <<extend>>
+    UC3G ..> UC3D : <<extend>>
+    UC3H ..> UC3D : <<extend>>
+    UC3I ..> UC3D : <<extend>>
+}
+
+Eng --> UC3A
+Eng --> UC3J
+@enduml

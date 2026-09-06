@@ -1,0 +1,29 @@
+﻿@startuml
+top to bottom direction
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #E0F2FE
+    BorderColor #0284C7
+    FontColor #0C4A6E
+}
+skinparam actor {
+    BackgroundColor #FEF9C3
+    BorderColor #CA8A04
+}
+
+actor "Automation Engineer" as Eng
+
+rectangle "Step 1 · Model Selection (conveyor_wizard.py)" {
+    usecase "Select GLB 3D Asset File" as UC1A
+    usecase "Select URDF / Xacro Folder" as UC1B
+    usecase "Preview 3D Model in Viewer" as UC1C
+    usecase "Browse Node Hierarchy Tree" as UC1D
+
+    UC1A ..> UC1C : <<include>>
+    UC1B ..> UC1C : <<include>>
+    UC1C ..> UC1D : <<include>>
+}
+
+Eng --> UC1A
+Eng --> UC1B
+@enduml

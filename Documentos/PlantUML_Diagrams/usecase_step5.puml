@@ -1,0 +1,55 @@
+﻿@startuml
+top to bottom direction
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #E0F2FE
+    BorderColor #0284C7
+    FontColor #0C4A6E
+}
+skinparam actor {
+    BackgroundColor #FEF9C3
+    BorderColor #CA8A04
+}
+
+actor "Automation Engineer" as Eng
+actor "BaSyx AAS Repository\n:8081" as BaSyxRepo
+actor "BaSyx AAS Registry\n:8082" as BaSyxReg
+
+rectangle "Step 5 · Review, Build & Deploy" {
+    usecase "Preview AAS JSON Descriptor" as UC5A
+    usecase "Validate Numeric Fields" as UC5B
+    
+    package "Build Submodels in Memory" {
+        usecase "Build VisualStructure Submodel" as UC5D
+        usecase "Build VirtualPins Submodel\n(Inputs + Outputs)" as UC5E
+        usecase "Build BehaviorMapping Submodel" as UC5F
+        usecase "Build AssetInterfacesDescription Submodel" as UC5G
+    }
+
+    usecase "Collect & Bundle 3D Assets\n(glb / urdf + meshes)" as UC5H
+    usecase "Write .aasx Package Archive" as UC5I
+    usecase "Check for Existing AAS on Server" as UC5J
+    usecase "Overwrite Existing AAS\n(Delete + Re-upload)" as UC5K
+    usecase "POST /upload .aasx to AAS Repository" as UC5L
+    usecase "POST /shell-descriptors to AAS Registry" as UC5M
+
+    UC5A ..> UC5B : <<include>>
+    UC5B ..> UC5D : <<include>>
+    UC5B ..> UC5E : <<include>>
+    UC5B ..> UC5F : <<include>>
+    UC5B ..> UC5G : <<include>>
+    UC5B ..> UC5H : <<include>>
+    UC5H ..> UC5I : <<include>>
+    UC5I ..> UC5J : <<include>>
+    UC5K ..> UC5J : <<extend>>
+    UC5K ..> UC5L : <<include>>
+    UC5J ..> UC5L : <<include>>
+    UC5L ..> UC5M : <<include>>
+}
+
+Eng --> UC5A
+UC5L --> BaSyxRepo
+UC5M --> BaSyxReg
+UC5J --> BaSyxRepo : "GET /shells"
+UC5K --> BaSyxRepo : "DELETE /shells"
+@enduml

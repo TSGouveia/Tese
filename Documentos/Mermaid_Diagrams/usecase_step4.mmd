@@ -1,0 +1,32 @@
+﻿flowchart LR
+    Eng(["🧍 Automation Engineer"]):::actor
+
+    subgraph S4["Step 4 · Actuators Configuration - Outputs"]
+        direction TB
+        UC4A(["Add Output Actuator"]):::uc
+        UC4B(["Assign Actuator Pin ID"]):::uc
+        UC4C(["Select Target Node from Tree"]):::uc
+        UC4D(["Choose Behavior Conveyor / Rotate / Translate / Linear"]):::uc
+        UC4E(["Define Motion Axis X / Y / Z"]):::uc
+        UC4F(["Set Movement Speed"]):::uc
+        UC4G(["Assign Stop Sensor Component"]):::uc
+        UC4H(["Map Real Hardware Port ID"]):::uc
+        UC4I(["Visualize Actuator Arrow in 3D View"]):::uc
+        UC4J(["Remove Actuator"]):::uc
+
+        UC4A -.->|"include"| UC4B
+        UC4A -.->|"include"| UC4C
+        UC4A -.->|"include"| UC4D
+        UC4E -.->|"extend"| UC4D
+        UC4F -.->|"extend"| UC4D
+        UC4G -.->|"extend"| UC4D
+        UC4H -.->|"extend"| UC4D
+        UC4I -.->|"extend"| UC4A
+    end
+
+    Eng --> UC4A
+    Eng --> UC4J
+
+    classDef actor fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#1c1917,font-weight:bold
+    classDef uc    fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0c4a6e
+    style S4 fill:#fff7ed,stroke:#f97316,stroke-width:1.5px

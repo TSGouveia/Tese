@@ -1,0 +1,46 @@
+﻿flowchart LR
+    Eng(["🧍 Automation Engineer"]):::actor
+    BaSyxRepo(["BaSyx AAS Repository :8081"]):::sysactor
+    BaSyxReg(["BaSyx AAS Registry :8082"]):::sysactor
+
+    subgraph S5["Step 5 · Review, Build & Deploy"]
+        direction TB
+        UC5A(["Preview AAS JSON Descriptor"]):::uc
+        UC5B(["Validate Numeric Fields"]):::uc
+        UC5C(["Build AAS Shell & Submodels in Memory"]):::uc
+        UC5D(["Build VisualStructure Submodel"]):::uc
+        UC5E(["Build VirtualPins Submodel Inputs + Outputs"]):::uc
+        UC5F(["Build BehaviorMapping Submodel"]):::uc
+        UC5G(["Build AssetInterfacesDescription Submodel"]):::uc
+        UC5H(["Collect & Bundle 3D Assets glb / urdf + meshes"]):::uc
+        UC5I(["Write .aasx Package Archive"]):::uc
+        UC5J(["Check for Existing AAS on Server"]):::uc
+        UC5K(["Overwrite Existing AAS Delete + Re-upload"]):::uc
+        UC5L(["POST /upload .aasx to AAS Repository"]):::uc
+        UC5M(["POST /shell-descriptors to AAS Registry"]):::uc
+
+        UC5A -.->|"include"| UC5B
+        UC5B -.->|"include"| UC5C
+        UC5C -.->|"include"| UC5D
+        UC5C -.->|"include"| UC5E
+        UC5C -.->|"include"| UC5F
+        UC5C -.->|"include"| UC5G
+        UC5C -.->|"include"| UC5H
+        UC5H -.->|"include"| UC5I
+        UC5I -.->|"include"| UC5J
+        UC5K -.->|"extend"| UC5J
+        UC5K -.->|"include"| UC5L
+        UC5J -.->|"include"| UC5L
+        UC5L -.->|"include"| UC5M
+    end
+
+    Eng --> UC5A
+    UC5L --> BaSyxRepo
+    UC5M --> BaSyxReg
+    UC5J -->|"GET /shells conflict check"| BaSyxRepo
+    UC5K -->|"DELETE /shells & /submodels"| BaSyxRepo
+
+    classDef actor    fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#1c1917,font-weight:bold
+    classDef sysactor fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1c1917,font-weight:bold
+    classDef uc       fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0c4a6e
+    style S5 fill:#fef2f2,stroke:#ef4444,stroke-width:1.5px
