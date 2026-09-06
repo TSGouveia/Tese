@@ -1,0 +1,62 @@
+﻿\documentclass[border=10pt]{standalone}
+\usepackage[T1]{fontenc}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds}
+
+\tikzset{
+  actor/.style={
+    draw=none, fill=none,
+    align=center, font=\small\bfseries
+  },
+  usecase/.style={
+    ellipse, draw=black!70, fill=blue!8,
+    minimum width=3.8cm, minimum height=1.0cm,
+    align=center, font=\small, text width=3.4cm
+  },
+  boundary/.style={
+    draw=black!60, dashed, thick, rounded corners=6pt,
+    fill=gray!4, inner sep=14pt
+  },
+  include/.style={->, dashed, thick, black!70},
+  extend/.style={->, dashed, thick, black!40},
+}
+
+\newcommand{\stickman}[3]{%
+  \node[actor] (#1) at #2 {
+    \begin{tikzpicture}[scale=0.45, baseline=(base)]
+      \draw[thick, fill=yellow!20, draw=orange!80!black] (0,1.6) circle (0.35cm);
+      \draw[thick, draw=orange!80!black] (0,1.25) -- (0,0.3);
+      \draw[thick, draw=orange!80!black] (-0.5,0.9) -- (0.5,0.9);
+      \draw[thick, draw=orange!80!black] (0,0.3) -- (-0.4,-0.35);
+      \draw[thick, draw=orange!80!black] (0,0.3) -- (0.4,-0.35);
+      \node (base) at (0,-0.05) {};
+    \end{tikzpicture}\\[2pt]
+    #3
+  };
+}
+
+\begin{document}
+\begin{tikzpicture}
+  \stickman{eng}{(-5,1.5)}{Automation\\Engineer}
+
+  \begin{scope}
+    \node[usecase] (uc1a) at (0, 2.4)  {Select GLB\\3D Asset File};
+    \node[usecase] (uc1b) at (0, 0.6)  {Select URDF /\\Xacro Folder};
+    \node[usecase] (uc1c) at (4.5, 1.5) {Preview 3D\\Model in Viewer};
+    \node[usecase] (uc1d) at (9, 1.5)  {Browse Node\\Hierarchy Tree};
+
+    \begin{pgfonlayer}{background}
+      \node[boundary, fit=(uc1a)(uc1b)(uc1c)(uc1d),
+            label={[font=\bfseries\small, anchor=north]north:
+                   Step 1 · Model Selection — Python AAS Client}] (boundary) {};
+    \end{pgfonlayer}
+
+    \draw[include] (uc1a) -- node[above, font=\tiny] {\guillemotleft include\guillemotright} (uc1c);
+    \draw[include] (uc1b) -- node[below, font=\tiny] {\guillemotleft include\guillemotright} (uc1c);
+    \draw[include] (uc1c) -- node[above, font=\tiny] {\guillemotleft include\guillemotright} (uc1d);
+  \end{scope}
+
+  \draw[->, thick] (eng) -- (uc1a);
+  \draw[->, thick] (eng) -- (uc1b);
+\end{tikzpicture}
+\end{document}

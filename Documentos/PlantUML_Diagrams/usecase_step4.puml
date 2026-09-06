@@ -1,0 +1,40 @@
+﻿@startuml
+top to bottom direction
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #E0F2FE
+    BorderColor #0284C7
+    FontColor #0C4A6E
+}
+skinparam actor {
+    BackgroundColor #FEF9C3
+    BorderColor #CA8A04
+}
+
+actor "Automation Engineer" as Eng
+
+rectangle "Step 4 · Actuators Configuration - Outputs" {
+    usecase "Add Output Actuator" as UC4A
+    usecase "Assign Actuator Pin ID" as UC4B
+    usecase "Select Target Node from Tree" as UC4C
+    usecase "Choose Behavior\n(Conveyor / Rotate / Translate / Linear)" as UC4D
+    usecase "Define Motion Axis (X / Y / Z)" as UC4E
+    usecase "Set Movement Speed" as UC4F
+    usecase "Assign Stop Sensor Component" as UC4G
+    usecase "Map Real Hardware Port ID" as UC4H
+    usecase "Visualize Actuator Arrow in 3D View" as UC4I
+    usecase "Remove Actuator" as UC4J
+
+    UC4A ..> UC4B : <<include>>
+    UC4A ..> UC4C : <<include>>
+    UC4A ..> UC4D : <<include>>
+    UC4E ..> UC4D : <<extend>>
+    UC4F ..> UC4D : <<extend>>
+    UC4G ..> UC4D : <<extend>>
+    UC4H ..> UC4D : <<extend>>
+    UC4I ..> UC4A : <<extend>>
+}
+
+Eng --> UC4A
+Eng --> UC4J
+@enduml

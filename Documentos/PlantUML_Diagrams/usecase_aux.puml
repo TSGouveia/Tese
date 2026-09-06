@@ -1,0 +1,29 @@
+﻿@startuml
+top to bottom direction
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FCE7F3
+    BorderColor #DB2777
+    FontColor #500724
+}
+skinparam actor {
+    BackgroundColor #FEF9C3
+    BorderColor #CA8A04
+}
+
+actor "Automation Engineer" as Eng
+actor "BaSyx AAS Repository\n:8081" as BaSyxRepo
+
+rectangle "Auxiliary Operations" {
+    usecase "Manage Deployed AAS CRUD List" as UCA1
+    usecase "Preview Deployed Layout 3D Scene" as UCA2
+    usecase "Program Deployed AAS Rules" as UCA3
+}
+
+Eng --> UCA1
+Eng --> UCA2
+Eng --> UCA3
+
+UCA1 --> BaSyxRepo : "GET / DELETE /shells"
+UCA3 --> BaSyxRepo : "GET & PUT /submodels"
+@enduml
