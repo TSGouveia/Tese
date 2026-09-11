@@ -1,12 +1,304 @@
 %!TEX root = ../template.tex
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% chapter3.tex
+%% chapter4.tex
 %% NOVA thesis document file
 %%
-%% Chapter with Preliminary Work and Work Plan
+%% Chapter 4: Technological Implementation
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \typeout{NT FILE chapter4.tex}%
 
-\chapter{Implementation}
+\chapter{Technological Implementation}
 \label{cha:implementation}
+
+This chapter describes how the digital twin framework from \Cref{cha:architecture} was built in practice, covering the tools, protocols, and software components used at each layer. Moving from high-level architectural specifications to an operational system requires bridging the gap between abstract standards, such as the Asset Administration Shell (AAS), and the practical realities of industrial hardware and game-engine physics.
+
+A fourth step, Layer~0, is also introduced here. While the conceptual architecture assumes 3D geometric models are readily available, the physical FMS testbed used in this work lacked pre-existing CAD assets. Layer~0 addresses this gap by establishing a manual digitization workflow in Blender, producing the lightweight 3D models required before the configuration pipeline can begin.
+
+\section{System Architecture and Technology Realization}
+\label{sec:tech_realization}
+
+\subsection{Physical Testbed Context: The Modular FMS Bench}
+To validate the framework under real-world conditions, an existing Flexible Manufacturing System (FMS) testbed was used as the pilot case study (\Cref{fig:fms_pilot_testbed}). The setup is a modular closed-loop conveyor system used for product transportation across testing stations. Using a modular testbed provides an ideal scenario to test whether the proposed digital twin can reconstruct a factory floor modularly, asset by asset, and coordinate multiple distributed mechanisms in real time.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.72\linewidth,height=0.42\textheight,keepaspectratio]{5-Figures/fms_pilot_bench.jpg}
+    \caption{Physical modular FMS conveyor testbed used as the validation environment, showing the modular conveyor tracks, magnetic sensors, the punch system, and the Industrial Shields M-DUINO PLC controller.}
+    \label{fig:fms_pilot_testbed}
+\end{figure}
+
+The physical bench integrates several distinct hardware groups. Mechanically, it comprises three stationary conveyor belts, two rotational conveyor sections, one translating transfer conveyor, and a vertical punch mechanism that simulates drilling or stamping operations on the product. Field instrumentation includes 24\,V~DC magnetic sensors distributed along the tracks for product detection, contact limit switches for tracking conveyor and punch positions, and 24\,V~DC motors that drive each conveyor section. Control is handled by an Industrial Shields M-DUINO 57+ PLC (built around the Arduino Mega 2560 architecture), equipped with an integrated Ethernet interface and optoisolated I/O terminal boards.
+
+\subsection{Overall Component Architecture and Inter-Layer Interfaces}
+With this physical bench as the target, the complete framework was implemented across four operational layers. \Cref{fig:architecture_global} illustrates the system implementation as a component diagram.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{5-Figures/Implementação.drawio.pdf}
+    \caption[Implementation architecture of the framework]{Implementation architecture of the framework: (0) Physical Asset Digitization in Blender, (1) Asset Modeling in the Conveyor Wizard, (2) Storage and Registry in Eclipse BaSyx~v2 on Docker, and (3) Runtime Execution and Physical Synchronization in Unity 3D with an Industrial Shields M-DUINO PLC.}
+    \label{fig:architecture_global}
+\end{figure}
+
+The information flow spans four operational stages. In Layer~0 (Physical Asset Digitization), physical hardware components are rebuilt as 3D models in Blender using manual measurements with a tape measure. These parts are rigged with appropriate pivot origins and sensor triggers and then exported as binary glTF files. Next, Layer~1 (Asset Modeling) runs within the Conveyor Wizard desktop suite, loading the 3D model into an interactive viewport. Here, users configure machine properties and assign I/O pins before the BaSyx Python SDK packages everything into an AASX bundle and uploads it to Layer~2 through REST endpoints. 
+
+In Layer~2 (Storage and Registry), Eclipse BaSyx~v2 services run inside Docker containers. An AAS Environment Repository stores package files, while the AAS Registry and Submodel Registry track active assets and submodel endpoints backed by MongoDB. Operators can inspect these assets through the BaSyx Web UI using browsing endpoints. Finally, Layer~3 (Runtime Execution and Physical Synchronization) executes the 3D simulation in Unity, connecting it directly to the physical testbed controlled by the Industrial Shields M-DUINO PLC. At launch, Unity queries BaSyx to retrieve models and procedurally assemble the scene. During operation, the runtime either performs virtual commissioning through local logic rules or executes live physical synchronization by exchanging low-latency TCP telemetry and HTTP skill executions tied directly to the field sensors and actuator drives.
+
+\section{Layer 0: Physical Asset Digitization and 3D Modeling (Blender)}
+\label{sec:impl_layer0}
+
+In existing industrial automation setups, physical equipment often has no digital 3D counterpart. Where original CAD drawings do exist, they tend to include excessive geometric detail, like thread profiles and internal fasteners, that is too slow for real-time simulation. At the same time, they usually lack the joint hierarchies and pivot definitions that a physics engine needs to animate moving parts.
+
+The FMS testbed in this work had no usable 3D models at all. A manual digitization phase was carried out in Blender 5.2.0 LTS to produce the assets from scratch. This phase is called Layer~0 because it happens before the software pipeline starts, and its output, a set of GLB files, is what the rest of the system depends on.
+
+\Cref{fig:component_layer0} shows the component structure of Layer~0, which divides into three sequential tasks. First, the Physical Survey uses a tape measure on the physical FMS bench to measure parts accurately, providing the asset specifications needed for CAD reconstruction. Next, the 3D Mesh Modeler uses these measurements to build clean low-poly parts, aligning rotation pivots for moving components to produce a validated rigged model. Finally, the GLB Exporter packages the 3D geometry, hierarchy, and materials into a single binary file ready for Layer~1.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/Layer 0 - Physical Asset Digitization.pdf}
+    \caption{Component architecture and interface boundaries of Layer 0 (Physical Asset Digitization).}
+    \label{fig:component_layer0}
+\end{figure}
+
+The following subsections describe the survey measurements, kinematic rigging, and file export steps in detail.
+
+\subsection{Dimensional Survey and Polygonal Reconstruction}
+Manual measurements were taken across the physical FMS conveyor bench. Each module (conveyor chassis, flat belts, drive rollers, guide rails, and pneumatic transfer gates) was reconstructed to 1:1 scale in meters, matching Unity's coordinate system. The polygonal geometry was modeled with a low-poly approach for real-time simulation: contact and visual surfaces were kept precise to ensure correct physical interactions with moving workpieces, while non-functional internal cavities, hidden screws, and fasteners were omitted to reduce polygon count and memory footprint.
+
+\begin{figure}[htbp]
+    \centering
+    \imageplaceholder[6.5cm]{Physical FMS Conveyor Bench vs. 3D Model in Blender}{Photo of the physical modular conveyor bench alongside its digitized 3D polygonal model reconstructed in Blender 5.2.0 LTS, showing hierarchy and origins.}
+    \caption{Comparison between the physical modular FMS conveyor bench and its reconstructed 3D simulation model in Blender.}
+    \label{fig:fms_physical_vs_blender}
+\end{figure}
+
+\subsection{Kinematic Hierarchy and Origin Alignment}
+To satisfy the requirements of the VisualStructure model (\Cref{sec:model_visual_structure}), each asset was structured into an explicit parent-child hierarchy separating static frames from movable components (\texttt{dynamic = true}). Static frames, including structural extrusion profiles, mounting legs, and sensor brackets, were joined into a single root node with its coordinate origin set at the base reference point $(0, 0, 0)$. Movable elements, such as belts, pulleys, and diverter arms, were isolated into child objects. Crucially, the origin (pivot) of each moving mesh was aligned precisely with its physical axis of rotation or linear motion vector. Accurate pivot placement is vital because any offset causes the component to wobble or rotate around the wrong axis when driven by BehaviorBinding in the runtime engine (\Cref{sec:model_behavior_mapping}).
+
+\subsection{Asset Export and Interchange Formats}
+Once assembled, the 3D models were exported using the open glTF/GLB standard (GL Transmission Format). GLB packs polygonal meshes, transform node hierarchies, materials, and textures into one binary file, which is the format the Asset Modeling layer reads.
+
+\section{Layer 1: Asset Modeling (Conveyor Wizard)}
+\label{sec:impl_wizard}
+
+The Conveyor Wizard (\texttt{conveyor\_wizard.py}) is the Layer~1 implementation. It merges the Asset Model Editor and Package Exporter roles from \Cref{sec:layer1_conceptual} into a single desktop application. The goal, in line with requirement \textbf{NFR4}, was to let engineers configure a digital twin asset without needing to write any code.
+
+\Cref{fig:component_layer1} shows the component structure of the Conveyor Wizard suite, split into four collaborating modules. The 3D Viewer \& Raycaster embeds an interactive viewport to display the asset, calculating exact sensor locations whenever the user clicks on the conveyor surface. The GUI \& Event Manager provides the PyQt6 interface that leads the user through configuration tabs and consolidates settings into structured model data. In parallel, the Pin \& Logic Mapper maps these visual sensor locations directly to physical controller pins. Finally, the BaSyx Python SDK generates the corresponding AAS submodels in memory, packages the complete \texttt{.aasx} archive, and registers it with Layer~2 through dedicated REST endpoints for package upload, shell registration, and submodel registration.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/Layer 1 - Asset Modeling.pdf}
+    \caption{Component architecture and interface boundaries of Layer 1 (Asset Modeling).}
+    \label{fig:component_layer1}
+\end{figure}
+
+The functional workflow of the application is shown in \Cref{fig:wizard_ui} and its graphical interface in \Cref{fig:conveyor_wizard_gui_screenshot}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/wizard_ui_screenshots.pdf}
+    \caption{Functional workflow architecture of the Python Conveyor Wizard desktop application realizing Layer 1.}
+    \label{fig:wizard_ui}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \imageplaceholder[7.0cm]{Conveyor Wizard Desktop Application GUI}{Screenshot of the PyQt6 Conveyor Wizard running with the PyVista/VTK 3D viewport, showing an imported conveyor module with interactive raycasting pin markers.}
+    \caption{Graphical user interface of the Conveyor Wizard application showing the interactive 3D viewport and configuration tabs.}
+    \label{fig:conveyor_wizard_gui_screenshot}
+\end{figure}
+
+\subsection{Desktop Interface and 3D Viewport Architecture}
+The interface is built with PyQt6 and split into five sequential tabs. The central 3D viewport runs on PyVista and the Visualization Toolkit (VTK), with Trimesh handling geometry processing underneath. From the viewport, engineers can load a GLB model, check bounding boxes, and reorient the camera to inspect any part of the assembly.
+
+\subsection{Interactive Surface Raycasting for Pin Placement}
+Placing a sensor or actuator pin on the model is done by clicking directly on the mesh surface rather than typing in coordinates manually. This satisfies requirement \textbf{FR2} and eliminates a major source of human error.
+
+When the user clicks, a ray $\mathbf{r}(t)$ is cast from the camera position $\mathbf{r}_0$ in direction $\hat{\mathbf{d}}$. The Möller-Trumbore algorithm tests this ray against each triangle of mesh $\mathcal{M}$ to find the nearest intersection:
+\begin{equation}
+    \mathbf{p}_{\text{hit}} = \mathbf{r}_0 + t \cdot \hat{\mathbf{d}}, \quad t = \arg\min_{t > 0} \{ \mathbf{r}(t) \cap \mathcal{M} \}
+\end{equation}
+The hit point $\mathbf{p}_{\text{hit}}$ and surface normal $\hat{\mathbf{n}}$ are then extracted. The normal determines the pin orientation, so a sensor placed on a slanted surface automatically gets the correct beam direction.
+
+\subsection{Realization of the 5-Step Authoring Workflow}
+The wizard guides the user through five sequential steps, matching the Layer~1 activity diagram (\Cref{fig:activity_layer1}) and detailed in the use case diagrams (\Cref{fig:usecase_step1,fig:usecase_step2,fig:usecase_step3,fig:usecase_step4,fig:usecase_step5}).
+
+In the first step (\Cref{fig:usecase_step1}), the user loads a GLB 3D model into the workspace, where the tool automatically verifies mesh integrity, calculates bounding box dimensions, and displays the internal node hierarchy tree.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\linewidth,height=0.42\textheight,keepaspectratio]{5-Figures/usecase_step1.pdf}
+    \caption{Use Case Diagram --- Step 1: 3D Model Ingestion and Structure Inspection.}
+    \label{fig:usecase_step1}
+\end{figure}
+
+The second step (\Cref{fig:usecase_step2}) handles module identification and network configuration. The user defines the global \texttt{assetId}, assigns an equipment category, specifies 3D world transforms (position, rotation, scale), and inputs target controller networking parameters such as the IP address and primary TCP communication port.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\linewidth,height=0.42\textheight,keepaspectratio]{5-Figures/usecase_step2.pdf}
+    \caption{Use Case Diagram --- Step 2: Module Identification, Network Setup, and Placement.}
+    \label{fig:usecase_step2}
+\end{figure}
+
+In the third step (\Cref{fig:usecase_step3}), the engineer instruments the digital model with sensors. By clicking directly onto the 3D surface using the raycasting mechanism, optical breakbeam and proximity sensors are positioned and stored as \texttt{INPUT} pins mapped to specific PLC hardware terminals (such as \texttt{I0\_0} through \texttt{I2\_5}).
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\linewidth,height=0.42\textheight,keepaspectratio]{5-Figures/usecase_step3.pdf}
+    \caption{Use Case Diagram --- Step 3: Sensor Instrumentation and Input Pin Mapping.}
+    \label{fig:usecase_step3}
+\end{figure}
+
+The fourth step (\Cref{fig:usecase_step4}) configures moving components and drive actuators. The user selects a dynamic mesh node, specifies kinematic constraints and motion speed parameters, and binds forward and reverse control signals to PLC output relays (\texttt{OUTPUT} pins, such as \texttt{R0\_0} through \texttt{R2\_8}).
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\linewidth,height=0.42\textheight,keepaspectratio]{5-Figures/usecase_step4.pdf}
+    \caption{Use Case Diagram --- Step 4: Actuator Configuration and Output Pin Mapping.}
+    \label{fig:usecase_step4}
+\end{figure}
+
+Finally, in the fifth step (\Cref{fig:usecase_step5}), the application performs sanity checks across all defined fields. Upon successful validation, it serializes the submodels, embeds the GLB geometry, and publishes the resulting \texttt{.aasx} package to the Layer~2 repository over an HTTP \texttt{POST} request.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\linewidth,height=0.44\textheight,keepaspectratio]{5-Figures/usecase_step5.pdf}
+    \caption{Use Case Diagram --- Step 5: Package Validation, Submodel Generation, and Server Upload.}
+    \label{fig:usecase_step5}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\linewidth,height=0.42\textheight,keepaspectratio]{5-Figures/usecase_aux.pdf}
+    \caption{Use Case Diagram --- Auxiliary Operations: Asset Management, Multi-Station Layout, and Rule Tables.}
+    \label{fig:usecase_aux}
+\end{figure}
+
+Auxiliary operations (\Cref{fig:usecase_aux}) let engineers manage registered shells, assemble multi-station layouts with magnetic snapping, and edit IF-THEN rules.
+
+\subsection{AASX Packaging and Submodel Formalization}
+Under the hood, the wizard calls \texttt{basyx-python-sdk} to serialize each configured class into a standard IEC~63278 Asset Administration Shell submodel. \Cref{fig:aas_metamodel_submodels} shows the resulting AAS structure as a UML class diagram.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.75\textheight,keepaspectratio]{5-Figures/aas_metamodel_submodels.pdf}
+    \caption{Formal UML Class Diagram of the implemented AAS Submodels conforming to IEC~63278.}
+    \label{fig:aas_metamodel_submodels}
+\end{figure}
+
+Each conceptual class maps directly to an AAS submodel. \texttt{VisualStructure} packages the 3D mesh as an embedded binary \texttt{Blob} or external URI, storing scene node hierarchies and spatial transforms in structured collections. \texttt{VirtualPins} organizes input and output channels into typed lists detailing pin names, hardware addresses, and live signal values. \texttt{BehaviorMapping} specifies transport speeds, motion axes, and links between 3D kinematic nodes and actuator drives. \texttt{NetworkEndpoint} formalizes interface endpoints by specifying the protocol (TCP, HTTP REST, MQTT), IP address, and port numbers. Finally, \texttt{ControlLogic} embeds tabular IF-THEN conditional rules for autonomous execution during virtual commissioning. All submodels and 3D mesh files are then packed into an OPC-compliant \texttt{.aasx} archive with an internal manifest, making the asset portable across arbitrary AAS-compatible tools.
+
+\section{Layer 2: Storage and Registry (Eclipse BaSyx v2)}
+\label{sec:impl_basyx}
+
+Layer~2 runs on Eclipse BaSyx~v2, deployed as a set of Docker Compose containers inside an isolated network. Docker was chosen because it makes the entire middleware stack reproducible: a single \texttt{docker compose up} command starts all services in the correct order with no manual configuration.
+
+\Cref{fig:component_layer2} shows the component structure and service interfaces of Layer~2, which centers on five core components. The AAS Environment Repository stores uploaded AASX packages, handling package ingestion, web inspection, and model retrieval for Unity simulation clients. The AAS Registry and Submodel Registry manage registered shells and submodel URLs, respectively, exposing endpoints for registration, discovery, and lookup. Internal persistence across all registries and repositories is backed by a shared MongoDB database. Finally, operators can inspect and browse all live machines through the BaSyx Web UI using the catalog and submodel browsing endpoints.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/Layer 2 - Storage & Registry.pdf}
+    \caption{Component architecture and interface boundaries of Layer 2 (Storage and Registry).}
+    \label{fig:component_layer2}
+\end{figure}
+
+The container networking and service topology is illustrated in \Cref{fig:basyx_docker_topology}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/basyx_docker_topology.pdf}
+    \caption{Container networking and service topology of the Eclipse BaSyx v2 Docker deployment.}
+    \label{fig:basyx_docker_topology}
+\end{figure}
+
+\subsection{Microservice Architecture and Port Allocation}
+The containerized services provide the repository and registry functions defined in \Cref{fig:activity_layer2}. The AAS Environment Repository (Port 8081) exposes standard REST endpoints to store and serve AAS packages, submodels, and 3D mesh files. The AAS Registry (Port 8082) and Submodel Registry (Port 8083) maintain directory indices of active assets, resolving unique \texttt{assetId} strings to live HTTP network endpoints. Real-time update notifications across submodels are handled by an Eclipse Mosquitto MQTT Broker (Port 1883), while persistent storage for shell metadata and descriptors is maintained by MongoDB (Port 27017). Operators interact with the entire deployment through the BaSyx Web UI dashboard (Port 3000).
+
+\subsection{Package Ingestion and Registry Resolution}
+When an \texttt{.aasx} package is uploaded via HTTP \texttt{POST} to \texttt{:8081/upload}, the repository extracts its contents. 3D meshes (GLB) are placed in the static web server directory, accessible via standard URLs, while shell metadata and submodels are stored in MongoDB.
+
+Next, registration calls are sent to both the AAS Registry (\texttt{/shell-descriptors}, port 8082) and the Submodel Registry (\texttt{/submodel-descriptors}, port 8083). These records publish the asset ID, short name, and REST endpoint URLs. Simulation clients can then discover available machines and their submodels with a single query.
+
+\section{Layer 3: Runtime Execution and Physical Synchronization}
+\label{sec:impl_unity}
+
+The Runtime Execution and Physical Synchronization layer (\Cref{sec:layer3_conceptual}) connects Unity 3D with the physical testbed through collaborating components shown in \Cref{fig:component_layer3}. At the simulation core, BaSyx Manager downloads model packages from Layer~2 and instantiates virtual equipment into the scene. The AAS Kit Importer inspects model descriptors and binds runtime scripts to corresponding scene nodes. Virtual sensor signals and kinematic motor commands are processed by the AAS Sensor Controller and AAS Actuator Controller, while the AAS Rule Engine evaluates local conditional logic during virtual testing without requiring physical controllers. Workpiece dynamics are managed by Dynamic Product, which applies position corrections to eliminate physical drift. Runtime execution modes are coordinated by the Operation Mode Manager alongside AAS Arduino Link, which ingests raw telemetry over TCP and triggers motor routines via HTTP. Finally, on the shop floor, the Industrial Shields M-DUINO PLC reads 24\,V sensor inputs through optocouplers and triggers relay outputs to operate the conveyor motors.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/Layer 3 - Runtime Execution & Synchronization.pdf}
+    \caption{Component architecture and interface boundaries of Layer 3 (Runtime Execution and Physical Synchronization).}
+    \label{fig:component_layer3}
+\end{figure}
+
+The internal component architecture and scene hierarchy inside Unity are shown in \Cref{fig:unity_scene_hierarchy}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/unity_scene_hierarchy.pdf}
+    \caption{Unity 3D component architecture and scene hierarchy for dynamic asset generation and synchronization.}
+    \label{fig:unity_scene_hierarchy}
+\end{figure}
+
+\subsection{Dynamic Ingestion Flow and Procedural Scene Construction}
+To satisfy requirement \textbf{FR3} (Dynamic Scene Assembly), the virtual scene is built automatically at runtime without pre-saved scene files, following the Dynamic Ingestion Flow (\Cref{sec:architecture_flows}). First, \texttt{BaSyxManager.cs} queries the AAS Registry (Port 8082) to discover active assets on the network. For each discovered asset, the runtime importer (\texttt{AASKitImporter.cs}) fetches the corresponding \texttt{VisualStructure} submodel from the repository (Port 8081). The 3D mesh files (GLB) are downloaded over HTTP and procedurally instantiated as Unity game objects, with physics colliders and rigidbodies automatically configured according to the bounding volume descriptors. Finally, dedicated behavioral scripts are bound to the instantiated objects: \texttt{AASSensorController} manages optical and proximity sensor states, \texttt{AASActuatorController} handles kinematic drives and surface transport, and \texttt{AASRuleEngine} evaluates local conditional rules for closed-loop testing.
+
+\subsection{Conveyor Physics Simulation}
+To ensure physical realism, conveyor belts are simulated using PhysX friction and surface velocity vectors rather than simple translation scripts. By setting a tangential surface velocity on conveyor colliders, workpieces experience realistic friction, inertia, acceleration, and contact forces. This naturally reproduces real conveyor behavior like belt slippage, product queuing, and back-pressure. The implementation relies on two cooperating C\# components: \texttt{ConveyorSurface.cs}, which is attached to the conveyor collider to assign friction parameters and linear velocity along the belt axis, and \texttt{ConveyorContactTracker.cs}, which is attached dynamically to workpieces marked with the \texttt{DynamicProduct} tag to track active contact points and impart drive forces.
+
+\subsection{Dual-Mode Execution Framework}
+\label{sec:impl_dual_mode}
+
+To support different stages of engineering, the runtime provides two operating modes managed by \texttt{OperationModeManager.cs}, as shown in \Cref{fig:dual_mode_sequence}. Mode~A (Virtual Commissioning) validates system behavior before physical hardware is connected. When a simulated workpiece triggers a virtual sensor, \texttt{SensorPhysicsProxy} updates the local sensor state and alerts \texttt{AASSensorController}. The \texttt{AASRuleEngine} then evaluates the IF-THEN rules from the \texttt{ControlLogic} submodel, driving virtual actuators in a closed loop entirely within the simulation engine. Conversely, Mode~B (Live Digital Twin Synchronization) operates during live plant execution. In this mode, \texttt{AASRuleEngine} is disabled, and \texttt{AASArduinoLink} connects directly to the physical PLC over a low-latency TCP socket (:8888). Incoming sensor telemetry immediately updates virtual sensor states and prompts kinematic snapping in \texttt{DynamicProduct}, while asynchronous HTTP calls keep the BaSyx repository synchronized with physical shop-floor events.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.75\textheight,keepaspectratio]{5-Figures/dual_mode_sequence.pdf}
+    \caption{UML Sequence Diagram showing interaction flows in Mode A (Virtual Commissioning) versus Mode B (Live Digital Twin Synchronization).}
+    \label{fig:dual_mode_sequence}
+\end{figure}
+
+\subsection{Kinematic Drift Correction (Snapping)}
+\label{sec:impl_snapping}
+Due to continuous numerical physics calculations and small network delays, the simulated workpiece position can slowly drift away from the physical workpiece over time. To preserve synchronization (\textbf{FR4}), \texttt{DynamicProduct.cs} uses a position snapping algorithm. Whenever a physical optical sensor detects a workpiece, the simulation identifies the matching virtual workpiece and smoothly moves it to the known 3D position of that physical sensor, removing accumulated drift without sudden jumps.
+
+\begin{figure}[htbp]
+    \centering
+    \imageplaceholder[6.5cm]{Unity 3D Runtime Simulation and Digital Twin View}{Screenshot of the Unity 3D runtime environment during live operation, showing the procedural conveyor line, moving workpieces, HUD indicators, and optical sensor trigger zones.}
+    \caption{Interactive 3D visualization and digital twin runtime running in Unity 3D.}
+    \label{fig:unity_runtime_screenshot}
+\end{figure}
+
+\section{Physical Automation Setup and Embedded Firmware}
+\label{sec:impl_firmware}
+
+The physical testbed is a modular closed-loop conveyor system. Field control and telemetry dispatching run on an Arduino Mega 2560 microcontroller with a Wiznet W5100 Ethernet Shield. \Cref{fig:arduino_freertos_schema} shows the firmware architecture, RTOS tasks, and message queues.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/arduino_freertos_schema.pdf}
+    \caption{Embedded FreeRTOS multi-tasking firmware architecture on the Arduino Mega 2560 controller.}
+    \label{fig:arduino_freertos_schema}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.65\linewidth,height=0.45\textheight,keepaspectratio]{5-Figures/fms_mduino_plc.jpg}
+    \caption{Industrial Shields M-Duino 57R+ PLC with DIN-rail mount, field I/O terminal blocks, and Ethernet/USB interfaces.}
+    \label{fig:physical_hardware_photo}
+\end{figure}
+
+\subsection{Sensor Interfacing and Electrical Isolation}
+The testbed uses 24\,V~DC optical sensors and inductive proximity detectors. To protect the 5\,V microcontroller logic from voltage spikes and motor electrical noise, all digital inputs pass through optical isolation boards with PC817 optocouplers before reaching the Arduino GPIO pins. The optocoupler outputs are read using internal software pull-up resistors.
+
+\subsection{FreeRTOS Multi-Tasking Architecture}
+The firmware (\texttt{FMS\_DT.ino}) runs on the FreeRTOS real-time operating system to ensure reliable sensor scanning and communication through four distinct tasks. The highest-priority routine, \texttt{TaskSensores} (Priority 3, running every 5\,ms), polls digital sensor pins, applies software debounce filtering, and enqueues event tokens whenever an input changes state. An event-driven task, \texttt{TaskEnvio} (Priority 2), blocks on this queue, immediately formatting incoming events into compact JSON packets (such as \texttt{\{"Port":"I0\_0","Value":1\}}) and pushing them over the open TCP socket. In parallel, \texttt{TaskDigitalshadow} (Priority 2) maintains internal state variables and diagnostic heartbeat counters, while \texttt{TaskTripa} (Priority 1) executes in the background to handle the state machine governing conveyor drive motors and pneumatic transfer gates.
+
+\subsection{Dual-Channel Communication Strategy}
+To support both configuration and real-time synchronization, the firmware implements the dual-channel approach from \Cref{sec:architecture_conceptual}. The administrative and REST channel operates on Port~80 via an embedded HTTP server, serving on-demand status requests and parameter adjustments. In contrast, the low-latency telemetry channel maintains a dedicated TCP socket on Port~8888 implementing the Low-Latency Telemetry Flow (\Cref{sec:architecture_flows}), bypassing HTTP parsing overhead to deliver input change events to Unity with minimal latency, satisfying requirement \textbf{NFR1}.
+
+\section{Chapter Summary}
+\label{sec:impl_summary}
+
+This chapter detailed the physical and software realization of the proposed digital twin pipeline across four distinct tiers. Layer~0 digitized existing conveyor hardware in Blender, producing simulation-ready low-poly GLB models with properly aligned kinematic pivots. Layer~1 delivered the Python-based Conveyor Wizard, allowing engineers to visually instrument equipment using raycasting and generate standardized IEC~63278 AASX packages without programming. Layer~2 realized model storage and discovery registries through a containerized Eclipse BaSyx~v2 Docker topology backed by MongoDB and MQTT. Finally, Layer~3 implemented the runtime in Unity 3D, providing dynamic scene assembly, PhysX contact simulation, dual-mode execution, and sub-millisecond physical synchronization with an Industrial Shields PLC running FreeRTOS firmware. The quantitative performance evaluation of this implementation is presented in \Cref{cha:discussion}.
