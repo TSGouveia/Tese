@@ -14,3 +14,31 @@ __pycache__/
 AAS Docker/influxdb/data/
 DT Unity/Assets/_Recovery/
 AAS Client/conveyor_wizard_original.py
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.out
+*.run.xml
+*.gls
+*.glg
+*.glo:BPMN
+*.acr
+*.acn
+*.alg
+*.ist
+*.sls
+*.slg
+*.sno
+*.bbl-SAVE-ERROR
+Documentos/thesis.pdf
+Documentos/thesis.log
+
