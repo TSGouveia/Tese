@@ -20,6 +20,29 @@
 \usepackage[textsize=footnotesize]{todonotes}  % To register TODO notes in the text
 \usepackage{makecell}      % Multiline table cells and control vertical and horizontal alignment
 \usepackage{tcolorbox}    % pretty print color boxes
+\tcbuselibrary{skins}
+\usepackage{subcaption}
+
+
+% Command for figure placeholders: \imageplaceholder[height]{Title}{Instructions}
+\newcommand{\imageplaceholder}[3][5cm]{%
+  \begin{tcolorbox}[
+    colback=gray!8,
+    colframe=novablue!70,
+    coltitle=white,
+    fonttitle=\bfseries\small,
+    title={Image Placeholder: #2},
+    width=\linewidth,
+    height=#1,
+    valign=center,
+    halign=center
+  ]
+    \centering
+    \textcolor{gray!80}{\textbf{[ Insert Image: #2 ]}}\\[4pt]
+    \footnotesize\textit{#3}
+  \end{tcolorbox}%
+}
+
 \usepackage{hyperref}
 \usepackage[nameinlink]{cleveref}
 \usepackage{pgfgantt}
