@@ -1,29 +1,68 @@
-﻿@startuml
+@startuml
 top to bottom direction
+scale 2.0
+skinparam dpi 300
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 17
 skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam padding 10
+skinparam nodesep 30
+skinparam ranksep 40
+
 skinparam usecase {
     BackgroundColor #E0F2FE
     BorderColor #0284C7
     FontColor #0C4A6E
+    FontSize 17
+    FontStyle bold
 }
+
 skinparam actor {
     BackgroundColor #FEF9C3
     BorderColor #CA8A04
+    FontColor #713F12
+    FontSize 17
+    FontStyle bold
+}
+
+skinparam rectangle {
+    BackgroundColor #F8FAFC
+    BorderColor #64748B
+    FontColor #1E293B
+    FontSize 19
+    FontStyle bold
 }
 
 actor "Automation Engineer" as Eng
 
-rectangle "Step 4 · Actuators Configuration - Outputs" {
+rectangle "Step 4: Actuators Configuration (Outputs)" {
     usecase "Add Output Actuator" as UC4A
     usecase "Assign Actuator Pin ID" as UC4B
     usecase "Select Target Node from Tree" as UC4C
-    usecase "Choose Behavior\n(Conveyor / Rotate / Translate / Linear)" as UC4D
-    usecase "Define Motion Axis (X / Y / Z)" as UC4E
+    usecase "Choose Actuator Behavior" as UC4D
+    usecase "Define Motion Axis" as UC4E
+
     usecase "Set Movement Speed" as UC4F
     usecase "Assign Stop Sensor Component" as UC4G
-    usecase "Map Real Hardware Port ID" as UC4H
+    usecase "Map Real Hardware Connection" as UC4H
     usecase "Visualize Actuator Arrow in 3D View" as UC4I
     usecase "Remove Actuator" as UC4J
+
+    ' Column 1 vertical flow
+    UC4A -[hidden]down-> UC4B
+    UC4B -[hidden]down-> UC4C
+    UC4C -[hidden]down-> UC4D
+    UC4D -[hidden]down-> UC4E
+
+    ' Column 2 vertical flow
+    UC4F -[hidden]down-> UC4G
+    UC4G -[hidden]down-> UC4H
+    UC4H -[hidden]down-> UC4I
+    UC4I -[hidden]down-> UC4J
+
+    ' Connect Column 1 to Column 2 horizontally
+    UC4A -[hidden]right-> UC4F
 
     UC4A ..> UC4B : <<include>>
     UC4A ..> UC4C : <<include>>
@@ -38,3 +77,7 @@ rectangle "Step 4 · Actuators Configuration - Outputs" {
 Eng --> UC4A
 Eng --> UC4J
 @enduml
+
+
+
+

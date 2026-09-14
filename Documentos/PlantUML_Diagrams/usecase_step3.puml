@@ -1,29 +1,68 @@
-﻿@startuml
+@startuml
 top to bottom direction
+scale 2.0
+skinparam dpi 300
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 17
 skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam padding 10
+skinparam nodesep 30
+skinparam ranksep 40
+
 skinparam usecase {
     BackgroundColor #E0F2FE
     BorderColor #0284C7
     FontColor #0C4A6E
+    FontSize 17
+    FontStyle bold
 }
+
 skinparam actor {
     BackgroundColor #FEF9C3
     BorderColor #CA8A04
+    FontColor #713F12
+    FontSize 17
+    FontStyle bold
+}
+
+skinparam rectangle {
+    BackgroundColor #F8FAFC
+    BorderColor #64748B
+    FontColor #1E293B
+    FontSize 19
+    FontStyle bold
 }
 
 actor "Automation Engineer" as Eng
 
-rectangle "Step 3 · Sensors Configuration - Inputs" {
+rectangle "Step 3: Sensors Configuration (Inputs)" {
     usecase "Add Input Sensor" as UC3A
     usecase "Assign Sensor Pin ID" as UC3B
     usecase "Select Detection Node from Tree" as UC3C
-    usecase "Choose Behavior\n(TriggerZone / Proximity)" as UC3D
+    usecase "Choose Sensor Behavior" as UC3D
     usecase "Set Target Filter Tag" as UC3E
+
     usecase "Configure ActiveLow Flag" as UC3F
     usecase "Enable Snap Product on Detect" as UC3G
-    usecase "Map Real Hardware Port ID" as UC3H
-    usecase "Configure Move-on-State\n(position / rotation)" as UC3I
+    usecase "Map Real Hardware Connection" as UC3H
+    usecase "Configure Move on State" as UC3I
     usecase "Remove Sensor" as UC3J
+
+    ' Column 1 vertical flow
+    UC3A -[hidden]down-> UC3B
+    UC3B -[hidden]down-> UC3C
+    UC3C -[hidden]down-> UC3D
+    UC3D -[hidden]down-> UC3E
+
+    ' Column 2 vertical flow
+    UC3F -[hidden]down-> UC3G
+    UC3G -[hidden]down-> UC3H
+    UC3H -[hidden]down-> UC3I
+    UC3I -[hidden]down-> UC3J
+
+    ' Connect Column 1 to Column 2 horizontally
+    UC3A -[hidden]right-> UC3F
 
     UC3A ..> UC3B : <<include>>
     UC3A ..> UC3C : <<include>>
@@ -38,3 +77,9 @@ rectangle "Step 3 · Sensors Configuration - Inputs" {
 Eng --> UC3A
 Eng --> UC3J
 @enduml
+
+
+
+
+
+
