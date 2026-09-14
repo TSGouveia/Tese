@@ -1,0 +1,241 @@
+<mxfile host="Electron" agent="5.0">
+  <diagram id="arduino_freertos_sequence" name="Arduino FreeRTOS Runtime Sequence">
+    <mxGraphModel dx="1414" dy="889" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1600" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- PHASE 1 BOUNDING BOX -->
+        <mxCell id="p1_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fill=none;strokeColor=#94A3B8;strokeWidth=2;dashed=1;align=left;verticalAlign=top;spacingLeft=10;fontSize=19;fontStyle=1;fontColor=#475569;arcSize=14;fontFamily=Helvetica;" value="&lt;font style=&quot;color: rgb(0, 0, 0); background-color: rgb(255, 255, 255);&quot;&gt;PHASE 1: Firmware Setup &amp;amp; Dual-Server Initialization (setup / inicializar_portos)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="250" width="1710" x="40" y="130" as="geometry" />
+        </mxCell>
+
+        <!-- PHASE 2 BOUNDING BOX -->
+        <mxCell id="p2_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fill=none;strokeColor=#64748B;strokeWidth=2;dashed=1;align=left;verticalAlign=top;spacingLeft=10;fontSize=19;fontStyle=1;fontColor=#475569;arcSize=8;fontFamily=Helvetica;" value="&lt;span style=&quot;color: rgb(0, 0, 0); background-color: rgb(255, 255, 255);&quot;&gt;PHASE 2: Real-Time Sensor Scanning &amp;amp; Telemetry Dispatching (Priority 3 &amp;amp; 2 Tasks)&lt;/span&gt;" vertex="1">
+          <mxGeometry height="360" width="1710" x="40" y="400" as="geometry" />
+        </mxCell>
+
+        <!-- PHASE 3 BOUNDING BOX -->
+        <mxCell id="p3_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fill=none;strokeColor=#D97706;strokeWidth=2;dashed=1;align=left;verticalAlign=top;spacingLeft=10;fontSize=19;fontStyle=1;fontColor=#475569;arcSize=4;fontFamily=Helvetica;" value="&lt;span style=&quot;color: rgb(0, 0, 0); background-color: rgb(255, 255, 255);&quot;&gt;PHASE 3: Dual-Channel Actuation Loop &amp;amp; Session Management (HTTP REST :80 &amp;amp; TCP Watchdog)&lt;/span&gt;" vertex="1">
+          <mxGeometry height="300" width="1710" x="40" y="780" as="geometry" />
+        </mxCell>
+
+        <!-- LIFELINE HEADERS -->
+
+        <!-- 1. Physical Hardware -->
+        <mxCell id="a_hw" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#CAE1F3;strokeColor=#375996;fontStyle=1;fontSize=17;fontFamily=Helvetica;strokeWidth=2;" value="Physical Hardware I/O&#xa;&amp;amp; PC817 Optocouplers" vertex="1">
+          <mxGeometry height="99" width="200" x="60" y="10" as="geometry" />
+        </mxCell>
+
+        <!-- 2. TaskSensores -->
+        <mxCell id="a_tsen" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#CAE1F3;strokeColor=#375996;fontStyle=1;fontSize=17;fontFamily=Helvetica;strokeWidth=2;" value="TaskSensores&#xa;(Priority 3 - Scan 5ms)" vertex="1">
+          <mxGeometry height="99" width="200" x="310" y="10" as="geometry" />
+        </mxCell>
+
+        <!-- 3. FreeRTOS IPC -->
+        <mxCell id="a_ipc" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBEEA8;strokeColor=#27591B;fontStyle=1;fontSize=17;fontFamily=Helvetica;strokeWidth=2;" value="FreeRTOS IPC Primitives&#xa;(Queue: envio &amp;amp; Mutex)" vertex="1">
+          <mxGeometry height="99" width="200" x="560" y="10" as="geometry" />
+        </mxCell>
+
+        <!-- 4. TaskEnvio -->
+        <mxCell id="a_tenv" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F6D2D2;strokeColor=#D65C5C;fontStyle=1;fontSize=17;fontFamily=Helvetica;strokeWidth=2;" value="TaskEnvio&#xa;(Priority 2 - Telemetry)" vertex="1">
+          <mxGeometry height="99" width="200" x="810" y="10" as="geometry" />
+        </mxCell>
+
+        <!-- 5. TaskTripa -->
+        <mxCell id="a_ttrip" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F6D2D2;strokeColor=#D65C5C;fontStyle=1;fontSize=17;fontFamily=Helvetica;strokeWidth=2;" value="TaskTripa&#xa;(Priority 1 - HTTP REST)" vertex="1">
+          <mxGeometry height="99" width="200" x="1060" y="10" as="geometry" />
+        </mxCell>
+
+        <!-- 6. Unity Engine Client -->
+        <mxCell id="a_unity" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEB3E2;strokeColor=#D65CB8;fontStyle=1;fontSize=17;fontFamily=Helvetica;strokeWidth=2;" value="Unity 3D Engine Client&#xa;(TCP Socket :8888)" vertex="1">
+          <mxGeometry height="99" width="200" x="1310" y="10" as="geometry" />
+        </mxCell>
+
+        <!-- 7. BaSyx / External Manager -->
+        <mxCell id="a_basyx" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEB3E2;strokeColor=#D65CB8;fontStyle=1;fontSize=17;fontFamily=Helvetica;strokeWidth=2;" value="BaSyx / External Manager&#xa;(HTTP Client :80)" vertex="1">
+          <mxGeometry height="99" width="200" x="1540" y="10" as="geometry" />
+        </mxCell>
+
+        <!-- DASHED LIFELINES -->
+        <mxCell id="line_hw" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#375996;strokeWidth=2;fontSize=17;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="160" y="110" as="sourcePoint" />
+            <mxPoint x="160" y="1100" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="line_tsen" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#375996;strokeWidth=2;fontSize=17;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="410" y="110" as="sourcePoint" />
+            <mxPoint x="410" y="1100" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="line_ipc" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#27591B;strokeWidth=2;fontSize=17;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="660" y="110" as="sourcePoint" />
+            <mxPoint x="660" y="1100" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="line_tenv" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#D65C5C;strokeWidth=2;fontSize=17;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="910" y="110" as="sourcePoint" />
+            <mxPoint x="910" y="1100" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="line_ttrip" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#D65C5C;strokeWidth=2;fontSize=17;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="110" as="sourcePoint" />
+            <mxPoint x="1160" y="1100" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="line_unity" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#D65CB8;strokeWidth=2;fontSize=17;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1410" y="110" as="sourcePoint" />
+            <mxPoint x="1410" y="1100" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="line_basyx" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#D65CB8;strokeWidth=2;fontSize=17;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1640" y="110" as="sourcePoint" />
+            <mxPoint x="1640" y="1100" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- MESSAGES: PHASE 1 -->
+        <mxCell id="m1" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;edgeStyle=orthogonalEdgeStyle;rounded=0;strokeWidth=2;strokeColor=#000000;fontSize=17;" value="Initialize GPIO Pin Modes (Inputs: I0..I2, Outputs: R0..R2)">
+          <mxGeometry relative="1" x="-0.2632" y="120" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="195" y="180" />
+              <mxPoint x="195" y="205" />
+            </Array>
+            <mxPoint x="160" y="180" as="sourcePoint" />
+            <mxPoint x="160" y="205" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m2" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#000000;fontSize=17;fontStyle=1;" value="Create FreeRTOS IPC Primitives (Queue: envio [30 elements], mutex_envio)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="160" y="235" as="sourcePoint" />
+            <mxPoint x="660" y="235" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m3" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#000000;fontSize=17;fontStyle=1;" value="Start Dual Ethernet Servers (Port 80: HTTP REST, Port 8888: TCP Socket)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="160" y="280" as="sourcePoint" />
+            <mxPoint x="1160" y="280" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m4" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#000000;fontSize=17;fontStyle=1;" value="Spawn Concurrent FreeRTOS Tasks (TaskSensores [P3], TaskEnvio [P2], TaskDigitalshadow [P1], TaskTripa [P1])">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="160" y="330" as="sourcePoint" />
+            <mxPoint x="410" y="330" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- MESSAGES: PHASE 2 -->
+        <mxCell id="m5" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#000000;fontSize=17;fontStyle=1;" value="Read Sensor Voltage via Optocoupler Board (5ms Periodic Scan Loop)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="160" y="450" as="sourcePoint" />
+            <mxPoint x="410" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m6" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;edgeStyle=orthogonalEdgeStyle;rounded=0;strokeWidth=2;strokeColor=#000000;fontSize=17;" value="Apply Software Debounce &amp; Detect Pin Edge Change (Rising/Falling)">
+          <mxGeometry relative="1" x="-0.2632" y="120" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="445" y="490" />
+              <mxPoint x="445" y="515" />
+            </Array>
+            <mxPoint x="410" y="490" as="sourcePoint" />
+            <mxPoint x="410" y="515" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m7" edge="1" parent="1" style="html=1;verticalArrow=bottom;endArrow=block;strokeWidth=2;strokeColor=#000000;fontSize=17;fontStyle=1;" value="xQueueSendToBack(envio, &amp;data, portMAX_DELAY)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="410" y="555" as="sourcePoint" />
+            <mxPoint x="660" y="555" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m8" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#000000;fontSize=17;fontStyle=1;" value="xQueueReceive(envio, &amp;data, portMAX_DELAY) [Unblock TaskEnvio]">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="660" y="600" as="sourcePoint" />
+            <mxPoint x="910" y="600" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m9" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;edgeStyle=orthogonalEdgeStyle;rounded=0;strokeWidth=2;strokeColor=#000000;fontSize=17;" value="Lock mutex_envio &amp; Serialize JSON: {&quot;Port&quot;:&quot;I1_1&quot;,&quot;Value&quot;:1}">
+          <mxGeometry relative="1" x="-0.2632" y="120" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="945" y="640" />
+              <mxPoint x="945" y="665" />
+            </Array>
+            <mxPoint x="910" y="640" as="sourcePoint" />
+            <mxPoint x="910" y="665" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m10" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#000000;fontSize=17;fontStyle=1;" value="Dispatch Compact Telemetry Event Packet over TCP Socket Stream (:8888)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="910" y="705" as="sourcePoint" />
+            <mxPoint x="1410" y="705" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- MESSAGES: PHASE 3 -->
+        <mxCell id="m11" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#000000;fontSize=17;fontStyle=1;" value="HTTP GET /passadeiras?motor=R0_2&amp;state=1 (Port 80 REST Channel)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1640" y="830" as="sourcePoint" />
+            <mxPoint x="1160" y="830" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m12" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;edgeStyle=orthogonalEdgeStyle;rounded=0;strokeWidth=2;strokeColor=#000000;fontSize=17;" value="Parse REST Request &amp; Update Shared Bitfield Register porto_R">
+          <mxGeometry relative="1" x="-0.2632" y="120" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1195" y="865" />
+              <mxPoint x="1195" y="890" />
+            </Array>
+            <mxPoint x="1160" y="865" as="sourcePoint" />
+            <mxPoint x="1160" y="890" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m13" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#000000;fontSize=17;fontStyle=1;" value="digitalWrite(R0_2, HIGH) -&gt; Actuate Opto-Isolated Relay / Motor Drives">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="930" as="sourcePoint" />
+            <mxPoint x="160" y="930" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m14" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;strokeWidth=2;strokeColor=#000000;fontSize=17;" value="200 OK HTTP Response (Actuation Request Executed)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="975" as="sourcePoint" />
+            <mxPoint x="1640" y="975" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="m15" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#000000;fontSize=17;fontStyle=1;" value="Monitor Session Health &amp; Handle TCP Keep-Alive / Reconnect (TaskDigitalshadow)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1410" y="1020" as="sourcePoint" />
+            <mxPoint x="910" y="1020" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

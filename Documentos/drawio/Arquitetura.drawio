@@ -179,7 +179,7 @@
         <mxCell id="fbQgegFQLe6ln28PQBPW-175" parent="fbQgegFQLe6ln28PQBPW-164" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;strokeColor=#3592C2;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=13;fontColor=default;fontStyle=0;fillColor=#94C9E5;glass=0;" value="&lt;div&gt;Parse Geometry &amp;amp; &lt;br&gt;Extract Kinematic Joints&lt;/div&gt;" vertex="1">
           <mxGeometry height="60" width="202" x="45" y="220" as="geometry" />
         </mxCell>
-        <mxCell id="fbQgegFQLe6ln28PQBPW-179" parent="fbQgegFQLe6ln28PQBPW-164" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;strokeColor=#3592C2;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=13;fontColor=default;fontStyle=0;fillColor=#94C9E5;glass=0;" value="&lt;div&gt;Package Compilation &amp;amp;&lt;br&gt;Publishment&lt;/div&gt;" vertex="1">
+        <mxCell id="fbQgegFQLe6ln28PQBPW-179" parent="fbQgegFQLe6ln28PQBPW-164" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;strokeColor=#3592C2;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=13;fontColor=default;fontStyle=0;fillColor=#94C9E5;glass=0;" value="&lt;div&gt;Package Compilation &amp;amp;&lt;br&gt;Publication&lt;/div&gt;" vertex="1">
           <mxGeometry height="60" width="202" x="45" y="480" as="geometry" />
         </mxCell>
         <mxCell id="fbQgegFQLe6ln28PQBPW-182" edge="1" parent="fbQgegFQLe6ln28PQBPW-164" source="fbQgegFQLe6ln28PQBPW-180" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;endArrow=block;endFill=1;strokeWidth=2;fontStyle=0;fontSize=13;" target="fbQgegFQLe6ln28PQBPW-179">

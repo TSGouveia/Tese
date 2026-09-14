@@ -1,12 +1,91 @@
 %!TEX root = ../template.tex
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% chapter3.tex
+%% chapter5.tex
 %% NOVA thesis document file
 %%
-%% Chapter with Preliminary Work and Work Plan
+%% Chapter 5: Discussion and Results
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \typeout{NT FILE chapter5.tex}%
 
-\chapter{Discussion and Results}
+\chapter{Results and Evaluation}
 \label{cha:discussion}
+
+\iffalse
+This chapter evaluates the proposed framework through experiments on a physical Flexible Manufacturing System (\gls{FMS}) testbed. The evaluation focuses on three key metrics: engineering setup time, real-time synchronization latency, and network traffic scalability.
+\section{Experimental Setup: Modular \gls{FMS} Testbed}
+\label{sec:fms_case_study}
+
+The physical testbed is a closed-loop modular conveyor system featuring processing, assembly, and quality inspection stations. \Cref{fig:fms_physical_bench} shows the conveyor layout, station locations, and electrical \gls{IO} connections. \Cref{fig:fms_sensor_actuator_details} details the sensor and actuator wiring along with the optocoupled isolation boards.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{5-Figures/fms_physical_bench.pdf}
+    \caption{Physical layout and \gls{IO} station connections of the modular \gls{FMS} conveyor testbed.}
+    \label{fig:fms_physical_bench}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{5-Figures/fms_sensor_actuator_details.pdf}
+    \caption{Wiring and signal conditioning details for physical sensors, actuators, and optocoupled isolation boards.}
+    \label{fig:fms_sensor_actuator_details}
+\end{figure}
+
+\section{Engineering Setup Time}
+\label{sec:eval_setup_time}
+
+To measure the time saved by the model-driven approach, we recorded the time needed to configure and deploy a \gls{DT} asset using the wizard versus creating the \gls{AAS} package manually with standard editing tools. \Cref{fig:manual_vs_wizard_time} compares both approaches across each setup step.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth,height=0.48\textheight,keepaspectratio]{5-Figures/manual_vs_wizard_time.pdf}
+    \caption{Engineering setup time: manual \gls{AAS} package creation versus the proposed guided wizard.}
+    \label{fig:manual_vs_wizard_time}
+\end{figure}
+
+\section{Synchronization Latency}
+\label{sec:eval_latency}
+
+To evaluate real-time responsiveness, we measured end-to-end synchronization latency across three communication methods: \gls{HTTP} \gls{REST} polling, \gls{MQTT} publish/subscribe, and direct \gls{TCP} streaming. \Cref{fig:sync_latency_boxplot} shows the resulting latency distributions.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.90\linewidth,height=0.48\textheight,keepaspectratio]{5-Figures/sync_latency_boxplot.pdf}
+    \caption{End-to-end synchronization latency across \gls{HTTP} \gls{REST}, \gls{MQTT}, and Direct \gls{TCP} streaming.}
+    \label{fig:sync_latency_boxplot}
+\end{figure}
+
+\section{Network Traffic and Scalability}
+\label{sec:eval_traffic}
+
+To assess how the system handles larger production lines, we measured network bandwidth and message rates as the number of active conveyor modules increased from 1 to 10. The results are plotted in \Cref{fig:traffic_overhead_analysis}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.48\textheight,keepaspectratio]{5-Figures/traffic_overhead_analysis.pdf}
+    \caption{Network bandwidth (a) and transaction rate (b) as the number of active conveyor modules increases.}
+    \label{fig:traffic_overhead_analysis}
+\end{figure}
+
+\section{Validation of Research Hypotheses}
+\label{sec:hypothesis_validation}
+
+This section reviews the experimental findings against the four research hypotheses defined in \Cref{sec:research_problems}.
+
+\subsection{Hypothesis 1: Setup Time Reduction}
+\label{sec:val_rh1}
+The results in \Cref{sec:eval_setup_time} show that the wizard reduced total configuration time from 155.0~minutes (manual creation) to 29.5~minutes, representing an 81.0\% reduction in engineering effort. Interactive 3D raycasting eliminated the need to measure coordinates by hand, while automated validation prevented syntax errors in submodels. These findings validate \textbf{RH1}, confirming that a guided, model-driven workflow significantly speeds up \gls{DT} deployment.
+
+\subsection{Hypothesis 2: Semantic Interoperability and Decoupling}
+\label{sec:val_rh2}
+By using the standardized \gls{AAS} (IEC~63278) with five modular submodels, all geometric, kinematic, and behavioral properties were stored in self-contained packages. The Unity runtime imported and built complete 3D simulation scenes directly from these packages without requiring pre-made scenes or proprietary plugins. This validates \textbf{RH2}, showing that \glspl{DT} can be decoupled from specific game engines and simulation tools.
+
+\subsection{Hypothesis 3: Real-Time Synchronization and Drift Correction}
+\label{sec:val_rh3}
+The latency benchmarks in \Cref{sec:eval_latency} confirmed the effectiveness of the dual-channel design. The dedicated \gls{TCP} socket delivered physical sensor events to the simulation with an average latency of 5.4\,ms ($\sigma = 1.1\,$ms), compared to 182.4\,ms for \gls{REST} polling. Combined with the position-snapping technique, this eliminated accumulated drift between the physical bench and the virtual simulation, validating \textbf{RH3}.
+
+\subsection{Hypothesis 4: Autonomous \gls{VC}}
+\label{sec:val_rh4}
+In Mode~A, the simulation executed closed-loop conveyor logic entirely in software. The built-in rule engine read event rules from the \texttt{ControlLogic} submodel and actuated virtual diverters and stops reliably without connecting to a physical \gls{PLC} or network controller. This confirms \textbf{RH4}, demonstrating that control sequences can be tested before hardware is installed.
+\fi
