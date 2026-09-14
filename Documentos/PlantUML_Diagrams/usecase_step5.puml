@@ -1,37 +1,86 @@
-﻿@startuml
+@startuml
 top to bottom direction
+scale 2.0
+skinparam dpi 300
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 18
 skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam padding 12
+skinparam nodesep 30
+skinparam ranksep 40
+
 skinparam usecase {
     BackgroundColor #E0F2FE
     BorderColor #0284C7
     FontColor #0C4A6E
+    FontSize 17
+    FontStyle bold
 }
+
 skinparam actor {
     BackgroundColor #FEF9C3
     BorderColor #CA8A04
+    FontColor #713F12
+    FontSize 17
+    FontStyle bold
+}
+
+skinparam rectangle {
+    BackgroundColor #F8FAFC
+    BorderColor #64748B
+    FontColor #1E293B
+    FontSize 19
+    FontStyle bold
+}
+
+skinparam package {
+    BackgroundColor #F1F5F9
+    BorderColor #475569
+    FontColor #0F172A
+    FontSize 17
+    FontStyle bold
 }
 
 actor "Automation Engineer" as Eng
-actor "BaSyx AAS Repository\n:8081" as BaSyxRepo
-actor "BaSyx AAS Registry\n:8082" as BaSyxReg
 
-rectangle "Step 5 · Review, Build & Deploy" {
-    usecase "Preview AAS JSON Descriptor" as UC5A
-    usecase "Validate Numeric Fields" as UC5B
-    
-    package "Build Submodels in Memory" {
-        usecase "Build VisualStructure Submodel" as UC5D
-        usecase "Build VirtualPins Submodel\n(Inputs + Outputs)" as UC5E
-        usecase "Build BehaviorMapping Submodel" as UC5F
-        usecase "Build AssetInterfacesDescription Submodel" as UC5G
+rectangle "Step 5: Review, Build and Deploy" {
+    rectangle "AAS Package Creation" as BuildBox {
+        usecase "Preview AAS JSON Descriptor" as UC5A
+        usecase "Validate Numeric Fields" as UC5B
+        
+        package "Build Submodels in Memory" {
+            usecase "Build VisualStructure Submodel" as UC5D
+            usecase "Build VirtualPins Submodel" as UC5E
+            usecase "Build BehaviorMapping Submodel" as UC5F
+            usecase "Build AssetInterfacesDescription Submodel" as UC5G
+            
+            UC5D -[hidden]down-> UC5E
+            UC5E -[hidden]down-> UC5F
+            UC5F -[hidden]down-> UC5G
+        }
+
+        usecase "Collect and Bundle 3D Assets" as UC5H
+        usecase "Write .aasx Package Archive" as UC5I
+        
+        UC5A -[hidden]down-> UC5B
+        UC5B -[hidden]down-> UC5D
+        UC5G -[hidden]down-> UC5H
+        UC5H -[hidden]down-> UC5I
     }
 
-    usecase "Collect & Bundle 3D Assets\n(glb / urdf + meshes)" as UC5H
-    usecase "Write .aasx Package Archive" as UC5I
-    usecase "Check for Existing AAS on Server" as UC5J
-    usecase "Overwrite Existing AAS\n(Delete + Re-upload)" as UC5K
-    usecase "POST /upload .aasx to AAS Repository" as UC5L
-    usecase "POST /shell-descriptors to AAS Registry" as UC5M
+    rectangle "Server Deployment" as DeployBox {
+        usecase "Check for Existing AAS on Server" as UC5J
+        usecase "Overwrite Existing AAS" as UC5K
+        usecase "POST /upload .aasx to AAS Repository" as UC5L
+        usecase "POST /shell-descriptors to AAS Registry" as UC5M
+        
+        UC5J -[hidden]down-> UC5K
+        UC5K -[hidden]down-> UC5L
+        UC5L -[hidden]down-> UC5M
+    }
+
+    BuildBox -down-> DeployBox
 
     UC5A ..> UC5B : <<include>>
     UC5B ..> UC5D : <<include>>
@@ -47,9 +96,18 @@ rectangle "Step 5 · Review, Build & Deploy" {
     UC5L ..> UC5M : <<include>>
 }
 
+actor "BaSyx AAS Repository" as BaSyxRepo
+actor "BaSyx AAS Registry" as BaSyxReg
+
 Eng --> UC5A
 UC5L --> BaSyxRepo
 UC5M --> BaSyxReg
-UC5J --> BaSyxRepo : "GET /shells"
-UC5K --> BaSyxRepo : "DELETE /shells"
+UC5J --> BaSyxRepo
+UC5K --> BaSyxRepo
 @enduml
+
+
+
+
+
+
