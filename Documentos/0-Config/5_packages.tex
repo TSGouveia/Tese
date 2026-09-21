@@ -47,6 +47,9 @@
 \usepackage[nameinlink]{cleveref}
 \usepackage{pgfgantt}
 \usepackage{pdflscape}
+\usepackage[section]{placeins}
+\usepackage{etoolbox}
+\pretocmd{\subsection}{\FloatBarrier}{}{}
 
 \usepackage[dvipsnames]{xcolor}
 \definecolor{novablue}{RGB}{0, 101, 189}

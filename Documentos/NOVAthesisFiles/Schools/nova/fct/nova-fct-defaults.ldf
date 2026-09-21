@@ -325,7 +325,7 @@
 \ntaddtocover[vspace=2,halign=l]{2-1}{%
   \adviserstringfont():={\bfseries}%
   \fontsize{11}{11}\selectfont%
-  \ntprintpersons{0.9}{2}{adviser}{\GetAdviserOrder()}%
+  \ntprintpersons{0.9}{2}{adviser}{a,c}%
 }
 
 % The committee
