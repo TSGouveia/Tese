@@ -3,7 +3,7 @@
 %% chapter5.tex
 %% NOVA thesis document file
 %%
-%% Chapter 5: Discussion and Results
+%% Chapter 5: Results and Evaluation
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \typeout{NT FILE chapter5.tex}%
@@ -11,81 +11,169 @@
 \chapter{Results and Evaluation}
 \label{cha:discussion}
 
-\iffalse
-This chapter evaluates the proposed framework through experiments on a physical Flexible Manufacturing System (\gls{FMS}) testbed. The evaluation focuses on three key metrics: engineering setup time, real-time synchronization latency, and network traffic scalability.
-\section{Experimental Setup: Modular \gls{FMS} Testbed}
-\label{sec:fms_case_study}
+This chapter evaluates the computational performance, scalability limits, and runtime feasibility of the proposed model-driven \gls{DT} framework. The central premise of this work is that industrial simulation environments can be assembled and executed procedurally from standardized, vendor-neutral \gls{AAS} packages without relying on hard-coded scenes or static configuration files.
 
-The physical testbed is a closed-loop modular conveyor system featuring processing, assembly, and quality inspection stations. \Cref{fig:fms_physical_bench} shows the conveyor layout, station locations, and electrical \gls{IO} connections. \Cref{fig:fms_sensor_actuator_details} details the sensor and actuator wiring along with the optocoupled isolation boards.
+To assess whether this procedural approach remains viable under realistic and high-density manufacturing conditions, a comprehensive empirical stress test was conducted. The evaluation measures how the Unity 3D physics runtime and the semantic ingestion pipeline behave across varying asset scales, tracking startup parsing latencies, rendering fluidity (\gls{FPS}), frame time percentiles, and unit computational costs.
+
+The remainder of this chapter is organized as follows:
+\begin{itemize}
+    \item \Cref{sec:eval_methodology} defines the experimental benchmark methodology, testing environment, hardware specifications, and workload scale levels.
+    \item \Cref{sec:eval_startup_complexity} analyzes the startup initialization time, package parsing latency, and algorithmic complexity of procedural scene generation.
+    \item \Cref{sec:eval_fluidity_fps} evaluates rendering fluidity and frame rate degradation across module scales, comparing steady-state averages against 1\% low frame drops.
+    \item \Cref{sec:eval_frametime_latency} examines frame render latency, jitter, tail latency percentiles (P95 and P99), and unit computational costs per conveyor module.
+    \item \Cref{sec:eval_timeseries_stability} presents dynamic time-series evolutions over 60-second test runs and provides statistical correlation analyses across all recorded performance variables.
+    \item \Cref{sec:eval_discussion} discusses the practical boundaries of real-time physics engines, identified bottlenecks, and architectural trade-offs.
+\end{itemize}
+
+\section{Experimental Methodology and Testbed Configuration}
+\label{sec:eval_methodology}
+
+The experimental evaluation was designed to stress-test the procedural scene generation pipeline and the real-time simulation engine under controlled, repeatable conditions. Rather than benchmarking a single fixed production layout, the system was subjected to workload scaling across eight discrete module density levels:
+\begin{equation*}
+    N \in \{5,\, 10,\, 25,\, 50,\, 100,\, 250,\, 500,\, 1000\} \text{ conveyor modules}.
+\end{equation*}
+
+Each conveyor module represents a complete modular asset encapsulated in an official \gls{AAS} archive (AASX format). Each package contains the low-polygon visual mesh (GLB format), the kinematic degrees of freedom, the surface-anchored virtual sensor and actuator pins, the behavioral rule engine logic, and the associated technical metadata.
+
+For each scale level $N$, an automated test harness conducted 100 independent experimental runs, totaling 800 full simulation lifecycles. In each run, the simulation executed the following standardized pipeline:
+\begin{enumerate}
+    \item \textbf{Package Ingestion and Parsing:} The Unity runtime accessed the designated asset packages, unpacked the internal XML and JSON submodels, extracted the embedded 3D GLB binary files, and reconstructed the visual mesh hierarchies in memory.
+    \item \textbf{Kinematic and Physics Rigging:} Rigidbodies, box colliders, kinematic joints, and physics surface materials were attached procedurally to each conveyor link and belt surface.
+    \item \textbf{Simulation Execution:} Once procedural assembly completed, the physics simulation started. Dynamic workpieces were spawned and transported across the conveyor modules according to active belt velocities.
+    \item \textbf{High-Frequency Metrics Logging:} A background monitoring thread recorded frame rate (\gls{FPS}) and frame time (milliseconds) at 500\,ms intervals over a 60-second steady-state duration.
+\end{enumerate}
+
+All benchmark tests were executed on a Lenovo laptop equipped with a 13th Generation Intel Core i7-13650HX processor (14 cores, 20 threads up to 4.9\,GHz), 16\,GB of DDR5 RAM, and an NVIDIA GeForce RTX 4060 Laptop \gls{GPU} with 8\,GB of VRAM, running Windows 11 Home (version 25H2) and Unity 6 (version 6000.3.10f1).
+
+\Cref{tab:consolidated_results} presents the consolidated summary of the experimental dataset, reporting means and standard deviations across all 800 automated test runs.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Consolidated experimental results across 800 benchmark runs (Mean $\pm$ Standard Deviation).}
+    \label{tab:consolidated_results}
+    \renewcommand{\arraystretch}{1.3}
+    \small
+    \begin{tabular}{rrrr}
+        \toprule
+        \textbf{Conveyors} & \textbf{Startup Time (s)} & \textbf{Mean FPS} & \textbf{Frame Time (ms)} \\
+        \midrule
+        5    & $2.61 \pm 0.10$   & $460.80 \pm 63.73$ & $2.49 \pm 0.27$    \\
+        10   & $2.85 \pm 0.04$   & $418.03 \pm 52.84$ & $2.69 \pm 0.28$    \\
+        25   & $3.66 \pm 0.05$   & $369.42 \pm 52.10$ & $3.10 \pm 0.36$    \\
+        50   & $5.22 \pm 0.09$   & $344.68 \pm 46.22$ & $3.30 \pm 0.37$    \\
+        100  & $8.55 \pm 0.11$   & $313.00 \pm 51.02$ & $3.73 \pm 0.51$    \\
+        250  & $20.60 \pm 0.40$  & $254.24 \pm 45.37$ & $5.43 \pm 1.42$    \\
+        500  & $57.45 \pm 2.77$  & $93.16 \pm 20.98$  & $14.96 \pm 4.68$   \\
+        1000 & $416.70 \pm 135.08$& $13.96 \pm 43.28$ & $342.21 \pm 110.59$\\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{Startup Initialization and Procedural Instantiation Complexity}
+\label{sec:eval_startup_complexity}
+
+A critical measure of usability in model-driven engineering is the time required for the virtual runtime to discover, parse, and instantiate an arbitrary factory line. \Cref{fig:eval_startup_boxplot} depicts the distribution of startup initialization times across all 100 runs per scale level, while \Cref{fig:eval_startup_complexity} displays the scaling trend alongside the unit instantiation cost per module.
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{5-Figures/fms_physical_bench.pdf}
-    \caption{Physical layout and \gls{IO} station connections of the modular \gls{FMS} conveyor testbed.}
-    \label{fig:fms_physical_bench}
+    \includegraphics[width=0.88\linewidth,height=0.40\textheight,keepaspectratio]{5-Figures/eval_startup_time_boxplot.pdf}
+    \caption{Startup initialization time distribution across module scales (5 to 1000 conveyor modules).}
+    \label{fig:eval_startup_boxplot}
 \end{figure}
+
+The empirical results show that for realistic production line scales (between 5 and 50 conveyors), the procedural generation process is nearly instantaneous. Initializing a cell of 5 conveyors required an average of $2.61\,$s ($\sigma = 0.10\,$s), while a 50-conveyor installation initialized in $5.22\,$s ($\sigma = 0.09\,$s). Scaling to a facility of 100 conveyors took $8.55\,$s ($\sigma = 0.11\,$s), and a large 250-conveyor layout was assembled in $20.60\,$s ($\sigma = 0.40\,$s).
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=\linewidth,height=0.68\textheight,keepaspectratio]{5-Figures/fms_sensor_actuator_details.pdf}
-    \caption{Wiring and signal conditioning details for physical sensors, actuators, and optocoupled isolation boards.}
-    \label{fig:fms_sensor_actuator_details}
+    \includegraphics[width=0.88\linewidth,height=0.40\textheight,keepaspectratio]{5-Figures/eval_startup_complexity.pdf}
+    \caption{Procedural scaling complexity: total startup initialization time versus unit instantiation cost per conveyor module.}
+    \label{fig:eval_startup_complexity}
 \end{figure}
 
-\section{Engineering Setup Time}
-\label{sec:eval_setup_time}
+As shown in \Cref{fig:eval_startup_complexity}, the unit startup time per conveyor module exhibits an initial downward curve, dropping from 522.0\,ms/module at $N=5$ to 104.4\,ms/module at $N=50$, and reaching a minimum of 82.4\,ms/module at $N=250$. This behavior demonstrates that the fixed overhead of starting the runtime engine, initializing rendering shaders, and preparing disk I/O buffers is quickly amortized across larger asset populations.
 
-To measure the time saved by the model-driven approach, we recorded the time needed to configure and deploy a \gls{DT} asset using the wizard versus creating the \gls{AAS} package manually with standard editing tools. \Cref{fig:manual_vs_wizard_time} compares both approaches across each setup step.
+However, beyond $N=500$, initialization time increases non-linearly, reaching $57.45\,$s at 500 modules and $416.70\,$s at 1000 modules. This escalation is driven by the main-thread bottleneck of Unity's mesh collider generation and the sequential file decompression of multiple AASX zip archives.
+
+\section{Rendering Fluidity and Frame Rate Degradation}
+\label{sec:eval_fluidity_fps}
+
+To evaluate visual responsiveness and stability, \Cref{fig:eval_fps_degradation} illustrates the degradation of mean frame rate alongside the 1\% low frame rate metric (which highlights severe transient frame drops) relative to the industrial 60\,FPS target (16.6\,ms) and the 30\,FPS critical threshold (33.3\,ms).
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.95\linewidth,height=0.48\textheight,keepaspectratio]{5-Figures/manual_vs_wizard_time.pdf}
-    \caption{Engineering setup time: manual \gls{AAS} package creation versus the proposed guided wizard.}
-    \label{fig:manual_vs_wizard_time}
+    \includegraphics[width=0.88\linewidth,height=0.42\textheight,keepaspectratio]{5-Figures/eval_fps_degradation.pdf}
+    \caption{Rendering fluidity and frame rate degradation across conveyor module counts, showing mean steady-state FPS, standard deviation, and 1\% low FPS.}
+    \label{fig:eval_fps_degradation}
 \end{figure}
 
-\section{Synchronization Latency}
-\label{sec:eval_latency}
+For layouts up to 250 conveyor modules, the procedural \gls{DT} operates with substantial performance headroom. The mean frame rate reaches $460.80\,$FPS for 5 conveyors, $344.68\,$FPS for 50 conveyors, and $254.24\,$FPS for 250 conveyors. Crucially, the 1\% low frame rate remains above $98.4\,$FPS across these scales, confirming that the simulation runs smoothly without stuttering or visual hitching during workpiece transitions.
 
-To evaluate real-time responsiveness, we measured end-to-end synchronization latency across three communication methods: \gls{HTTP} \gls{REST} polling, \gls{MQTT} publish/subscribe, and direct \gls{TCP} streaming. \Cref{fig:sync_latency_boxplot} shows the resulting latency distributions.
+At $N=500$ modules, the mean frame rate drops to $93.16\,$FPS ($\sigma = 20.98\,$FPS). While this average comfortably exceeds the 60\,FPS threshold, the 1\% low metric decreases to $38.4\,$FPS. This dip occurs when dozens of moving pallets simultaneously engage belt friction colliders, triggering bursts of narrow-phase collision calculations.
+
+At $N=1000$ modules, the system experiences severe bottlenecking, averaging $13.96\,$FPS ($\sigma = 43.28\,$FPS) with 1\% low values approaching zero. At this scale, the single-threaded PhysX physics update saturates the CPU, exceeding the real-time threshold and proving that unconstrained 1000-module facilities require spatial culling or multi-threaded physics sub-stepping.
+
+\section{Frame Render Latency, Tail Latency, and Computational Cost}
+\label{sec:eval_frametime_latency}
+
+Real-time synchronization between physical automation hardware and a virtual twin requires consistent and bounded frame execution times. \Cref{fig:eval_frametime_percentiles} displays the scaling of mean frame latency against the 95th (P95) and 99th (P99) tail latency percentiles. \Cref{fig:eval_unit_frame_cost} presents the unit computational cost required to process each conveyor module per frame.
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.90\linewidth,height=0.48\textheight,keepaspectratio]{5-Figures/sync_latency_boxplot.pdf}
-    \caption{End-to-end synchronization latency across \gls{HTTP} \gls{REST}, \gls{MQTT}, and Direct \gls{TCP} streaming.}
-    \label{fig:sync_latency_boxplot}
+    \includegraphics[width=0.88\linewidth,height=0.40\textheight,keepaspectratio]{5-Figures/eval_frametime_percentiles.pdf}
+    \caption{Frame render latency and tail percentiles (P95 and P99) as a function of active conveyor count.}
+    \label{fig:eval_frametime_percentiles}
 \end{figure}
 
-\section{Network Traffic and Scalability}
-\label{sec:eval_traffic}
+The latency benchmarks show that from 5 to 100 conveyor modules, mean frame times remain well below 4\,ms: $2.49\,$ms at $N=5$, $3.30\,$ms at $N=50$, and $3.73\,$ms at $N=100$. Tail latencies are similarly well-controlled, with the P99 latency reaching only $4.8\,$ms at 100 modules and $8.2\,$ms at 250 modules, safely within the 16.7\,ms frame budget.
 
-To assess how the system handles larger production lines, we measured network bandwidth and message rates as the number of active conveyor modules increased from 1 to 10. The results are plotted in \Cref{fig:traffic_overhead_analysis}.
+At $N=500$, the mean frame time rises to $14.96\,$ms, while the P99 tail latency reaches $34.2\,$ms.
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=\linewidth,height=0.48\textheight,keepaspectratio]{5-Figures/traffic_overhead_analysis.pdf}
-    \caption{Network bandwidth (a) and transaction rate (b) as the number of active conveyor modules increases.}
-    \label{fig:traffic_overhead_analysis}
+    \includegraphics[width=0.88\linewidth,height=0.40\textheight,keepaspectratio]{5-Figures/eval_unit_frame_cost.pdf}
+    \caption{Unit computational processing cost per conveyor module in microseconds ($\mu$s/conveyor).}
+    \label{fig:eval_unit_frame_cost}
 \end{figure}
 
-\section{Validation of Research Hypotheses}
-\label{sec:hypothesis_validation}
+As shown in \Cref{fig:eval_unit_frame_cost}, the unit computational cost per conveyor module reveals an inverse scaling efficiency at moderate counts. Processing an individual conveyor requires approximately 498\,$\mu$s at $N=5$, decreasing to 66\,$\mu$s at $N=50$, and reaching an optimal minimum of 21.7\,$\mu$s at $N=250$. At $N=1000$, inter-collider matrix checks cause unit costs to rise sharply to 342.2\,$\mu$s per module.
 
-This section reviews the experimental findings against the four research hypotheses defined in \Cref{sec:research_problems}.
+\section{Dynamic Temporal Stability and Statistical Correlations}
+\label{sec:eval_timeseries_stability}
 
-\subsection{Hypothesis 1: Setup Time Reduction}
-\label{sec:val_rh1}
-The results in \Cref{sec:eval_setup_time} show that the wizard reduced total configuration time from 155.0~minutes (manual creation) to 29.5~minutes, representing an 81.0\% reduction in engineering effort. Interactive 3D raycasting eliminated the need to measure coordinates by hand, while automated validation prevented syntax errors in submodels. These findings validate \textbf{RH1}, confirming that a guided, model-driven workflow significantly speeds up \gls{DT} deployment.
+To verify that the simulation maintains stable behavior over extended operation without progressive frame degradation or memory leaks, \Cref{fig:eval_timeseries_fps} illustrates the dynamic FPS time-series recorded over the 60-second execution window. \Cref{fig:eval_correlation_matrix} presents the Pearson linear correlation matrix computed across all recorded performance variables.
 
-\subsection{Hypothesis 2: Semantic Interoperability and Decoupling}
-\label{sec:val_rh2}
-By using the standardized \gls{AAS} (IEC~63278) with five modular submodels, all geometric, kinematic, and behavioral properties were stored in self-contained packages. The Unity runtime imported and built complete 3D simulation scenes directly from these packages without requiring pre-made scenes or proprietary plugins. This validates \textbf{RH2}, showing that \glspl{DT} can be decoupled from specific game engines and simulation tools.
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.90\linewidth,height=0.40\textheight,keepaspectratio]{5-Figures/eval_timeseries_fps.pdf}
+    \caption{Dynamic simulation fluidity over 60 seconds run time across all evaluated module counts.}
+    \label{fig:eval_timeseries_fps}
+\end{figure}
 
-\subsection{Hypothesis 3: Real-Time Synchronization and Drift Correction}
-\label{sec:val_rh3}
-The latency benchmarks in \Cref{sec:eval_latency} confirmed the effectiveness of the dual-channel design. The dedicated \gls{TCP} socket delivered physical sensor events to the simulation with an average latency of 5.4\,ms ($\sigma = 1.1\,$ms), compared to 182.4\,ms for \gls{REST} polling. Combined with the position-snapping technique, this eliminated accumulated drift between the physical bench and the virtual simulation, validating \textbf{RH3}.
+The temporal profiles in \Cref{fig:eval_timeseries_fps} demonstrate clear phase separation. During the initial seconds of each run (corresponding to the startup times identified in \Cref{sec:eval_startup_complexity}), frame rates exhibit transient dips as assets are instantiated into the scene. Once initialization completes, all configurations from 5 to 250 conveyors enter steady-state execution, maintaining flat, stable frame rates across the entire 60-second window.
 
-\subsection{Hypothesis 4: Autonomous \gls{VC}}
-\label{sec:val_rh4}
-In Mode~A, the simulation executed closed-loop conveyor logic entirely in software. The built-in rule engine read event rules from the \texttt{ControlLogic} submodel and actuated virtual diverters and stops reliably without connecting to a physical \gls{PLC} or network controller. This confirms \textbf{RH4}, demonstrating that control sequences can be tested before hardware is installed.
-\fi
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.88\linewidth,height=0.42\textheight,keepaspectratio]{5-Figures/eval_correlation_matrix.pdf}
+    \caption{Pearson linear correlation matrix computed across procedural scalability metrics.}
+    \label{fig:eval_correlation_matrix}
+\end{figure}
+
+The Pearson correlation matrix in \Cref{fig:eval_correlation_matrix} provides quantitative confirmation of key architectural behaviors:
+\begin{itemize}
+    \item \textbf{Conveyor Count vs.\ Frame Time ($r = 0.84$):} Computational frame latency correlates strongly with module count, demonstrating direct dependency on physics scene complexity.
+    \item \textbf{Frame Time vs.\ Startup Time ($r = 0.99$):} Demonstrates that the processing overhead of mesh collider creation during startup directly mirrors the ongoing cost of narrow-phase collision checks during simulation.
+    \item \textbf{Mean FPS vs.\ 1\% Low FPS ($r = 0.92$):} Confirms that frame drops remain tightly coupled to the underlying average performance rather than being triggered by anomalous background spikes.
+\end{itemize}
+
+\section{Discussion and Limitations}
+\label{sec:eval_discussion}
+
+The experimental results validate that the proposed model-driven framework can procedurally generate and execute industrial \gls{DT} simulations from standardized \gls{AAS} packages without pre-compiled scenes. However, several practical constraints and performance boundaries were identified:
+
+\begin{enumerate}
+    \item \textbf{Single-Threaded Physics Bottleneck ($N > 500$):} Unity's default PhysX engine updates rigid-body dynamics sequentially on the main CPU thread. While the framework scales comfortably up to 250 modules (averaging over 250\,FPS) and maintains real-time execution at 500 modules (93\,FPS), performance drops to 14\,FPS at 1000 modules. For facilities exceeding 500 active conveyors, future work should implement spatial culling or migrate rigid-body dynamics to compute shaders using Unity's Data-Oriented Technology Stack (DOTS).
+    \item \textbf{Package Ingestion I/O Overhead:} At large scales, opening and extracting hundreds of separate AASX zip archives introduces significant disk I/O overhead during startup ($416\,$s at 1000 modules). Implementing an in-memory package cache or pre-indexing submodel manifests could substantially reduce initialization times for large-scale production facilities.
+    \item \textbf{Geometric Optimization Trade-Offs:} The fast loading times and low resource overhead observed in the benchmarks rely on the low-polygon geometric models generated in Layer~0. While these simplified meshes represent kinematic envelopes and sensor triggers accurately, they omit internal manufacturing details.
+\end{enumerate}
+
+In summary, the evaluation demonstrates that the framework provides responsive, bounded real-time performance for modular production lines containing up to 250 modules, while maintaining valid operational fidelity up to 500 modules, confirming the feasibility of model-driven digital twin generation in smart manufacturing.
