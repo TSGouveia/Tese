@@ -1788,10 +1788,7 @@ class ConveyorWizard(QMainWindow):
     def manage_deployed_aas(self):
         try:
             res = requests.get("http://localhost:8082/shell-descriptors", timeout=5)
-            shells = res.json().get("result", [])
-            if not shells:
-                QMessageBox.information(self, "Info", "No AAS found on server.")
-                return
+            shells = res.json().get("result", []) if res.status_code == 200 else []
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not connect to registry: {e}")
             return
@@ -1801,7 +1798,7 @@ class ConveyorWizard(QMainWindow):
         dlg.resize(600, 400)
         layout = QVBoxLayout(dlg)
 
-        layout.addWidget(QLabel("Select a Deployed AAS to Clone or Delete:"))
+        layout.addWidget(QLabel("Select a Deployed AAS to Clone/Backup/Delete, or click 'Restore (Upload)':"))
         
         list_widget = QListWidget()
         layout.addWidget(list_widget)
@@ -1917,10 +1914,20 @@ class ConveyorWizard(QMainWindow):
             vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
             beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
             aid_data = next((v for k,v in submodels_data.items() if "AssetInterfacesDescription" in k), None)
+            logic_data = next((v for k,v in submodels_data.items() if "ControlLogic" in k or "Logic" in k), None)
+            control_logic = {"start": [], "sequences": []}
+            if logic_data:
+                for el in logic_data.get("submodelElements", []):
+                    if el.get("idShort") == "Rules":
+                        r_str = el.get("value", "")
+                        if r_str:
+                            try:
+                                loaded_l = json.loads(r_str)
+                                if isinstance(loaded_l, dict):
+                                    control_logic = loaded_l
+                            except Exception:
+                                pass
             
-            if not all([vis_data, beh_data]):
-                raise Exception("AAS is missing required submodels.")
-
             # Extract communication parameters if AssetInterfacesDescription exists
             comm_protocol = "Sockets"
             comm_ip = "127.0.0.1"
@@ -1952,80 +1959,82 @@ class ConveyorWizard(QMainWindow):
             pos_val = [0.0]*3; rot_val = [0.0]*3; scale_val = [1.0]*3
             mesh_href = None
             is_dynamic = False
-            for el in vis_data.get("submodelElements", []):
-                if el["modelType"] == "SubmodelElementCollection": 
-                    for sel in el.get("value", []):
-                        if sel["idShort"] == "Transform":
-                            for t in sel.get("value", []):
-                                v = float(t.get("value", 0))
-                                if t["idShort"] == "PosX": pos_val[0] = v
-                                elif t["idShort"] == "PosY": pos_val[1] = v
-                                elif t["idShort"] == "PosZ": pos_val[2] = v
-                                elif t["idShort"] == "RotX": rot_val[0] = v
-                                elif t["idShort"] == "RotY": rot_val[1] = v
-                                elif t["idShort"] == "RotZ": rot_val[2] = v
-                                elif t["idShort"] == "ScaleX": scale_val[0] = v
-                                elif t["idShort"] == "ScaleY": scale_val[1] = v
-                                elif t["idShort"] == "ScaleZ": scale_val[2] = v
-                        elif sel["idShort"] == "Mesh" and sel["modelType"] == "File":
-                            mesh_href = sel.get("value")
-                        elif sel["idShort"] == "DynamicObject" and sel["modelType"] == "Property":
-                            is_dynamic = str(sel.get("value", "False")).lower() == "true"
+            if vis_data:
+                for el in vis_data.get("submodelElements", []):
+                    if el["modelType"] == "SubmodelElementCollection": 
+                        for sel in el.get("value", []):
+                            if sel["idShort"] == "Transform":
+                                for t in sel.get("value", []):
+                                    v = float(t.get("value", 0))
+                                    if t["idShort"] == "PosX": pos_val[0] = v
+                                    elif t["idShort"] == "PosY": pos_val[1] = v
+                                    elif t["idShort"] == "PosZ": pos_val[2] = v
+                                    elif t["idShort"] == "RotX": rot_val[0] = v
+                                    elif t["idShort"] == "RotY": rot_val[1] = v
+                                    elif t["idShort"] == "RotZ": rot_val[2] = v
+                                    elif t["idShort"] == "ScaleX": scale_val[0] = v
+                                    elif t["idShort"] == "ScaleY": scale_val[1] = v
+                                    elif t["idShort"] == "ScaleZ": scale_val[2] = v
+                            elif sel["idShort"] == "Mesh" and sel["modelType"] == "File":
+                                mesh_href = sel.get("value")
+                            elif sel["idShort"] == "DynamicObject" and sel["modelType"] == "Property":
+                                is_dynamic = str(sel.get("value", "False")).lower() == "true"
 
             actuators = []
             sensors = []
             act_types = ["Conveyor", "RotateContinuous", "TranslateContinuous", "Piston", "Linear"]
             sens_types = ["TriggerZone", "Presence", "Proximity"]
             
-            for el in beh_data.get("submodelElements", []):
-                if el["modelType"] == "SubmodelElementCollection":
-                    props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
-                    params = {}
-                    for p in el.get("value", []):
-                        if p["idShort"] == "Parameters":
-                            params = {pp["idShort"]: pp.get("value") for pp in p.get("value", []) if pp["modelType"] == "Property"}
-                            
-                    b_type = props.get("Type", ""); pin_id = props.get("PinID", ""); node = props.get("Component", "")
-                    
-                    if b_type in act_types:
-                        act_data = {
-                            "pin_id": pin_id, "node": node, "behavior": b_type,
-                            "axis": [float(params.get("AxisX", 0)), float(params.get("AxisY", 0)), float(params.get("AxisZ", 0))],
-                            "speed": float(params.get("Speed", 1.0)),
-                            "visible": str(params.get("Visible", "True")).lower() == "true"
-                        }
-                        if "StopSensorComponent" in params:
-                            act_data["stop_sensor"] = params["StopSensorComponent"]
-                          
-                        actuators.append(act_data)
-                    elif b_type in sens_types:
-                        r_enabled = str(params.get("RealSensorEnabled", "False")).lower() == "true" if isinstance(params.get("RealSensorEnabled"), str) else bool(params.get("RealSensorEnabled", False))
-                        sens_data = {
-                            "pin_id": pin_id, "node": node, "behavior": b_type,
-                            "target_filter": params.get("TargetFilter", "Metal"),
-                            "visible": str(params.get("Visible", "False")).lower() == "true",
-                            "active_low": str(params.get("ActiveLow", "False")).lower() == "true",
-                            "snap_product": "SnapTarget" in params,
-                            "real_sensor_enabled": r_enabled,
-                            "real_port_id": str(params.get("RealPortID", ""))
-                        }
-                        if "MoveTarget" in params:
-                            sens_data["move_target"] = params["MoveTarget"]
-                        if "MoveOnState" in params:
-                            sens_data["move_on_state"] = str(params["MoveOnState"]).lower() == "true"
-                        if "MoveMode" in params:
-                            sens_data["move_mode"] = str(params.get("MoveMode", "Both"))
-                        if "MovePosX" in params:
-                            sens_data["move_position"] = [float(params.get("MovePosX", 0)), float(params.get("MovePosY", 0)), float(params.get("MovePosZ", 0))]
-                        if "MoveRotX" in params:
-                            sens_data["move_rotation"] = [float(params.get("MoveRotX", 0)), float(params.get("MoveRotY", 0)), float(params.get("MoveRotZ", 0))]
-                        if "MoveDuration" in params:
-                            sens_data["move_duration"] = float(params.get("MoveDuration", 0.5))
-                        sensors.append(sens_data)
+            if beh_data:
+                for el in beh_data.get("submodelElements", []):
+                    if el["modelType"] == "SubmodelElementCollection":
+                        props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
+                        params = {}
+                        for p in el.get("value", []):
+                            if p["idShort"] == "Parameters":
+                                params = {pp["idShort"]: pp.get("value") for pp in p.get("value", []) if pp["modelType"] == "Property"}
+                                
+                        b_type = props.get("Type", ""); pin_id = props.get("PinID", ""); node = props.get("Component", "")
+                        
+                        if b_type in act_types:
+                            act_data = {
+                                "pin_id": pin_id, "node": node, "behavior": b_type,
+                                "axis": [float(params.get("AxisX", 0)), float(params.get("AxisY", 0)), float(params.get("AxisZ", 0))],
+                                "speed": float(params.get("Speed", 1.0)),
+                                "visible": str(params.get("Visible", "True")).lower() == "true"
+                            }
+                            if "StopSensorComponent" in params:
+                                act_data["stop_sensor"] = params["StopSensorComponent"]
+                              
+                            actuators.append(act_data)
+                        elif b_type in sens_types:
+                            r_enabled = str(params.get("RealSensorEnabled", "False")).lower() == "true" if isinstance(params.get("RealSensorEnabled"), str) else bool(params.get("RealSensorEnabled", False))
+                            sens_data = {
+                                "pin_id": pin_id, "node": node, "behavior": b_type,
+                                "target_filter": params.get("TargetFilter", "Metal"),
+                                "visible": str(params.get("Visible", "False")).lower() == "true",
+                                "active_low": str(params.get("ActiveLow", "False")).lower() == "true",
+                                "snap_product": "SnapTarget" in params,
+                                "real_sensor_enabled": r_enabled,
+                                "real_port_id": str(params.get("RealPortID", ""))
+                            }
+                            if "MoveTarget" in params:
+                                sens_data["move_target"] = params["MoveTarget"]
+                            if "MoveOnState" in params:
+                                sens_data["move_on_state"] = str(params["MoveOnState"]).lower() == "true"
+                            if "MoveMode" in params:
+                                sens_data["move_mode"] = str(params.get("MoveMode", "Both"))
+                            if "MovePosX" in params:
+                                sens_data["move_position"] = [float(params.get("MovePosX", 0)), float(params.get("MovePosY", 0)), float(params.get("MovePosZ", 0))]
+                            if "MoveRotX" in params:
+                                sens_data["move_rotation"] = [float(params.get("MoveRotX", 0)), float(params.get("MoveRotY", 0)), float(params.get("MoveRotZ", 0))]
+                            if "MoveDuration" in params:
+                                sens_data["move_duration"] = float(params.get("MoveDuration", 0.5))
+                            sensors.append(sens_data)
 
             # Get GLB attachment
             glb_bytes = b""
-            if mesh_href:
+            if mesh_href and vis_data:
                 vis_id = vis_data.get("id")
                 encoded_vis_id = base64.urlsafe_b64encode(vis_id.encode()).decode().rstrip("=")
                 coll_id_short = None
@@ -2050,6 +2059,7 @@ class ConveyorWizard(QMainWindow):
                 "comm_protocol": comm_protocol,
                 "comm_ip": comm_ip,
                 "comm_port": comm_port,
+                "control_logic": control_logic,
                 "config_data": {
                     "kit_name": kit_name,
                     "aas_id": kit_name,
@@ -2062,7 +2072,8 @@ class ConveyorWizard(QMainWindow):
                     "rot": rot_val,
                     "scale": scale_val,
                     "actuators": actuators,
-                    "sensors": sensors
+                    "sensors": sensors,
+                    "control_logic": control_logic
                 },
                 "glb_filename": f"{kit_name}.glb",
                 "glb_base64": base64.b64encode(glb_bytes).decode('utf-8')
@@ -2143,36 +2154,159 @@ class ConveyorWizard(QMainWindow):
                     QApplication.restoreOverrideCursor()
 
         def on_restore_clicked():
-            open_paths, _ = QFileDialog.getOpenFileNames(dlg, "Open AAS Backup(s)", "", "JSON Files (*.json)")
+            open_paths, _ = QFileDialog.getOpenFileNames(
+                dlg, "Open AAS Backup / Package", "",
+                "AAS Files (*.json *.aasx);;JSON Files (*.json);;AASX Packages (*.aasx);;All Files (*.*)"
+            )
             if not open_paths:
                 return
 
+            def deploy_raw_aasx(path):
+                with open(path, 'rb') as f:
+                    fn = os.path.basename(path)
+                    res = requests.post("http://localhost:8081/upload", files={'file': (fn, f, 'application/octet-stream')}, timeout=15)
+                if res.status_code not in [200, 201, 204, 409]:
+                    raise Exception(f"Failed to upload AASX (HTTP {res.status_code}): {res.text}")
+                try:
+                    s_res = requests.get("http://localhost:8081/shells", timeout=5)
+                    if s_res.status_code == 200:
+                        shells = s_res.json().get("result", [])
+                        for s in shells:
+                            sm_descs = []
+                            for ref in s.get("submodels", []):
+                                keys = ref.get("keys", [])
+                                if keys:
+                                    sm_id = keys[0].get("value")
+                                    sm_descs.append({
+                                        "idShort": sm_id.split('/')[-1].split('_')[-1],
+                                        "id": sm_id,
+                                        "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{sm_id}", "endpointProtocol": "HTTP"}}]
+                                    })
+                            reg_payload = {
+                                "id": s.get("id"),
+                                "idShort": s.get("idShort", "AAS"),
+                                "assetKind": s.get("assetInformation", {}).get("assetKind", "Instance"),
+                                "globalAssetId": s.get("assetInformation", {}).get("globalAssetId", f"http://acplt.org/Assets/{s.get('idShort', 'AAS')}"),
+                                "submodelDescriptors": sm_descs,
+                                "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{s.get('id')}", "endpointProtocol": "HTTP"}}]
+                            }
+                            requests.post("http://localhost:8082/shell-descriptors", json=reg_payload, timeout=5)
+                except Exception as ex:
+                    print(f"[REGISTRY SYNC WARNING] {ex}")
+
             def process_backup_file(path):
+                if path.lower().endswith(".aasx"):
+                    deploy_raw_aasx(path)
+                    return {"type": "aasx"}
+
                 with open(path, "r", encoding="utf-8") as f:
                     b_data = json.load(f)
-                
+
+                is_env = isinstance(b_data, dict) and ("assetAdministrationShells" in b_data or ("submodels" in b_data and "config_data" not in b_data))
+                is_single_shell = isinstance(b_data, dict) and (b_data.get("modelType") == "AssetAdministrationShell" or ("assetInformation" in b_data and "id" in b_data and "config_data" not in b_data))
+                is_single_sm = isinstance(b_data, dict) and (b_data.get("modelType") == "Submodel" or ("submodelElements" in b_data and "config_data" not in b_data))
+
+                if is_env or is_single_shell or is_single_sm:
+                    if is_single_sm:
+                        sms = [b_data]
+                        shells = []
+                    elif is_single_shell:
+                        sms = []
+                        shells = [b_data]
+                    else:
+                        sms = b_data.get("submodels", [])
+                        shells = b_data.get("assetAdministrationShells", [])
+
+                    for sm in sms:
+                        sm_id = sm.get("id")
+                        r = requests.post("http://localhost:8081/submodels", json=sm, headers={"Content-Type": "application/json"}, timeout=5)
+                        if r.status_code == 409 and sm_id:
+                            enc = base64.urlsafe_b64encode(sm_id.encode()).decode().rstrip("=")
+                            requests.put(f"http://localhost:8081/submodels/{enc}", json=sm, headers={"Content-Type": "application/json"}, timeout=5)
+
+                    for sh in shells:
+                        sh_id = sh.get("id")
+                        r = requests.post("http://localhost:8081/shells", json=sh, headers={"Content-Type": "application/json"}, timeout=5)
+                        if r.status_code == 409 and sh_id:
+                            enc = base64.urlsafe_b64encode(sh_id.encode()).decode().rstrip("=")
+                            requests.put(f"http://localhost:8081/shells/{enc}", json=sh, headers={"Content-Type": "application/json"}, timeout=5)
+
+                        sm_descs = []
+                        for ref in sh.get("submodels", []):
+                            keys = ref.get("keys", [])
+                            if keys:
+                                sm_val = keys[0].get("value")
+                                sm_name = sm_val.split('/')[-1].split('_')[-1]
+                                sm_descs.append({
+                                    "idShort": sm_name,
+                                    "id": sm_val,
+                                    "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{sm_val}", "endpointProtocol": "HTTP"}}]
+                                })
+                        reg_payload = {
+                            "id": sh.get("id"),
+                            "idShort": sh.get("idShort", "ImportedAAS"),
+                            "assetKind": sh.get("assetInformation", {}).get("assetKind", "Instance"),
+                            "globalAssetId": sh.get("assetInformation", {}).get("globalAssetId", f"http://acplt.org/Assets/{sh.get('idShort', 'AAS')}"),
+                            "submodelDescriptors": sm_descs,
+                            "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{sh.get('id')}", "endpointProtocol": "HTTP"}}]
+                        }
+                        requests.post("http://localhost:8082/shell-descriptors", json=reg_payload, timeout=5)
+                    return {"type": "direct_deployed"}
+
                 cfg_data = b_data.get("config_data")
-                glb_b64 = b_data.get("glb_base64", "")
                 if not cfg_data:
-                    raise Exception("Invalid backup file: config_data missing.")
-                
-                import tempfile
-                tp = os.path.join(tempfile.gettempdir(), b_data.get("glb_filename", "restored.glb"))
-                glb_bytes = base64.b64decode(glb_b64.encode('utf-8'))
-                with open(tp, "wb") as f:
-                    f.write(glb_bytes)
-                cfg_data["glb_path"] = tp
-                return cfg_data
+                    fn_base = os.path.splitext(os.path.basename(path))[0]
+                    k_name = b_data.get("kit_name") or b_data.get("idShort") or fn_base
+                    cfg_data = {
+                        "kit_name": k_name,
+                        "aas_id": b_data.get("aas_id") or b_data.get("id") or f"https://acplt.org/AAS_{sanitize_aas_id(k_name)}",
+                        "description": b_data.get("description", ""),
+                        "dynamic": b_data.get("dynamic", False),
+                        "comm_protocol": b_data.get("comm_protocol", "Sockets"),
+                        "comm_ip": b_data.get("comm_ip", "127.0.0.1"),
+                        "comm_port": b_data.get("comm_port", 5000),
+                        "pos": b_data.get("pos", [0.0, 0.0, 0.0]),
+                        "rot": b_data.get("rot", [0.0, 0.0, 0.0]),
+                        "scale": b_data.get("scale", [1.0, 1.0, 1.0]),
+                        "actuators": b_data.get("actuators", []),
+                        "sensors": b_data.get("sensors", [])
+                    }
+
+                logic = b_data.get("control_logic") or b_data.get("rules") or cfg_data.get("control_logic")
+                if logic:
+                    cfg_data["control_logic"] = logic
+                elif "start" in b_data or "sequences" in b_data:
+                    cfg_data["control_logic"] = {"start": b_data.get("start", []), "sequences": b_data.get("sequences", [])}
+                elif "start" in cfg_data or "sequences" in cfg_data:
+                    cfg_data["control_logic"] = {"start": cfg_data.get("start", []), "sequences": cfg_data.get("sequences", [])}
+
+                glb_b64 = b_data.get("glb_base64", "")
+                if glb_b64:
+                    import tempfile
+                    tp = os.path.join(tempfile.gettempdir(), b_data.get("glb_filename", "restored.glb"))
+                    glb_bytes = base64.b64decode(glb_b64.encode('utf-8'))
+                    with open(tp, "wb") as f:
+                        f.write(glb_bytes)
+                    cfg_data["glb_path"] = tp
+                else:
+                    cfg_data["glb_path"] = None
+
+                return {"type": "config_data", "data": cfg_data}
 
             if len(open_paths) == 1:
-                # Single-file restore flow
                 path = open_paths[0]
                 try:
-                    config_data = process_backup_file(path)
+                    res = process_backup_file(path)
                 except Exception as e:
-                    QMessageBox.critical(dlg, "Error", f"Failed to parse backup file: {e}")
+                    QMessageBox.critical(dlg, "Error", f"Failed to process file: {e}")
                     return
 
+                if res.get("type") in ["aasx", "direct_deployed"]:
+                    refresh_list()
+                    QMessageBox.information(dlg, "Success", f"AAS file '{os.path.basename(path)}' deployed directly to BaSyx successfully.")
+                    return
+
+                config_data = res["data"]
                 reply = QMessageBox.question(
                     dlg, "Restore Options",
                     "Would you like to load this backup into the Wizard for editing (Yes) or deploy it directly to the server (No)?",
@@ -2190,11 +2324,11 @@ class ConveyorWizard(QMainWindow):
                     try:
                         curr_state = self.save_wizard_state()
                         self.restore_wizard_state(config_data)
-                        self.deploy_to_aas()
+                        self.deploy_to_aas(silent=True)
                         self.restore_wizard_state(curr_state)
                         while QApplication.overrideCursor() is not None:
                             QApplication.restoreOverrideCursor()
-                        QMessageBox.information(dlg, "Success", "AAS restored directly to BaSyx successfully.")
+                        QMessageBox.information(dlg, "Success", "AAS deployed directly to BaSyx successfully.")
                         refresh_list()
                     except Exception as ex:
                         while QApplication.overrideCursor() is not None:
@@ -2204,10 +2338,9 @@ class ConveyorWizard(QMainWindow):
                         while QApplication.overrideCursor() is not None:
                             QApplication.restoreOverrideCursor()
             else:
-                # Multiple-file restore flow: deploy directly to server
                 reply = QMessageBox.question(
-                    dlg, "Restore Multiple Backups",
-                    f"You have selected {len(open_paths)} backup files. These will be deployed directly to the BaSyx server. Do you want to proceed?",
+                    dlg, "Restore Multiple Files",
+                    f"You have selected {len(open_paths)} files. These will be deployed directly to the BaSyx server. Do you want to proceed?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
                 if reply != QMessageBox.StandardButton.Yes:
@@ -2222,26 +2355,28 @@ class ConveyorWizard(QMainWindow):
                     for path in open_paths:
                         fn = os.path.basename(path)
                         try:
-                            config_data = process_backup_file(path)
-                            self.restore_wizard_state(config_data)
-                            self.deploy_to_aas()
-                            success_count += 1
+                            res = process_backup_file(path)
+                            if res.get("type") in ["aasx", "direct_deployed"]:
+                                success_count += 1
+                            else:
+                                self.restore_wizard_state(res["data"])
+                                self.deploy_to_aas(silent=True)
+                                success_count += 1
                         except Exception as e:
                             fail_messages.append(f"{fn}: {e}")
                     
                     self.restore_wizard_state(curr_state)
-                    
                     while QApplication.overrideCursor() is not None:
                         QApplication.restoreOverrideCursor()
 
                     if success_count > 0:
-                        msg = f"Successfully deployed {success_count} backups directly to BaSyx!"
+                        msg = f"Successfully deployed {success_count} AAS file(s) directly to BaSyx!"
                         if fail_messages:
                             msg += "\n\nFailures:\n" + "\n".join(fail_messages)
                         QMessageBox.information(dlg, "Restore Multiple Success", msg)
                         refresh_list()
                     else:
-                        QMessageBox.warning(dlg, "Restore Multiple Failed", "Failed to restore any backups.\n\nErrors:\n" + "\n".join(fail_messages))
+                        QMessageBox.warning(dlg, "Restore Multiple Failed", "Failed to deploy any files.\n\nErrors:\n" + "\n".join(fail_messages))
                 except Exception as e:
                     self.restore_wizard_state(curr_state)
                     while QApplication.overrideCursor() is not None:
@@ -2711,6 +2846,22 @@ class ConveyorWizard(QMainWindow):
                 # Behavior list is empty for logical AAS
                 for w in list(self.actuator_widgets): self.remove_actuator(w)
                 for w in list(self.sensor_widgets): self.remove_sensor(w)
+
+                logic_data = next((v for k,v in submodels_data.items() if "ControlLogic" in k or "Logic" in k), None)
+                self.logic_rules = {"start": [], "sequences": []}
+                if logic_data:
+                    for el in logic_data.get("submodelElements", []):
+                        if el.get("idShort") == "Rules":
+                            rules_json_str = el.get("value", "")
+                            if rules_json_str:
+                                try:
+                                    loaded_rules = json.loads(rules_json_str)
+                                    if isinstance(loaded_rules, dict):
+                                        self.logic_rules = loaded_rules
+                                except Exception:
+                                    traceback.print_exc()
+                if hasattr(self, 'list_sequences'):
+                    self.load_sequences()
                 
             else:
                 # We don't rely on 'GeometryData' strictly; we look for anything that looks like VisualStructure
@@ -2718,8 +2869,6 @@ class ConveyorWizard(QMainWindow):
                 beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
                 aid_data = next((v for k,v in submodels_data.items() if "AssetInterfacesDescription" in k), None)
                 
-                if not all([vis_data, beh_data]): raise Exception(f"AAS is missing required Kit submodels. Found: {list(submodels_data.keys())}")
-                    
                 # Basic Info
                 self.edit_kit_name.setText(shell_desc.get("idShort", "ClonedKit"))
                 self.edit_aas_id.setText(shell_desc.get("idShort", "ClonedKit"))
@@ -2729,7 +2878,7 @@ class ConveyorWizard(QMainWindow):
                 if "KitConfiguration" in submodels_data:
                     cfg = submodels_data["KitConfiguration"]
                     for el in cfg.get("submodelElements", []):
-                        if el["idShort"] == "Description":
+                        if el.get("idShort") == "Description":
                             desc = el.get("value", "")
                 self.edit_desc.setText(desc)
 
@@ -2750,26 +2899,31 @@ class ConveyorWizard(QMainWindow):
                 
                 # Transform & Mesh
                 mesh_href = None
-                for el in vis_data.get("submodelElements", []):
-                    if el["modelType"] == "SubmodelElementCollection": 
-                        for sel in el.get("value", []):
-                            if sel["idShort"] == "Transform":
-                                for t in sel.get("value", []):
-                                    v = float(t.get("value", 0))
-                                    if t["idShort"] == "PosX": self.sys_pos[0].setValue(v)
-                                    elif t["idShort"] == "PosY": self.sys_pos[1].setValue(v)
-                                    elif t["idShort"] == "PosZ": self.sys_pos[2].setValue(v)
-                                    elif t["idShort"] == "RotX": self.sys_rot[0].setValue(v)
-                                    elif t["idShort"] == "RotY": self.sys_rot[1].setValue(v)
-                                    elif t["idShort"] == "RotZ": self.sys_rot[2].setValue(v)
-                                    elif t["idShort"] == "ScaleX": self.sys_scale[0].setValue(v)
-                                    elif t["idShort"] == "ScaleY": self.sys_scale[1].setValue(v)
-                                    elif t["idShort"] == "ScaleZ": self.sys_scale[2].setValue(v)
-                            elif sel["idShort"] == "Mesh" and sel["modelType"] == "File":
-                                mesh_href = sel.get("value")
-                            elif sel["idShort"] == "DynamicObject" and sel["modelType"] == "Property":
-                                is_dyn = str(sel.get("value", "False")).lower() == "true"
-                                self.check_is_dynamic.setChecked(is_dyn)
+                if vis_data:
+                    for el in vis_data.get("submodelElements", []):
+                        if el["modelType"] == "SubmodelElementCollection": 
+                            for sel in el.get("value", []):
+                                if sel["idShort"] == "Transform":
+                                    for t in sel.get("value", []):
+                                        v = float(t.get("value", 0))
+                                        if t["idShort"] == "PosX": self.sys_pos[0].setValue(v)
+                                        elif t["idShort"] == "PosY": self.sys_pos[1].setValue(v)
+                                        elif t["idShort"] == "PosZ": self.sys_pos[2].setValue(v)
+                                        elif t["idShort"] == "RotX": self.sys_rot[0].setValue(v)
+                                        elif t["idShort"] == "RotY": self.sys_rot[1].setValue(v)
+                                        elif t["idShort"] == "RotZ": self.sys_rot[2].setValue(v)
+                                        elif t["idShort"] == "ScaleX": self.sys_scale[0].setValue(v)
+                                        elif t["idShort"] == "ScaleY": self.sys_scale[1].setValue(v)
+                                        elif t["idShort"] == "ScaleZ": self.sys_scale[2].setValue(v)
+                                elif sel["idShort"] == "Mesh" and sel["modelType"] == "File":
+                                    mesh_href = sel.get("value")
+                                elif sel["idShort"] == "DynamicObject" and sel["modelType"] == "Property":
+                                    is_dyn = str(sel.get("value", "False")).lower() == "true"
+                                    self.check_is_dynamic.setChecked(is_dyn)
+                else:
+                    self.glb_path = None
+                    self.lbl_glb_path.setText("None (No 3D Model)")
+                    self.plotter.clear()
     
                 # Behavior
                 for w in list(self.actuator_widgets): self.remove_actuator(w)
@@ -2778,53 +2932,54 @@ class ConveyorWizard(QMainWindow):
                 act_types = ["Conveyor", "RotateContinuous", "TranslateContinuous", "Piston", "Linear"]
                 sens_types = ["TriggerZone", "Presence", "Proximity"]
                 
-                for el in beh_data.get("submodelElements", []):
-                    if el["modelType"] == "SubmodelElementCollection":
-                        props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
-                        params = {}
-                        for p in el.get("value", []):
-                            if p["idShort"] == "Parameters": params = {pp["idShort"]: pp.get("value") for pp in p.get("value", []) if pp["modelType"] == "Property"}
-                                
-                        b_type = props.get("Type", ""); pin_id = props.get("PinID", ""); node = props.get("Component", "")
-                        
-                        if b_type in act_types:
-                            self.add_actuator(); w = self.actuator_widgets[-1]
-                            w.edit_pin.setText(pin_id); w.edit_node.setText(node); w.combo_behavior.setCurrentText(b_type)
-                            w.spin_x.setValue(float(params.get("AxisX", 0))); w.spin_y.setValue(float(params.get("AxisY", 0))); w.spin_z.setValue(float(params.get("AxisZ", 0)))
-                            w.spin_speed.setValue(float(params.get("Speed", 1.0))); w.check_visible.setChecked(str(params.get("Visible", "True")).lower() == "true")
-                            if "StopSensorComponent" in params: w.combo_stop_sens.setCurrentText(params["StopSensorComponent"])
-                            if "RealActuatorEnabled" in params:
-                                r_enabled = str(params.get("RealActuatorEnabled", "False")).lower() == "true" if isinstance(params.get("RealActuatorEnabled"), str) else bool(params.get("RealActuatorEnabled", False))
-                                w.check_real_actuator.setChecked(r_enabled)
-                            if "RealPortID" in params:
-                                w.edit_real_port.setText(str(params.get("RealPortID", "")))
-                        elif b_type in sens_types:
-                            self.add_sensor(); w = self.sensor_widgets[-1]
-                            w.edit_pin.setText(pin_id); w.edit_node.setText(node); w.combo_behavior.setCurrentText(b_type)
-                            w.edit_filter.setText(params.get("TargetFilter", "Metal"))
-                            w.check_visible.setChecked(str(params.get("Visible", "False")).lower() == "true")
-                            w.check_active_low.setChecked(str(params.get("ActiveLow", "False")).lower() == "true")
-                            w.check_snap.setChecked("SnapTarget" in params)
-                            if hasattr(w, "check_real_sensor") and "RealSensorEnabled" in params:
-                                r_enabled = str(params.get("RealSensorEnabled", "False")).lower() == "true" if isinstance(params.get("RealSensorEnabled"), str) else bool(params.get("RealSensorEnabled", False))
-                                w.check_real_sensor.setChecked(r_enabled)
-                            if hasattr(w, "edit_real_port") and "RealPortID" in params:
-                                w.edit_real_port.setText(str(params.get("RealPortID", "")))
-                            if "MoveTarget" in params:
-                                w.check_move.setChecked(True)
-                                w.edit_move_target.setText(str(params.get("MoveTarget", "")))
-                                w.combo_move_state.setCurrentText("HIGH" if str(params.get("MoveOnState", "True")).lower() == "true" else "LOW")
-                                mode_val = params.get("MoveMode", "Both")
-                                mode_reverse_map = {"Both": "Position and Rotation", "Position": "Position Only", "Rotation": "Rotation Only"}
-                                w.combo_move_mode.setCurrentText(mode_reverse_map.get(mode_val, "Position and Rotation"))
-                                w.spin_mpos_x.setValue(float(params.get("MovePosX", 0)))
-                                w.spin_mpos_y.setValue(float(params.get("MovePosY", 0)))
-                                w.spin_mpos_z.setValue(float(params.get("MovePosZ", 0)))
-                                w.spin_mrot_x.setValue(float(params.get("MoveRotX", 0)))
-                                w.spin_mrot_y.setValue(float(params.get("MoveRotY", 0)))
-                                w.spin_mrot_z.setValue(float(params.get("MoveRotZ", 0)))
-                                w.spin_mdur.setValue(float(params.get("MoveDuration", 0.5)))
-                self.update_all_actuator_dropdowns()
+                if beh_data:
+                    for el in beh_data.get("submodelElements", []):
+                        if el["modelType"] == "SubmodelElementCollection":
+                            props = {p["idShort"]: p.get("value") for p in el.get("value", []) if p["modelType"] == "Property"}
+                            params = {}
+                            for p in el.get("value", []):
+                                if p["idShort"] == "Parameters": params = {pp["idShort"]: pp.get("value") for pp in p.get("value", []) if pp["modelType"] == "Property"}
+                                    
+                            b_type = props.get("Type", ""); pin_id = props.get("PinID", ""); node = props.get("Component", "")
+                            
+                            if b_type in act_types:
+                                self.add_actuator(); w = self.actuator_widgets[-1]
+                                w.edit_pin.setText(pin_id); w.edit_node.setText(node); w.combo_behavior.setCurrentText(b_type)
+                                w.spin_x.setValue(float(params.get("AxisX", 0))); w.spin_y.setValue(float(params.get("AxisY", 0))); w.spin_z.setValue(float(params.get("AxisZ", 0)))
+                                w.spin_speed.setValue(float(params.get("Speed", 1.0))); w.check_visible.setChecked(str(params.get("Visible", "True")).lower() == "true")
+                                if "StopSensorComponent" in params: w.combo_stop_sens.setCurrentText(params["StopSensorComponent"])
+                                if "RealActuatorEnabled" in params:
+                                    r_enabled = str(params.get("RealActuatorEnabled", "False")).lower() == "true" if isinstance(params.get("RealActuatorEnabled"), str) else bool(params.get("RealActuatorEnabled", False))
+                                    w.check_real_actuator.setChecked(r_enabled)
+                                if "RealPortID" in params:
+                                    w.edit_real_port.setText(str(params.get("RealPortID", "")))
+                            elif b_type in sens_types:
+                                self.add_sensor(); w = self.sensor_widgets[-1]
+                                w.edit_pin.setText(pin_id); w.edit_node.setText(node); w.combo_behavior.setCurrentText(b_type)
+                                w.edit_filter.setText(params.get("TargetFilter", "Metal"))
+                                w.check_visible.setChecked(str(params.get("Visible", "False")).lower() == "true")
+                                w.check_active_low.setChecked(str(params.get("ActiveLow", "False")).lower() == "true")
+                                w.check_snap.setChecked("SnapTarget" in params)
+                                if hasattr(w, "check_real_sensor") and "RealSensorEnabled" in params:
+                                    r_enabled = str(params.get("RealSensorEnabled", "False")).lower() == "true" if isinstance(params.get("RealSensorEnabled"), str) else bool(params.get("RealSensorEnabled", False))
+                                    w.check_real_sensor.setChecked(r_enabled)
+                                if hasattr(w, "edit_real_port") and "RealPortID" in params:
+                                    w.edit_real_port.setText(str(params.get("RealPortID", "")))
+                                if "MoveTarget" in params:
+                                    w.check_move.setChecked(True)
+                                    w.edit_move_target.setText(str(params.get("MoveTarget", "")))
+                                    w.combo_move_state.setCurrentText("HIGH" if str(params.get("MoveOnState", "True")).lower() == "true" else "LOW")
+                                    mode_val = params.get("MoveMode", "Both")
+                                    mode_reverse_map = {"Both": "Position and Rotation", "Position": "Position Only", "Rotation": "Rotation Only"}
+                                    w.combo_move_mode.setCurrentText(mode_reverse_map.get(mode_val, "Position and Rotation"))
+                                    w.spin_mpos_x.setValue(float(params.get("MovePosX", 0)))
+                                    w.spin_mpos_y.setValue(float(params.get("MovePosY", 0)))
+                                    w.spin_mpos_z.setValue(float(params.get("MovePosZ", 0)))
+                                    w.spin_mrot_x.setValue(float(params.get("MoveRotX", 0)))
+                                    w.spin_mrot_y.setValue(float(params.get("MoveRotY", 0)))
+                                    w.spin_mrot_z.setValue(float(params.get("MoveRotZ", 0)))
+                                    w.spin_mdur.setValue(float(params.get("MoveDuration", 0.5)))
+                    self.update_all_actuator_dropdowns()
     
                 # Control Logic
                 logic_data = next((v for k,v in submodels_data.items() if "ControlLogic" in k or "Logic" in k), None)
@@ -2840,9 +2995,11 @@ class ConveyorWizard(QMainWindow):
                                         self.logic_rules = loaded_rules
                                 except Exception:
                                     traceback.print_exc()
+                    if hasattr(self, 'list_sequences'):
+                        self.load_sequences()
     
                 # Mesh Download
-                if mesh_href:
+                if mesh_href and vis_data:
                     vis_id = vis_data.get("id")
                     encoded_vis_id = base64.urlsafe_b64encode(vis_id.encode()).decode().rstrip("=")
                     
@@ -2975,14 +3132,15 @@ class ConveyorWizard(QMainWindow):
 
         # Restore logic rules
         self.logic_rules = state.get("control_logic", {"start": [], "sequences": []})
-        self.list_sequences.blockSignals(True)
-        self.list_sequences.clear()
-        self.list_sequences.addItem("Start Sequence")
-        for seq in self.logic_rules.get("sequences", []):
-            self.list_sequences.addItem(seq.get("name", "Custom Sequence"))
-        self.list_sequences.setCurrentRow(0)
-        self.list_sequences.blockSignals(False)
-        self.on_sequence_selected(0)
+        if hasattr(self, 'list_sequences'):
+            self.list_sequences.blockSignals(True)
+            self.list_sequences.clear()
+            self.list_sequences.addItem("Start Sequence")
+            for seq in self.logic_rules.get("sequences", []):
+                self.list_sequences.addItem(seq.get("name", "Custom Sequence"))
+            self.list_sequences.setCurrentRow(0)
+            self.list_sequences.blockSignals(False)
+            self.on_sequence_selected(0)
 
     def reset_wizard(self):
         # 1. Clear GLB model path
@@ -4030,13 +4188,22 @@ class ConveyorWizard(QMainWindow):
         self.config_data["components"] = [comp]
         self.json_preview.setText(json.dumps(self.config_data, indent=2))
 
-    def deploy_to_aas(self):
+    def deploy_to_aas(self, silent=False):
         self.update_json_preview()
-        if not self.glb_path: return QMessageBox.warning(self, "Error", "Select model.")
+        has_mesh = bool(self.glb_path and os.path.exists(self.glb_path))
+        if self.model_type == "URDF":
+            if not has_mesh or not getattr(self, "current_urdf_tree", None):
+                if not silent:
+                    QMessageBox.warning(self, "Error", "Select a valid URDF robot model.")
+                else:
+                    raise Exception("Select a valid URDF robot model.")
+                return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self.btn_next.setEnabled(False); self.btn_next.setText("Deploying...")
         try:
-            kn = self.edit_kit_name.text(); aid = self.edit_aas_id.text(); kfn = sanitize_aas_id(kn)
+            kn = self.edit_kit_name.text().strip() or "AAS_System"
+            aid = self.edit_aas_id.text().strip() or kn
+            kfn = sanitize_aas_id(kn)
             if self.model_type == "URDF":
                 px, py, pz = [str(s.value()) for s in self.sys_pos]
                 rx, ry, rz = [str(s.value()) for s in self.sys_rot]
@@ -4119,43 +4286,45 @@ class ConveyorWizard(QMainWindow):
                 if is_conflict:
                     while QApplication.overrideCursor() is not None:
                         QApplication.restoreOverrideCursor()
-                    reply = QMessageBox.question(
-                        self, "AAS Already Exists",
-                        f"An AAS with ID '{shell.id}' already exists. Would you like to overwrite it?",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    )
-                    if reply == QMessageBox.StandardButton.Yes:
-                        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-                        self.delete_aas_by_id(shell.id, [sm_geo.id, sm_pos.id, sm_tel.id])
-                        time.sleep(0.5)
-                        with open(out, 'rb') as f:
-                            res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
-                        if res.status_code in [200, 201, 204]:
-                            requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [sm_geo, sm_pos, sm_tel]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
-                            while QApplication.overrideCursor() is not None:
-                                QApplication.restoreOverrideCursor()
+                    if not silent:
+                        reply = QMessageBox.question(
+                            self, "AAS Already Exists",
+                            f"An AAS with ID '{shell.id}' already exists. Would you like to overwrite it?",
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                        )
+                        if reply != QMessageBox.StandardButton.Yes:
+                            return
+                    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                    self.delete_aas_by_id(shell.id, [sm_geo.id, sm_pos.id, sm_tel.id])
+                    time.sleep(0.5)
+                    with open(out, 'rb') as f:
+                        res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
+                    if res.status_code in [200, 201, 204]:
+                        requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [sm_geo, sm_pos, sm_tel]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                        while QApplication.overrideCursor() is not None:
+                            QApplication.restoreOverrideCursor()
+                        if not silent:
                             QMessageBox.information(self, "Success", f"AAS Robot deployed (overwritten) successfully!")
                             self.reset_wizard()
                             self.stack.setCurrentIndex(0)
                             self.update_nav()
-                        else:
-                            raise Exception(f"Upload failed after overwrite: {res.text}")
                     else:
-                        return
+                        raise Exception(f"Upload failed after overwrite: {res.text}")
                 elif res.status_code in [200, 201, 204]:
                     requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [sm_geo, sm_pos, sm_tel]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
                     while QApplication.overrideCursor() is not None:
                         QApplication.restoreOverrideCursor()
-                    QMessageBox.information(self, "Success", f"AAS Robot deployed successfully!")
-                    self.reset_wizard()
-                    self.stack.setCurrentIndex(0)
-                    self.update_nav()
+                    if not silent:
+                        QMessageBox.information(self, "Success", f"AAS Robot deployed successfully!")
+                        self.reset_wizard()
+                        self.stack.setCurrentIndex(0)
+                        self.update_nav()
                 else: raise Exception(f"Upload failed: {res.text}")
                 return
 
             # Strict Validation of Numeric Fields
             try:
-                for c in self.config_data["components"]:
+                for c in self.config_data.get("components", []):
                     for act in c.get("actuators", []):
                         if "axis" in act:
                             for val in act["axis"]:
@@ -4172,106 +4341,137 @@ class ConveyorWizard(QMainWindow):
                         if "move_duration" in sns:
                             float(str(sns["move_duration"]).replace(',', '.'))
             except ValueError as val_err:
-                raise Exception(f"Invalid numeric format detected. Please check your coordinate/duration values for commas or invalid characters: {val_err}")
+                raise Exception(f"Invalid numeric format detected. Please check your coordinate/duration values: {val_err}")
 
             shell = model.AssetAdministrationShell(asset_information=model.AssetInformation(asset_kind=model.AssetKind.INSTANCE, global_asset_id=f"http://acplt.org/Assets/{kfn}"), id_=f"https://acplt.org/AAS_{kfn}", id_short=aid)
-            vs = model.Submodel(id_=f"https://acplt.org/Submodels/Visual_{kfn}", id_short="VisualStructure")
-            vp = model.Submodel(id_=f"https://acplt.org/Submodels/Pins_{kfn}", id_short="VirtualPins")
-            bm = model.Submodel(id_=f"https://acplt.org/Submodels/Behavior_{kfn}", id_short="BehaviorMapping")
-            sm_aid = model.Submodel(id_=f"https://acplt.org/Submodels/AssetInterfacesDescription_{kfn}", id_short="AssetInterfacesDescription")
-            sm_aid.submodel_element.add(model.Property(id_short="Protocol", value_type=model.datatypes.String, value=str(self.combo_comm_protocol.currentText())))
-            sm_aid.submodel_element.add(model.Property(id_short="EndpointIP", value_type=model.datatypes.String, value=str(self.edit_comm_ip.text().strip())))
-            try:
-                port_val = int(self.spin_comm_port.value())
+            submodels_to_deploy = []
+
+            # 1. VisualStructure (ONLY if 3D mesh model exists)
+            if has_mesh:
+                vs = model.Submodel(id_=f"https://acplt.org/Submodels/Visual_{kfn}", id_short="VisualStructure")
+                for c in self.config_data.get("components", []):
+                    cc = model.SubmodelElementCollection(id_short=sanitize_aas_id(c["name"])); mf = c.get("mesh", "")
+                    if mf: cc.value.add(model.File(id_short="Mesh", content_type="application/octet-stream", value=mf))
+                    cc.value.add(model.Property(id_short="Parent", value_type=model.datatypes.String, value=c.get("parent", "")))
+                    is_prod = c.get("dynamic", False) or (c["name"] == "Product_ConveyorSystem") or self.check_is_dynamic.isChecked()
+                    cc.value.add(model.Property(id_short="DynamicObject", value_type=model.datatypes.Boolean, value=is_prod))
+                    tc = model.SubmodelElementCollection(id_short="Transform"); ps = c.get("position", [0,0,0]); rt = c.get("rotation", [0,0,0]); sc = c.get("scale", [1,1,1])
+                    for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Pos{a}", value_type=model.datatypes.Double, value=float(str(ps[i]).replace(',', '.'))))
+                    for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Rot{a}", value_type=model.datatypes.Double, value=float(str(rt[i]).replace(',', '.'))))
+                    for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Scale{a}", value_type=model.datatypes.Double, value=float(str(sc[i]).replace(',', '.'))))
+                    cc.value.add(tc); vs.submodel_element.add(cc)
+                submodels_to_deploy.append(vs)
+
+            # 2. VirtualPins & BehaviorMapping
+            has_behavior = any(c.get("actuators") or c.get("sensors") for c in self.config_data.get("components", [])) or bool(self.actuator_widgets) or bool(self.sensor_widgets)
+            if has_mesh or has_behavior:
+                vp = model.Submodel(id_=f"https://acplt.org/Submodels/Pins_{kfn}", id_short="VirtualPins")
+                bm = model.Submodel(id_=f"https://acplt.org/Submodels/Behavior_{kfn}", id_short="BehaviorMapping")
+                ic = model.SubmodelElementCollection(id_short="Inputs"); oc = model.SubmodelElementCollection(id_short="Outputs")
+                vp.submodel_element.add(ic); vp.submodel_element.add(oc)
+                for c in self.config_data.get("components", []):
+                    for act in c.get("actuators", []):
+                        pid = act["pin_id"]; tco = act.get("node", c["name"]); ep = [p.id_short for p in oc.value]
+                        safe_pid = sanitize_aas_id(pid)
+                        if safe_pid not in ep: oc.value.add(model.Property(id_short=safe_pid, value_type=model.datatypes.Boolean, value=False))
+                        bc = model.SubmodelElementCollection(id_short=sanitize_aas_id(f"{pid}_{tco}")); bc.value.add(model.Property(id_short="PinID", value_type=model.datatypes.String, value=pid))
+                        bc.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=tco)); bc.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=act.get("behavior")))
+                        pc = model.SubmodelElementCollection(id_short="Parameters")
+                        if "axis" in act:
+                            for i, a in enumerate(["X", "Y", "Z"]): pc.value.add(model.Property(id_short=f"Axis{a}", value_type=model.datatypes.Double, value=float(str(act["axis"][i]).replace(',', '.'))))
+                        if "speed" in act: pc.value.add(model.Property(id_short="Speed", value_type=model.datatypes.Double, value=float(str(act["speed"]).replace(',', '.'))))
+                        if "visible" in act: pc.value.add(model.Property(id_short="Visible", value_type=model.datatypes.Boolean, value=bool(act["visible"])))
+                        if "stop_sensor" in act and act["stop_sensor"]: pc.value.add(model.Property(id_short="StopSensorComponent", value_type=model.datatypes.String, value=act["stop_sensor"]))
+                        pc.value.add(model.Property(id_short="RealActuatorEnabled", value_type=model.datatypes.Boolean, value=bool(act.get("real_actuator_enabled", False))))
+                        pc.value.add(model.Property(id_short="RealPortID", value_type=model.datatypes.String, value=str(act.get("real_port_id", ""))))
+                        bc.value.add(pc); bm.submodel_element.add(bc)
+                    for sns in c.get("sensors", []):
+                        pid = sns["pin_id"]; tco = sns.get("node", c["name"]); ep = [p.id_short for p in ic.value]; safe_pid = sanitize_aas_id(pid)
+                        if safe_pid not in ep: ic.value.add(model.Property(id_short=safe_pid, value_type=model.datatypes.Boolean, value=False))
+                        bc = model.SubmodelElementCollection(id_short=sanitize_aas_id(f"{pid}_{tco}")); bc.value.add(model.Property(id_short="PinID", value_type=model.datatypes.String, value=pid)); bc.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=tco)); bc.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=sns.get("behavior")))
+                        pc = model.SubmodelElementCollection(id_short="Parameters")
+                        if "target_filter" in sns: pc.value.add(model.Property(id_short="TargetFilter", value_type=model.datatypes.String, value=sns["target_filter"]))
+                        if "visible" in sns: pc.value.add(model.Property(id_short="Visible", value_type=model.datatypes.Boolean, value=bool(sns["visible"])))
+                        if "active_low" in sns: pc.value.add(model.Property(id_short="ActiveLow", value_type=model.datatypes.Boolean, value=bool(sns["active_low"])))
+                        if sns.get("snap_product"):
+                            pc.value.add(model.Property(id_short="SnapTarget", value_type=model.datatypes.Boolean, value=True))
+                        pc.value.add(model.Property(id_short="RealSensorEnabled", value_type=model.datatypes.Boolean, value=bool(sns.get("real_sensor_enabled", False))))
+                        pc.value.add(model.Property(id_short="RealPortID", value_type=model.datatypes.String, value=str(sns.get("real_port_id", ""))))
+                        if "move_target" in sns:
+                            pc.value.add(model.Property(id_short="MoveTarget", value_type=model.datatypes.String, value=sns["move_target"]))
+                        if "move_on_state" in sns:
+                            pc.value.add(model.Property(id_short="MoveOnState", value_type=model.datatypes.Boolean, value=bool(sns["move_on_state"])))
+                        if "move_mode" in sns:
+                            pc.value.add(model.Property(id_short="MoveMode", value_type=model.datatypes.String, value=sns["move_mode"]))
+                        if "move_position" in sns:
+                            mp = sns["move_position"]
+                            for i, a in enumerate(["X", "Y", "Z"]): pc.value.add(model.Property(id_short=f"MovePos{a}", value_type=model.datatypes.Double, value=float(str(mp[i]).replace(',', '.'))))
+                        if "move_rotation" in sns:
+                            mr = sns["move_rotation"]
+                            for i, a in enumerate(["X", "Y", "Z"]): pc.value.add(model.Property(id_short=f"MoveRot{a}", value_type=model.datatypes.Double, value=float(str(mr[i]).replace(',', '.'))))
+                        if "move_duration" in sns:
+                            pc.value.add(model.Property(id_short="MoveDuration", value_type=model.datatypes.Double, value=float(str(sns["move_duration"]).replace(',', '.'))))
+                        bc.value.add(pc); bm.submodel_element.add(bc)
+                submodels_to_deploy.extend([vp, bm])
+
+            # 3. AssetInterfacesDescription
+            comm_proto = str(self.combo_comm_protocol.currentText()) if hasattr(self, "combo_comm_protocol") else "Sockets"
+            if comm_proto and comm_proto != "None":
+                sm_aid = model.Submodel(id_=f"https://acplt.org/Submodels/AssetInterfacesDescription_{kfn}", id_short="AssetInterfacesDescription")
+                sm_aid.submodel_element.add(model.Property(id_short="Protocol", value_type=model.datatypes.String, value=comm_proto))
+                sm_aid.submodel_element.add(model.Property(id_short="EndpointIP", value_type=model.datatypes.String, value=str(self.edit_comm_ip.text().strip())))
+                try:
+                    port_val = int(self.spin_comm_port.value())
+                except Exception:
+                    port_val = 5000
                 sm_aid.submodel_element.add(model.Property(id_short="EndpointPort", value_type=model.datatypes.Integer, value=port_val))
-            except ValueError:
-                raise Exception("Communication Port must be a valid integer.")
-            ic = model.SubmodelElementCollection(id_short="Inputs"); oc = model.SubmodelElementCollection(id_short="Outputs")
-            vp.submodel_element.add(ic); vp.submodel_element.add(oc)
-            for c in self.config_data["components"]:
-                cc = model.SubmodelElementCollection(id_short=sanitize_aas_id(c["name"])); mf = c.get("mesh", "")
-                if mf: cc.value.add(model.File(id_short="Mesh", content_type="application/octet-stream", value=mf))
-                cc.value.add(model.Property(id_short="Parent", value_type=model.datatypes.String, value=c.get("parent", "")))
-                is_prod = c.get("dynamic", False) or (c["name"] == "Product_ConveyorSystem") or self.check_is_dynamic.isChecked()
-                cc.value.add(model.Property(id_short="DynamicObject", value_type=model.datatypes.Boolean, value=is_prod))
-                tc = model.SubmodelElementCollection(id_short="Transform"); ps = c.get("position", [0,0,0]); rt = c.get("rotation", [0,0,0]); sc = c.get("scale", [1,1,1])
-                for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Pos{a}", value_type=model.datatypes.Double, value=float(str(ps[i]).replace(',', '.'))))
-                for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Rot{a}", value_type=model.datatypes.Double, value=float(str(rt[i]).replace(',', '.'))))
-                for i, a in enumerate(["X", "Y", "Z"]): tc.value.add(model.Property(id_short=f"Scale{a}", value_type=model.datatypes.Double, value=float(str(sc[i]).replace(',', '.'))))
-                cc.value.add(tc); vs.submodel_element.add(cc)
-                for act in c.get("actuators", []):
-                    pid = act["pin_id"]; tco = act.get("node", c["name"]); ep = [p.id_short for p in oc.value]
-                    safe_pid = sanitize_aas_id(pid)
-                    # Actuators are Outputs from the system/PLC perspective
-                    if safe_pid not in ep: oc.value.add(model.Property(id_short=safe_pid, value_type=model.datatypes.Boolean, value=False))
-                    bc = model.SubmodelElementCollection(id_short=sanitize_aas_id(f"{pid}_{tco}")); bc.value.add(model.Property(id_short="PinID", value_type=model.datatypes.String, value=pid))
-                    bc.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=tco)); bc.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=act.get("behavior")))
-                    pc = model.SubmodelElementCollection(id_short="Parameters")
-                    if "axis" in act:
-                        for i, a in enumerate(["X", "Y", "Z"]): pc.value.add(model.Property(id_short=f"Axis{a}", value_type=model.datatypes.Double, value=float(str(act["axis"][i]).replace(',', '.'))))
-                    if "speed" in act: pc.value.add(model.Property(id_short="Speed", value_type=model.datatypes.Double, value=float(str(act["speed"]).replace(',', '.'))))
-                    if "visible" in act: pc.value.add(model.Property(id_short="Visible", value_type=model.datatypes.Boolean, value=bool(act["visible"])))
-                    if "stop_sensor" in act and act["stop_sensor"]: pc.value.add(model.Property(id_short="StopSensorComponent", value_type=model.datatypes.String, value=act["stop_sensor"]))
-                    pc.value.add(model.Property(id_short="RealActuatorEnabled", value_type=model.datatypes.Boolean, value=bool(act.get("real_actuator_enabled", False))))
-                    pc.value.add(model.Property(id_short="RealPortID", value_type=model.datatypes.String, value=str(act.get("real_port_id", ""))))
-                    bc.value.add(pc); bm.submodel_element.add(bc)
-                for sns in c.get("sensors", []):
-                    pid = sns["pin_id"]; tco = sns.get("node", c["name"]); ep = [p.id_short for p in ic.value]; safe_pid = sanitize_aas_id(pid)
-                    # Sensors are Inputs to the system/PLC perspective
-                    if safe_pid not in ep: ic.value.add(model.Property(id_short=safe_pid, value_type=model.datatypes.Boolean, value=False))
-                    bc = model.SubmodelElementCollection(id_short=sanitize_aas_id(f"{pid}_{tco}")); bc.value.add(model.Property(id_short="PinID", value_type=model.datatypes.String, value=pid)); bc.value.add(model.Property(id_short="Component", value_type=model.datatypes.String, value=tco)); bc.value.add(model.Property(id_short="Type", value_type=model.datatypes.String, value=sns.get("behavior")))
-                    pc = model.SubmodelElementCollection(id_short="Parameters")
-                    if "target_filter" in sns: pc.value.add(model.Property(id_short="TargetFilter", value_type=model.datatypes.String, value=sns["target_filter"]))
-                    if "visible" in sns: pc.value.add(model.Property(id_short="Visible", value_type=model.datatypes.Boolean, value=bool(sns["visible"])))
-                    if "active_low" in sns: pc.value.add(model.Property(id_short="ActiveLow", value_type=model.datatypes.Boolean, value=bool(sns["active_low"])))
-                    if sns.get("snap_product"):
-                        pc.value.add(model.Property(id_short="SnapTarget", value_type=model.datatypes.Boolean, value=True))
-                    pc.value.add(model.Property(id_short="RealSensorEnabled", value_type=model.datatypes.Boolean, value=bool(sns.get("real_sensor_enabled", False))))
-                    pc.value.add(model.Property(id_short="RealPortID", value_type=model.datatypes.String, value=str(sns.get("real_port_id", ""))))
-                    # Move-on-state: when sensor reaches move_on_state, Unity moves move_target
-                    # to the given local position/rotation.
-                    if "move_target" in sns:
-                        pc.value.add(model.Property(id_short="MoveTarget", value_type=model.datatypes.String, value=sns["move_target"]))
-                    if "move_on_state" in sns:
-                        pc.value.add(model.Property(id_short="MoveOnState", value_type=model.datatypes.Boolean, value=bool(sns["move_on_state"])))
-                    if "move_mode" in sns:
-                        pc.value.add(model.Property(id_short="MoveMode", value_type=model.datatypes.String, value=sns["move_mode"]))
-                    if "move_position" in sns:
-                        mp = sns["move_position"]
-                        for i, a in enumerate(["X", "Y", "Z"]): pc.value.add(model.Property(id_short=f"MovePos{a}", value_type=model.datatypes.Double, value=float(str(mp[i]).replace(',', '.'))))
-                    if "move_rotation" in sns:
-                        mr = sns["move_rotation"]
-                        for i, a in enumerate(["X", "Y", "Z"]): pc.value.add(model.Property(id_short=f"MoveRot{a}", value_type=model.datatypes.Double, value=float(str(mr[i]).replace(',', '.'))))
-                    if "move_duration" in sns:
-                        pc.value.add(model.Property(id_short="MoveDuration", value_type=model.datatypes.Double, value=float(str(sns["move_duration"]).replace(',', '.'))))
-                    bc.value.add(pc); bm.submodel_element.add(bc)
-            shell.submodel.add(model.ModelReference.from_referable(vs)); shell.submodel.add(model.ModelReference.from_referable(vp)); shell.submodel.add(model.ModelReference.from_referable(bm)); shell.submodel.add(model.ModelReference.from_referable(sm_aid))
-            obj_store = model.DictObjectStore(); obj_store.add(shell); obj_store.add(vs); obj_store.add(vp); obj_store.add(bm); obj_store.add(sm_aid); fr = RobustFileRepo()
-            import tempfile
-            bd = os.path.dirname(self.glb_path)
-            ae = ['.obj', '.mtl', '.stl', '.png', '.jpg', '.jpeg', '.dae', '.fbx', '.glb', '.gltf', '.bin']
-            is_temp_dir = os.path.abspath(bd) == os.path.abspath(tempfile.gettempdir())
-            
-            if is_temp_dir:
-                fn = os.path.basename(self.glb_path)
-                with open(self.glb_path, 'rb') as tf:
-                    co = tf.read()
-                ap = posixpath.normpath(posixpath.join("/aasx/kit", fn))
-                fr.add_file(ap, co)
-            else:
-                for r, d, fs in os.walk(bd):
-                    for f in fs:
-                        if any(f.lower().endswith(ext) for ext in ae):
-                            lp = os.path.join(r, f); rp = os.path.relpath(lp, bd).replace("\\", "/")
-                            with open(lp, 'rb') as tf:
-                                co = tf.read()
-                            ap = posixpath.normpath(posixpath.join("/aasx/kit", rp)); fr.add_file(ap, co)
-            for sm in [vs, vp, bm, sm_aid]:
-                for el in sm.submodel_element:
-                    if isinstance(el, model.File) and el.value and not el.value.startswith("/aasx/"): el.value = posixpath.normpath(posixpath.join("/aasx/kit", el.value))
-                    elif isinstance(el, model.SubmodelElementCollection):
-                        for se in el.value:
-                            if isinstance(se, model.File) and se.value and not se.value.startswith("/aasx/"): se.value = posixpath.normpath(posixpath.join("/aasx/kit", se.value))
+                submodels_to_deploy.append(sm_aid)
+
+            # 4. ControlLogic
+            has_logic = hasattr(self, 'logic_rules') and self.logic_rules and (self.logic_rules.get("start") or self.logic_rules.get("sequences"))
+            if has_logic or not has_mesh:
+                rules_val = self.logic_rules if (hasattr(self, 'logic_rules') and self.logic_rules) else {"start": [], "sequences": []}
+                sm_logic = model.Submodel(id_=f"https://acplt.org/Submodels/ControlLogic_{kfn}", id_short="ControlLogic")
+                sm_logic.submodel_element.add(model.Property(id_short="Rules", value_type=model.datatypes.String, value=json.dumps(rules_val)))
+                submodels_to_deploy.append(sm_logic)
+
+            for sm in submodels_to_deploy:
+                shell.submodel.add(model.ModelReference.from_referable(sm))
+
+            obj_store = model.DictObjectStore()
+            obj_store.add(shell)
+            for sm in submodels_to_deploy:
+                obj_store.add(sm)
+
+            fr = RobustFileRepo()
+            if has_mesh:
+                import tempfile
+                bd = os.path.dirname(self.glb_path)
+                ae = ['.obj', '.mtl', '.stl', '.png', '.jpg', '.jpeg', '.dae', '.fbx', '.glb', '.gltf', '.bin']
+                is_temp_dir = os.path.abspath(bd) == os.path.abspath(tempfile.gettempdir())
+                
+                if is_temp_dir:
+                    fn = os.path.basename(self.glb_path)
+                    with open(self.glb_path, 'rb') as tf:
+                        co = tf.read()
+                    ap = posixpath.normpath(posixpath.join("/aasx/kit", fn))
+                    fr.add_file(ap, co)
+                else:
+                    for r, d, fs in os.walk(bd):
+                        for f in fs:
+                            if any(f.lower().endswith(ext) for ext in ae):
+                                lp = os.path.join(r, f); rp = os.path.relpath(lp, bd).replace("\\", "/")
+                                with open(lp, 'rb') as tf:
+                                    co = tf.read()
+                                ap = posixpath.normpath(posixpath.join("/aasx/kit", rp)); fr.add_file(ap, co)
+
+                for sm in submodels_to_deploy:
+                    for el in sm.submodel_element:
+                        if isinstance(el, model.File) and el.value and not el.value.startswith("/aasx/"): el.value = posixpath.normpath(posixpath.join("/aasx/kit", el.value))
+                        elif isinstance(el, model.SubmodelElementCollection):
+                            for se in el.value:
+                                if isinstance(se, model.File) and se.value and not se.value.startswith("/aasx/"): se.value = posixpath.normpath(posixpath.join("/aasx/kit", se.value))
+
             os.makedirs("aasx_packages", exist_ok=True); out = os.path.join("aasx_packages", f"{kfn}_Kit.aasx")
             with aasx.AASXWriter(out) as w: w.write_aas(shell.id, obj_store, fr, aid)
             
@@ -4282,7 +4482,7 @@ class ConveyorWizard(QMainWindow):
                 if requests.get(f"http://localhost:8081/shells/{enc_shell}", timeout=3).status_code == 200:
                     existing_exists = True
                 else:
-                    for sm in [vs, vp, bm, sm_aid]:
+                    for sm in submodels_to_deploy:
                         enc_sm = base64.urlsafe_b64encode(sm.id.encode()).decode().rstrip("=")
                         if requests.get(f"http://localhost:8081/submodels/{enc_sm}", timeout=3).status_code == 200:
                             existing_exists = True
@@ -4301,46 +4501,48 @@ class ConveyorWizard(QMainWindow):
             if is_conflict:
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
-                reply = QMessageBox.question(
-                    self, "AAS Already Exists",
-                    f"An AAS with ID '{shell.id}' already exists. Would you like to overwrite it?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                )
-                if reply == QMessageBox.StandardButton.Yes:
-                    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-                    # Delete the existing AAS
-                    self.delete_aas_by_id(shell.id, [vs.id, vp.id, bm.id, sm_aid.id])
-                    time.sleep(0.5)  # Wait for BaSyx database to complete deletion & release file locks
-                    # Retry upload
-                    with open(out, 'rb') as f:
-                        res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
+                if not silent:
+                    reply = QMessageBox.question(
+                        self, "AAS Already Exists",
+                        f"An AAS with ID '{shell.id}' already exists. Would you like to overwrite it?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply != QMessageBox.StandardButton.Yes:
+                        return
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                # Delete the existing AAS and submodels
+                self.delete_aas_by_id(shell.id, [s.id for s in submodels_to_deploy])
+                time.sleep(0.5)  # Wait for BaSyx database to complete deletion & release file locks
+                # Retry upload
+                with open(out, 'rb') as f:
+                    res = requests.post("http://localhost:8081/upload", files={'file': (os.path.basename(out), f, 'application/octet-stream')}, timeout=10)
+                
+                if res.status_code not in [200, 201, 204]:
+                    raise Exception(f"BaSyx Upload failed (HTTP {res.status_code}): {res.text}")
                     
-                    if res.status_code not in [200, 201, 204]:
-                        raise Exception(f"BaSyx Upload failed (HTTP {res.status_code}): {res.text}")
-                        
-                    reg_res = requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, sm_aid]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
-                    if reg_res.status_code not in [200, 201, 204, 409]:
-                        raise Exception(f"BaSyx Registry failed (HTTP {reg_res.status_code}): {reg_res.text}")
-                        
-                    while QApplication.overrideCursor() is not None:
-                        QApplication.restoreOverrideCursor()
-                    QMessageBox.information(self, "Success", f"AAS Kit deployed (overwritten) successfully!")
-                    self.reset_wizard()
-                    self.stack.setCurrentIndex(0)
-                    self.update_nav()
-                else:
-                    return
-            elif res.status_code in [200, 201, 204]:
-                reg_res = requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in [vs, vp, bm, sm_aid]], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                reg_res = requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in submodels_to_deploy], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
                 if reg_res.status_code not in [200, 201, 204, 409]:
                     raise Exception(f"BaSyx Registry failed (HTTP {reg_res.status_code}): {reg_res.text}")
                     
                 while QApplication.overrideCursor() is not None:
                     QApplication.restoreOverrideCursor()
-                QMessageBox.information(self, "Success", f"AAS Kit deployed successfully!")
-                self.reset_wizard()
-                self.stack.setCurrentIndex(0)
-                self.update_nav()
+                if not silent:
+                    QMessageBox.information(self, "Success", f"AAS deployed (overwritten) successfully!")
+                    self.reset_wizard()
+                    self.stack.setCurrentIndex(0)
+                    self.update_nav()
+            elif res.status_code in [200, 201, 204]:
+                reg_res = requests.post("http://localhost:8082/shell-descriptors", json={"id": shell.id, "idShort": shell.id_short, "assetKind": "Instance", "globalAssetId": shell.asset_information.global_asset_id, "submodelDescriptors": [{"idShort": s.id_short, "id": s.id, "endpoints": [{"interface": "SUBMODEL-3.0", "protocolInformation": {"href": f"http://localhost:8081/submodels/{s.id}", "endpointProtocol": "HTTP"}}]} for s in submodels_to_deploy], "endpoints": [{"interface": "AAS-3.0", "protocolInformation": {"href": f"http://localhost:8081/shells/{shell.id}", "endpointProtocol": "HTTP"}}]}, timeout=10)
+                if reg_res.status_code not in [200, 201, 204, 409]:
+                    raise Exception(f"BaSyx Registry failed (HTTP {reg_res.status_code}): {reg_res.text}")
+                    
+                while QApplication.overrideCursor() is not None:
+                    QApplication.restoreOverrideCursor()
+                if not silent:
+                    QMessageBox.information(self, "Success", f"AAS deployed successfully!")
+                    self.reset_wizard()
+                    self.stack.setCurrentIndex(0)
+                    self.update_nav()
             else:
                 raise Exception(f"BaSyx Upload failed (HTTP {res.status_code}): {res.text}")
             return
@@ -4348,7 +4550,10 @@ class ConveyorWizard(QMainWindow):
             while QApplication.overrideCursor() is not None:
                 QApplication.restoreOverrideCursor()
             traceback.print_exc()
-            QMessageBox.critical(self, "Deployment Error", f"Failed to deploy AAS Kit to BaSyx server.\n\nDetails:\n{str(e)}")
+            if not silent:
+                QMessageBox.critical(self, "Deployment Error", f"Failed to deploy AAS to BaSyx server.\n\nDetails:\n{str(e)}")
+            else:
+                raise e
         finally:
             self.btn_next.setEnabled(True); self.btn_next.setText("Deploy to AAS")
             while QApplication.overrideCursor() is not None:

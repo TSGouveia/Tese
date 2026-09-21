@@ -20,64 +20,70 @@
 
 \section{Background and Motivation}
 
-The manufacturing industry is undergoing a profound transformation driven by Industry 4.0 and the transition towards Industry 5.0. While Industry 4.0 focused on interconnectivity and automation via \gls{IOT}, Industry 5.0 emphasizes resilience, sustainability, and a human-centric approach. This requires systems that are automated yet highly adaptable to dynamic production needs \cite{Khan2025,Nguyen2024}. Modern manufacturing demands flexible production environments capable of efficient reconfiguration. As illustrated in \Cref{fig:i4.0_needs}, the Industry 4.0 solution addresses this by leveraging \gls{IOT} connectivity and real-time capabilities, allowing factories to employ \glspl{DT} and simulation to optimize processes dynamically.
+The manufacturing industry is undergoing a profound structural transformation driven by the concepts of Industry 4.0 and the evolution toward Industry 5.0. Modern production systems must move away from rigid, dedicated automation lines toward agile, highly flexible environments capable of rapid reconfiguration \cite{Khan2025}. In smart manufacturing, this agility is enabled by the convergence of \glspl{CPS} and \glspl{CPPS}, which deeply integrate physical shop-floor assets (such as conveyors, sensors, and actuators) with computational monitoring, embedded networking, and real-time control algorithms \cite{Abdel-Aty2022,Rocha2024}.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.9\textwidth]{5-Figures/I4.0_Needs.pdf}
-    \caption{The ecosystem of Industry 4.0 technologies \cite{Pajpach2025}.}
+    \caption{The ecosystem of Industry 4.0 technologies and industrial requirements \cite{Pajpach2025}.}
     \label{fig:i4.0_needs}
 \end{figure}
 
-In this context, the \gls{DT} has emerged as an essential technology for validating changes and simulations without disrupting production. A \gls{DT} is a dynamic virtual representation of a physical asset, system, or process facilitating real-time monitoring, prediction, and optimization \cite{Tao2019}. As depicted in \Cref{fig:digital_twin_concept}, the \gls{DT} framework establishes a bi-directional flow between the physical and digital domains. The process begins with sensors that connect and collect real-time data, which is then contextualized to update the virtual model. Through advanced analytics, the system analyzes behaviors to optimize performance, sending alerts and advice back to physical actuators \cite{Pajpach2023}.
+Within the \gls{CPPS} paradigm, the \gls{DT} has emerged as an indispensable technology for virtual commissioning, process optimization, and predictive decision-making without halting operational production lines \cite{Tao2019}. Unlike static 3D models or one-way monitoring dashboards, a true \gls{DT} establishes an automated, bidirectional data flow between the physical and digital domains (\Cref{fig:digital_twin_concept}): real-time field telemetry continuously synchronizes the virtual simulation state, while analytical and control decisions generated in the virtual space can be fed back to physical actuators on the shop floor \cite{Kritzinger2018,Pajpach2023}.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.9\textwidth]{5-Figures/DigitalTwin_Concept.pdf}
-    \caption{Conceptual representation of a DT, illustrating the bi-directional data flow: real-time monitoring from the Physical asset and decision-making support from the Digital counterpart (Adapted from \cite{Pajpach2023}).}
+    \caption{Conceptual representation of a \gls{DT}, illustrating the bi-directional data flow: real-time monitoring from the physical asset and decision-making support from the digital counterpart (Adapted from \cite{Pajpach2023}).}
     \label{fig:digital_twin_concept}
 \end{figure}
 
-Factories are typically designed using specialized software and formats like \gls{CAD} and \gls{AML}, providing comprehensive descriptions of plant topology and geometry \cite{AshtariTalkhestani2019}.
-However, the operational phase often relies on different standards, such as \gls{AAS}, to manage asset data and interoperability \cite{Lu2025}. Data transition between engineering and operational phases is difficult, often creating a disconnect where valuable data is lost or manually recreated. Bridging this gap is critical to establish a seamless toolchain supporting the manufacturing system's entire lifecycle \cite{Schaper2025}.
+To facilitate cross-vendor interoperability and lifecycle data management in smart factories, the \gls{RAMI} and the \gls{IDTA} established the \gls{AAS} (\gls{IEC}~63278) as the official digital representation of industrial assets. Through standardized submodels, the \gls{AAS} provides a vendor-neutral digital envelope capable of describing mechanical specifications, operational properties, communication interfaces, and runtime capabilities \cite{Lu2025}.
 
 \section{Problem Definition}
 
-Despite clear benefits, creating a \gls{DT} remains a complex, slow, and expensive process, often performed manually. This manual approach is time-consuming and error-prone, leading to inconsistencies between the physical factory and its digital counterpart. Integrating heterogeneous data from diverse sources requires significant manual effort and expertise. This high barrier hinders widespread \gls{DT} adoption, particularly for \glspl{SME} \cite{Khan2025,Schaper2025}.
+Despite the strategic benefits of \glspl{DT}, their practical deployment in industrial automation remains severely constrained by high engineering costs, proprietary software lock-in, and configuration fragmentation \cite{Schaper2025}. Traditional development pipelines suffer from three fundamental bottlenecks:
 
-Current automatic generation solutions often create static files that do not adhere to open standards. Without standardized interfaces, \glspl{DT} created in proprietary software struggle to communicate within the Industry 4.0 ecosystem. Lack of semantic interoperability prevents seamless information exchange between the shop floor and virtual environment, limiting the \gls{DT}'s utility to isolated tasks \cite{Quadrini2023}.
+\begin{enumerate}
+    \item \textbf{High-Poly Geometric Fragmentation:} Industrial machinery is typically documented using high-polygon \gls{CAD} files designed for manufacturing tolerances rather than real-time interactive simulation. These dense geometric files overload physics engines, lack proper kinematic joints, and omit functional collider envelopes required for contact physics and sensor triggers.
+    \item \textbf{Manual and Vendor-Locked Toolchains:} Existing commercial simulation platforms require engineers to reconstruct plant layouts manually, importing 3D models into proprietary environments and writing custom scripts for kinematic motion and sensor logic. If a physical limit switch or motor is rewired or an asset is reconfigured, the simulation environment must be updated by hand, resulting in obsolete virtual models that fail to match the shop floor.
+    \item \textbf{Semantic Decoupling from Control Interfaces:} Conventional digital twins rarely incorporate standardized semantic descriptions of \gls{IO} electrical pin mappings and control rules. When transitioning between offline \gls{VC} and live online synchronization with physical \glspl{PLC}, engineers must manually rewire variable tags across disparate software tools, introducing integration errors and communication bottlenecks.
+\end{enumerate}
 
-A significant issue is that generated models remain static and do not update automatically when the factory changes, requiring manual re-engineering. A true \gls{DT} must maintain continuous synchronization with its physical counterpart to reflect dynamic behaviors and operational states. The absence of automated mechanisms to propagate changes from engineering design to the operational \gls{DT} results in obsolete models, reducing their reliability for decision-making \cite{AshtariTalkhestani2019}.
+These barriers make the adoption of digital twins prohibitively slow and expensive, particularly for \glspl{SME} operating in agile markets where production layouts change frequently. Consequently, there is an urgent need for an open, modular, model-driven framework capable of procedurally instantiating interactive 3D simulation environments directly from standardized semantic packages.
 
 \section{Research Objectives}
 
-The primary objective of this thesis is to develop a framework for the automatic and dynamic generation of industrial \glspl{DT}, ensuring interoperability via open standards.
+The primary objective of this dissertation is to design, implement, and empirically validate an open, modular, model-driven framework for the automated procedural generation and real-time synchronization of industrial \glspl{DT} using standardized \gls{AAS} packages.
 
-To achieve this, the following specific objectives are defined:
+To fulfill this overarching goal, the research pursues four specific objectives:
 \begin{itemize}
-    \item \textbf{Analyse and map the \gls{AML} data structure:} Formally describe the factory layout, hierarchy, and components using the vendor-neutral \gls{AML} standard, facilitating the extraction of key manufacturing concepts \cite{AshtariTalkhestani2019}.
-    \item \textbf{Develop a mechanism for automatic conversion from \gls{AML} to \gls{AAS}:} Create a translation bridge transforming static engineering data (\gls{AML}) into the standardized, interoperable operational format (\gls{AAS}) \cite{Schaper2025}.
-    \item \textbf{Implement a visualization system in Unity that dynamically instantiates the 3D environment by querying the \gls{AAS}:} Demonstrate the framework's practical application by generating a 3D virtual environment in Unity guided by standardized \gls{AAS} data \cite{Alexopoulos2025}.
-    \item \textbf{Validate the solution through a practical use case:} Prove the feasibility and efficacy of the proposed framework by applying it to a representative manufacturing scenario.
+    \item \textbf{SO1 -- Establish a Semantic Asset Metamodel:} Formulate a modular, technology-agnostic data model based on \gls{AAS} submodels that captures 3D visual structures, kinematic constraints, virtual \gls{IO} pin bindings, declarative control logic, and network endpoints within portable \gls{AASX} packages.
+    \item \textbf{SO2 -- Develop a No-Code Asset Modeling Application:} Implement an accessible authoring tool enabling automation engineers to visually instrument 3D geometry using raycasting, define sensor and actuator behaviors, and generate valid \gls{AASX} bundles without manual code programming.
+    \item \textbf{SO3 -- Realize a Procedural Runtime Simulation Engine:} Develop a game-engine runtime in Unity 3D that queries containerized \gls{AAS} repositories, procedurally instantiates 3D assets and PhysX colliders directly in memory at startup, and executes dual-mode simulation (pure software \gls{VC} and live \gls{PLC} telemetry synchronization with kinematic drift correction).
+    \item \textbf{SO4 -- Empirically Validate Performance and Scalability:} Benchmark the framework through 100 cold-boot validation runs on a physical modular \gls{FMS} mechatronic testbed, followed by parametric stress testing scaling from 5 to 1000 conveyor modules to determine computational and algorithmic boundaries.
 \end{itemize}
 
 \section{Expected Contributions}
-This dissertation contributes to Industrial Informatics and \gls{CPS} through the following outcomes:
+
+This dissertation contributes to the fields of Industrial Informatics, Cyber-Physical Systems, and Model-Driven Engineering through the following outcomes:
 
 \begin{itemize}
-    \item \textbf{Integration of Standards:} A novel methodology bridging the gap between design (\gls{AML}) and operation (\gls{AAS}), addressing cross-standard interoperability.
-    \item \textbf{Dynamic Generation Framework:} A functional prototype demonstrating dynamic generation of industrial 3D environments from standardized data, moving beyond static, manually created models.
-    \item \textbf{Reduction of Engineering Time:} Demonstration that this model-driven approach is significantly faster and less resource-intensive than manually building a \gls{DT}, lowering the barrier to adoption.
+    \item \textbf{Model-Driven Procedural Digital Twin Architecture:} An open, multi-tier pipeline that eliminates pre-compiled 3D scenes by assembling and executing interactive simulation environments dynamically from \gls{AAS} packages.
+    \item \textbf{Unified Semantic Metamodel for Physics and Control:} A standardized submodel schema connecting low-polygon 3D meshes, kinematic joints, and \gls{IO} registers with declarative boolean control rules, bridging the gap between virtual commissioning and operational synchronization.
+    \item \textbf{Accessible No-Code Authoring Pipeline:} A functional desktop authoring environment combining 3D surface raycasting with the Eclipse BaSyx \gls{SDK}, allowing domain engineers to model and deploy modular \gls{CPS} assets rapidly.
+    \item \textbf{Empirical Scalability Guidelines for Real-Time Physics:} Quantitative performance benchmarks on physical mechatronic hardware and large-scale synthetic layouts, establishing deterministic latency bounds and identifying single-threaded physics boundaries for industrial \glspl{DT}.
 \end{itemize}
 
 \section{Research Methodology}
-To achieve the proposed objectives, this dissertation follows the \gls{DSR} methodology, an approach tailored for creating innovative engineering artifacts. The research process comprises four distinct phases:
+
+To accomplish the stated objectives, this dissertation adopts the \gls{DSR} methodology, an established engineering research paradigm focused on solving identified practical problems through the creation and iterative evaluation of innovative artifacts \cite{Peffers2007}. The research trajectory is structured across four systematic phases:
 
 \begin{enumerate}
-    \item \textbf{Problem Explication:} Comprehensive analysis of the State of the Art, detailed in \Cref{cha:stateoftheart}, to identify limitations in \gls{DT} generation, specifically the lack of interoperability between \gls{AML} and \gls{AAS}.
-    \item \textbf{Artifact Design:} Definition of the system architecture, mapping rules between engineering and operational data, and communication logic with the Unity engine.
-    \item \textbf{Artifact Development:} Practical implementation of the proposed solution, including the \gls{AML} parser, \gls{AAS} generation middleware, and dynamic visualization scripts.
-    \item \textbf{Demonstration and Evaluation:} Validation of the framework through a representative industrial use case, comparing the efficiency and accuracy of the automatic generation process against traditional manual methods.
+    \item \textbf{Problem Explication and Literature Survey:} Critical analysis of current literature on Industry 4.0, \gls{CPPS}, \gls{DT} architectures, and semantic standards, identifying the limitations of proprietary simulation software and manual modeling workflows (\Cref{cha:stateoftheart}).
+    \item \textbf{Artifact Conceptualization and Metamodel Design:} Specification of the technology-agnostic conceptual architecture, functional requirements, cross-layer communication protocols, and the semantic \gls{AAS} asset metamodel (\Cref{cha:architecture}).
+    \item \textbf{Artifact Development and Technical Realization:} Implementation of the four-tier framework, encompassing low-poly asset digitization in Blender (Layer~0), the PyQt6/PyVista asset modeling tool (Layer~1), containerized Eclipse BaSyx~v2 microservices on Docker (Layer~2), and the procedural runtime engine in Unity 3D interfacing with an Industrial Shields \gls{PLC} running FreeRTOS (Layer~3) (\Cref{cha:implementation}).
+    \item \textbf{Empirical Demonstration and Evaluation:} Rigorous empirical testing on the physical modular \gls{FMS} bench and parametric scalability benchmarking across eight scale levels ($N=5$ to $N=1000$), measuring startup duration, frame rates, and tail latencies to evaluate performance hypotheses (\Cref{cha:discussion}).
 \end{enumerate}
 
 \section{Dissertation Structure}
@@ -85,12 +91,12 @@ To achieve the proposed objectives, this dissertation follows the \gls{DSR} meth
 
 The remainder of this dissertation is organized into five subsequent chapters:
 
-\textbf{\Cref{cha:stateoftheart} (State of the Art)} reviews foundational literature on Industry 4.0, \gls{DT} taxonomies, semantic modeling standards, physics engines, and automated generation methodologies.
+\textbf{\Cref{cha:stateoftheart} (State of the Art)} reviews foundational literature on Industry 4.0, \glspl{CPS}, \gls{DT} taxonomies, semantic modeling standards (\gls{AAS} and \gls{AML}), real-time physics engines, and automated simulation generation methodologies.
 
 \textbf{\Cref{cha:architecture} (Conceptual System Architecture)} presents the technology-agnostic conceptual architecture, semantic metamodel specifications, configuration workflows, and the dual-mode execution framework.
 
-\textbf{\Cref{cha:implementation} (Technological Implementation)} details the software engineering realization, describing the Python wizard, Eclipse BaSyx v2 middleware, Unity 3D physics runtime, and Arduino FreeRTOS firmware.
+\textbf{\Cref{cha:implementation} (Technological Implementation)} details the software engineering realization, describing the Python modeling tool, Eclipse BaSyx~v2 middleware, Unity 3D physics runtime, and embedded Arduino FreeRTOS firmware.
 
-\textbf{\Cref{cha:discussion} (Results and Evaluation)} presents experimental validation on the modular \gls{FMS} testbed, providing quantitative benchmarks for setup time, latency, scalability, and systematic validation of research hypotheses.
+\textbf{\Cref{cha:discussion} (Results and Evaluation)} presents the empirical validation on the modular \gls{FMS} bench and the synthetic scalability stress benchmarks, providing quantitative analysis of startup complexity, frame rendering latency, and tail performance.
 
-\textbf{\Cref{cha:conclusion} (Conclusions and Future Work)} summarizes main findings, discusses limitations, and outlines directions for future research.
+\textbf{\Cref{cha:conclusion} (Conclusion and Future Work)} synthesizes the core contributions, discusses operational limitations, and details future research avenues including Unity \gls{DOTS}, \gls{ROS} robotics integration, continuous systems co-simulation, extensible logic interpreters, and immersive extended reality (\gls{VR}/\gls{AR}).

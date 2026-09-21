@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
@@ -42,12 +42,47 @@ public class AASArduinoLink : MonoBehaviour
         public int    port;
         public Thread thread;
         public volatile bool running;
+        public volatile bool isConnected;
         public System.Net.Sockets.TcpClient client;
     }
 
     private readonly object _connLock = new object();
     private readonly Dictionary<string, ConnectionState> _connections = new();
     private bool _allowConnections = false;
+
+    public int RegisteredEndpointCount
+    {
+        get
+        {
+            lock (_connLock) return _connections.Count;
+        }
+    }
+
+    public bool HasActiveConnections()
+    {
+        lock (_connLock)
+        {
+            if (_connections.Count == 0) return false;
+            foreach (var cs in _connections.Values)
+            {
+                if (cs.isConnected) return true;
+            }
+            return false;
+        }
+    }
+
+    public bool AreAllConnected()
+    {
+        lock (_connLock)
+        {
+            if (_connections.Count == 0) return false;
+            foreach (var cs in _connections.Values)
+            {
+                if (!cs.isConnected) return false;
+            }
+            return true;
+        }
+    }
 
     private static string Key(string ip, int port) => $"{ip}:{port}";
 
@@ -197,6 +232,7 @@ public class AASArduinoLink : MonoBehaviour
                 cs.client.ReceiveTimeout = 0;
 
                 using var stream = cs.client.GetStream();
+                cs.isConnected = true;
                 Debug.Log($"[ArduinoLink-LOG] Connected successfully to {cs.ip}:{cs.port}");
 
                 var buf        = new StringBuilder();
@@ -229,6 +265,7 @@ public class AASArduinoLink : MonoBehaviour
             }
             finally
             {
+                cs.isConnected = false;
                 try { cs.client?.Close(); } catch { }
                 cs.client = null;
             }
