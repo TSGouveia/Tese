@@ -1,0 +1,16 @@
+Timestamp_s,FPS,FrameTime_ms,RAM_Allocated_MB,RAM_TotalReserved_MB,OperationMode,ActiveProducts,StartupTime_s,IsStartupComplete
+0.270,4.80,208.51,1.59,177.20,VirtualCommissioning,0,-1.000,0
+0.846,77.33,12.93,3.64,177.20,VirtualCommissioning,0,-1.000,0
+1.379,25.69,38.93,7.41,182.21,VirtualCommissioning,0,-1.000,0
+1.879,429.20,2.33,6.60,214.21,VirtualCommissioning,0,-1.000,0
+2.382,219.53,4.56,6.73,214.21,VirtualCommissioning,0,-1.000,0
+2.883,353.26,2.83,6.89,214.21,VirtualCommissioning,0,2.861,1
+3.384,575.34,1.74,7.13,214.21,VirtualCommissioning,0,2.861,1
+3.884,504.19,1.98,7.35,214.21,VirtualCommissioning,0,2.861,1
+4.385,564.33,1.77,5.63,214.21,VirtualCommissioning,0,2.861,1
+4.885,504.41,1.98,5.81,214.21,VirtualCommissioning,0,2.861,1
+5.386,374.36,2.67,5.83,214.21,VirtualCommissioning,0,2.861,1
+5.886,351.09,2.85,5.85,214.21,VirtualCommissioning,0,2.861,1
+6.388,349.27,2.86,5.96,214.21,VirtualCommissioning,0,2.861,1
+6.888,477.72,2.09,5.78,214.21,VirtualCommissioning,0,2.861,1
+7.391,303.68,3.29,6.02,214.21,VirtualCommissioning,0,2.861,1
