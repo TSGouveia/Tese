@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thesis Sprint Tracker — 14 Dias</title>
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-primary: #38bdf8;
+      --accent-success: #10b981;
+      --accent-warning: #f59e0b;
+      --accent-purple: #a855f7;
+      --accent-red: #ef4444;
+      --highlight-day: #1e1b4b;
+      --highlight-border: #6366f1;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    /* Header & Progress */
+    header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+
+    .header-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .thesis-sub {
+      color: var(--accent-primary);
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-top: 4px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      cursor: pointer;
+      background-color: #334155;
+      color: #fff;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      background-color: #475569;
+      transform: translateY(-1px);
+    }
+
+    button.btn-primary {
+      background-color: #0284c7;
+      border-color: #38bdf8;
+    }
+    button.btn-primary:hover {
+      background-color: #0369a1;
+    }
+
+    /* Progress Bar */
+    .progress-wrapper {
+      margin-top: 16px;
+    }
+
+    .progress-stats {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .progress-bar-bg {
+      background-color: #334155;
+      height: 12px;
+      border-radius: 9999px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-bar-fill {
+      background: linear-gradient(90deg, #38bdf8 0%, #10b981 100%);
+      height: 100%;
+      width: 0%;
+      border-radius: 9999px;
+      transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Filters / Day Tabs */
+    .filters {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      margin-bottom: 24px;
+    }
+
+    .filter-btn {
+      background: #1e293b;
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      border-radius: 9999px;
+      padding: 6px 16px;
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+
+    .filter-btn.active {
+      background: #0284c7;
+      color: #fff;
+      border-color: #38bdf8;
+    }
+
+    /* Day Cards */
+    .day-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      margin-bottom: 20px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .day-card.highlight-lab {
+      border: 2px solid var(--highlight-border);
+      background: linear-gradient(180deg, #1e1b4b 0%, var(--card-bg) 100%);
+    }
+
+    .day-header {
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .day-header:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .day-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .day-tag {
+      background-color: #334155;
+      color: var(--text-main);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-transform: uppercase;
+    }
+
+    .day-card.highlight-lab .day-tag {
+      background-color: #4f46e5;
+      color: #fff;
+    }
+
+    .day-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .day-progress-pill {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      background: #0f172a;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      border: 1px solid var(--card-border);
+    }
+
+    .day-body {
+      padding: 20px;
+    }
+
+    .day-body.collapsed {
+      display: none;
+    }
+
+    /* Task Groups */
+    .task-group {
+      margin-bottom: 18px;
+    }
+    .task-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .task-group-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Badges */
+    .badge {
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    .badge-lab { background: #4f46e5; color: #fff; }
+    .badge-latex { background: #059669; color: #fff; }
+    .badge-code { background: #d97706; color: #fff; }
+    .badge-draw { background: #db2777; color: #fff; }
+
+    /* Todo items */
+    .todo-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      transition: background 0.15s;
+    }
+    .todo-item:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .todo-item.level-sub {
+      margin-left: 20px;
+      border-left: 2px solid #334155;
+      padding-left: 14px;
+    }
+
+    .todo-item.level-subsub {
+      margin-left: 42px;
+      border-left: 2px dashed #475569;
+      padding-left: 14px;
+      font-size: 0.86rem;
+      color: var(--text-muted);
+    }
+
+    input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid #64748b;
+      border-radius: 4px;
+      outline: none;
+      cursor: pointer;
+      margin-top: 3px;
+      flex-shrink: 0;
+      position: relative;
+      transition: all 0.15s ease;
+      background: #0f172a;
+    }
+
+    input[type="checkbox"]:checked {
+      background-color: var(--accent-success);
+      border-color: var(--accent-success);
+    }
+
+    input[type="checkbox"]:checked::after {
+      content: "✓";
+      color: #fff;
+      font-size: 13px;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-weight: 800;
+    }
+
+    .todo-label {
+      cursor: pointer;
+      flex-grow: 1;
+      user-select: none;
+    }
+
+    .todo-item.completed .todo-label {
+      text-decoration: line-through;
+      color: #64748b;
+    }
+
+    /* Lab Scratchpad */
+    .lab-notes-box {
+      margin-top: 16px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid #4338ca;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .lab-notes-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #818cf8;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    textarea.notes-area {
+      width: 100%;
+      height: 80px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      padding: 8px;
+      font-size: 0.82rem;
+      resize: vertical;
+    }
+    textarea.notes-area:focus {
+      outline: none;
+      border-color: #818cf8;
+    }
+
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #10b981;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.25s ease;
+      pointer-events: none;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header -->
+  <header>
+    <div class="header-title">
+      <div>
+        <h1>🚀 Sprint 14 Dias — Dissertação</h1>
+        <div class="thesis-sub">A Model-Driven Framework for Dynamic Digital Twins in Manufacturing</div>
+      </div>
+      <div class="header-actions">
+        <button onclick="toggleAllDays(true)">Expandir Todos</button>
+        <button onclick="toggleAllDays(false)">Colapsar</button>
+        <button class="btn-primary" onclick="resetProgress()">Reiniciar</button>
+      </div>
+    </div>
+
+    <!-- Global Progress -->
+    <div class="progress-wrapper">
+      <div class="progress-stats">
+        <span>Progresso Global do Sprint</span>
+        <span id="progressText">0% (0 / 0 completadas)</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div id="progressBar" class="progress-bar-fill"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Filter Buttons -->
+  <div class="filters">
+    <button class="filter-btn active" onclick="setFilter('all')">Todos os 14 Dias</button>
+    <button class="filter-btn" onclick="setFilter('today')">⭐ Hoje: Dia 1 (Fotos & Pinouts)</button>
+    <button class="filter-btn" onclick="setFilter('tomorrow')">📅 Amanhã: Dia 2 (Cap. 3 - Arquitetura)</button>
+    <button class="filter-btn" onclick="setFilter('week1')">Semana 1 (Caps 3, 4 e 2)</button>
+    <button class="filter-btn" onclick="setFilter('week2')">Semana 2 (Testes, Caps 5, 1, 6)</button>
+    <button class="filter-btn" onclick="setFilter('pending')">Apenas Pendentes</button>
+  </div>
+
+  <!-- Day Cards Container -->
+  <div id="cardsContainer"></div>
+</div>
+
+<div id="toast" class="toast">Progresso guardado!</div>
+
+<script>
+// Master Data Structure: All tasks, subtasks and sub-subtasks
+const SPRINT_DAYS = [
+  {
+    id: "day1",
+    week: "week1",
+    dayNum: "Dia 1 (Hoje - Seg)",
+    isLab: true,
+    title: "SESSÃO FOTOGRÁFICA & MAPEAMENTO DO KIT FÍSICO",
+    subtitle: "Tirar todas as fotos da bancada FMS e mapear os pinos do Arduino para arrancar a escrita imediatamente.",
+    hasNotes: true,
+    groups: [
+      {
+        title: "📸 Sessão Fotográfica e Registo Visual da Bancada FMS",
+        badge: { text: "Kit Físico", type: "lab" },
+        items: [
+          { id: "d1_t1_1", text: "Foto Geral Panorâmica/Isométrica (fms_physical_bench.pdf)", level: "sub" },
+          { id: "d1_t1_1_1", text: "Limpar a bancada e garantir iluminação adequada sem reflexos", level: "subsub" },
+          { id: "d1_t1_1_2", text: "Tirar 3 a 5 fotos de ângulos distintos (perspetiva, topo e frontal)", level: "subsub" },
+          { id: "d1_t1_1_3", text: "Escolher a melhor foto para adicionar setas anotadas no LaTeX", level: "subsub" },
+          { id: "d1_t1_2", text: "Fotografias de Pormenor dos Componentes (fms_sensor_actuator_details.pdf)", level: "sub" },
+          { id: "d1_t1_2_1", text: "Close-up dos sensores óticos/reflexivos de barreira", level: "subsub" },
+          { id: "d1_t1_2_2", text: "Close-up dos sensores indutivos (presença de metal/palete)", level: "subsub" },
+          { id: "d1_t1_2_3", text: "Close-up dos motores dos tapetes e relés de acionamento", level: "subsub" },
+          { id: "d1_t1_2_4", text: "Close-up dos stoppers e diverters pneumáticos/mecânicos", level: "subsub" },
+          { id: "d1_t1_2_5", text: "Close-up do Arduino Mega + Ethernet Shield e cablagem", level: "subsub" },
+          { id: "d1_t1_3", text: "Gravação de vídeo curto (30-60s) da peça a circular para apoio à tese/defesa", level: "sub" }
+        ]
+      },
+      {
+        title: "🔌 Auditoria de Hardware e Mapeamento de Pinout",
+        badge: { text: "Hardware", type: "lab" },
+        items: [
+          { id: "d1_t2_1", text: "Mapeamento de Entradas: confrontar porto_I[3][6] com sensores reais (S1, S2...)", level: "sub" },
+          { id: "d1_t2_2", text: "Mapeamento de Saídas: confrontar porto_R[3][9] com relés de motores/cancelas", level: "sub" },
+          { id: "d1_t2_3", text: "Registar tensões de alimentação (24V sensores/motores vs 5V lógica)", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day2",
+    week: "week1",
+    dayNum: "Dia 2 (Ter)",
+    title: "Capítulo 3 – Arquitetura Global e Metamodelo AAS",
+    subtitle: "Formalizar o desenho concetual do sistema e a modelação semântica.",
+    groups: [
+      {
+        title: "📐 Diagramas de Arquitetura",
+        badge: { text: "Draw.io / LaTeX", type: "draw" },
+        items: [
+          { id: "d2_t1", text: "Criar diagrama architecture_global.pdf (Camada 1: Wizard, Camada 2: BaSyx Docker, Camada 3: Unity+FMS)", level: "sub" },
+          { id: "d2_t2", text: "Exportar para Documentos/5-Figures/architecture_global.pdf", level: "sub" },
+          { id: "d2_t3", text: "Escrever a Secção 3.1 no chapter3.tex explicando as 3 camadas", level: "sub" }
+        ]
+      },
+      {
+        title: "🧩 Metamodelo e Submodelos AAS",
+        badge: { text: "UML / Semântica", type: "latex" },
+        items: [
+          { id: "d2_t4", text: "Criar diagrama UML aas_metamodel_submodels.pdf (TechnicalData, Geometry, VirtualPins, ControlLogic)", level: "sub" },
+          { id: "d2_t5", text: "Escrever a Secção 3.2 detalhando e justificando cada submodelo concebido", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day3",
+    week: "week1",
+    dayNum: "Dia 3 (Qua)",
+    title: "Capítulo 3 – Pipeline em 5 Passos e Modo Duplo",
+    subtitle: "Descrever os diagramas de Use Case existentes e o comutador Virtual Commissioning vs Digital Twin.",
+    groups: [
+      {
+        title: "⚙️ Pipeline de 5 Passos (conveyor_wizard.py)",
+        badge: { text: "LaTeX", type: "latex" },
+        items: [
+          { id: "d3_t1", text: "Descrever Step 1: Seleção de Modelo/Xacro (usecase_step1.pdf)", level: "sub" },
+          { id: "d3_t2", text: "Descrever Step 2: Comunicações e Transformação 3D (usecase_step2.pdf)", level: "sub" },
+          { id: "d3_t3", text: "Descrever Steps 3 & 4: Mapeamento de I/O de Sensores e Atuadores (usecase_step3/4.pdf)", level: "sub" },
+          { id: "d3_t4", text: "Descrever Step 5: Build do AASX e Deploy para o BaSyx (usecase_step5.pdf)", level: "sub" },
+          { id: "d3_t5", text: "Descrever Operações Auxiliares: CRUD, Layout Preview e Regras (usecase_aux.pdf)", level: "sub" }
+        ]
+      },
+      {
+        title: "🔄 Modo Duplo (Dual Mode Operation)",
+        badge: { text: "UML Sequência", type: "draw" },
+        items: [
+          { id: "d3_t6", text: "Desenhar dual_mode_sequence.pdf (Virtual Commissioning vs Digital Twin)", level: "sub" },
+          { id: "d3_t7", text: "Redigir a Secção 3.5 explicando o chaveamento entre física virtual e hardware real", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day4",
+    week: "week1",
+    dayNum: "Dia 4 (Qui)",
+    title: "Capítulo 4 – Implementação Python e Docker",
+    subtitle: "Documentar o código real: Python Wizard e Middleware Docker BaSyx.",
+    groups: [
+      {
+        title: "🐍 AAS Client (Python)",
+        badge: { text: "Implementação", type: "code" },
+        items: [
+          { id: "d4_t1", text: "Montar painel de screenshots wizard_ui_screenshots.pdf e escrever Secção 4.1", level: "sub" },
+          { id: "d4_t2", text: "Explicar arquitetura modular: XacroResolver, AssetManager, AASRulesEditorDialog", level: "sub" },
+          { id: "d4_t3", text: "Incluir listing LaTeX do código Python que cria os submodelos BaSyx SDK", level: "sub" }
+        ]
+      },
+      {
+        title: "🐳 Middleware Industrial em Docker",
+        badge: { text: "Docker", type: "code" },
+        items: [
+          { id: "d4_t4", text: "Criar diagrama basyx_docker_topology.pdf e escrever Secção 4.2", level: "sub" },
+          { id: "d4_t5", text: "Detalhar microsserviços: aas-env, registries, mosquitto MQTT, InfluxDB e aas-ui", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day5",
+    week: "week1",
+    dayNum: "Dia 5 (Sex)",
+    title: "Capítulo 4 – Implementação Unity e Arduino",
+    subtitle: "Documentar o runtime C# no Unity e o firmware com FreeRTOS.",
+    groups: [
+      {
+        title: "🎮 Unity 3D Runtime (DT Unity)",
+        badge: { text: "Unity & C#", type: "code" },
+        items: [
+          { id: "d5_t1", text: "Screenshot da cena Unity (unity_scene_hierarchy.pdf) e escrever Secção 4.3", level: "sub" },
+          { id: "d5_t2", text: "Explicar BaSyxManager.cs (polling, download do URDF, instanciação procedural)", level: "sub" },
+          { id: "d5_t3", text: "Detalhar AASRuleEngine.cs, OperationMode.cs e DynamicProduct.cs", level: "sub" }
+        ]
+      },
+      {
+        title: "⚡ Firmware Embedded Arduino (FMS_DT.ino)",
+        badge: { text: "FreeRTOS", type: "code" },
+        items: [
+          { id: "d5_t4", text: "Criar esquema arduino_freertos_schema.pdf e escrever Secção 4.4", level: "sub" },
+          { id: "d5_t5", text: "Inserir tabela com os pinos reais do Arduino (Portos I e R) mapeados no Dia 1", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day6",
+    week: "week1",
+    dayNum: "Dia 6 (Sáb)",
+    title: "Capítulo 2 – Estado da Arte (Conceitos & Normas)",
+    subtitle: "Aproveitar o texto existente em chapter2.tex e afunilar com base no que foi implementado.",
+    groups: [
+      {
+        title: "📚 Normas e Taxonomia de Digital Twins",
+        badge: { text: "Revisão", type: "latex" },
+        items: [
+          { id: "d6_t1", text: "Rever Secção 2.1 (I4.0/I5.0 e CPS) referenciando i4.0_history.pdf", level: "sub" },
+          { id: "d6_t2", text: "Rever Secção 2.2 cruzando digital_model_flow.pdf, digital_shadow_flow.pdf e digital_twin_flow.pdf", level: "sub" },
+          { id: "d6_t3", text: "Rever Secção 2.3 de RAMI 4.0 (rami.pdf) e BaSyx AAS (AAS_introduction.pdf)", level: "sub" },
+          { id: "d6_t4", text: "Rever Secção 2.4 de AutomationML (AML_Architecture.pdf) e comparar com URDF", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day7",
+    week: "week1",
+    dayNum: "Dia 7 (Dom)",
+    title: "Capítulo 2 – Game Engines & Tabela da Literatura + Checkpoint",
+    subtitle: "Demonstrar a lacuna da literatura e consolidar a Semana 1.",
+    groups: [
+      {
+        title: "🎮 Game Engines e Tabela Comparativa",
+        badge: { text: "Estado da Arte", type: "latex" },
+        items: [
+          { id: "d7_t1", text: "Escrever secção sobre o papel do Unity vs simuladores fechados", level: "sub" },
+          { id: "d7_t2", text: "Construir a tabela comparativa state_of_art_comparison com 6 artigos (2020-2026)", level: "sub" },
+          { id: "d7_t3", text: "Escrever a secção 'Summary of Gaps' preparando a transição lógica para a tua solução", level: "sub" }
+        ]
+      },
+      {
+        title: "🛡️ Checkpoint da Semana 1",
+        badge: { text: "Checkpoint", type: "latex" },
+        items: [
+          { id: "d7_t4", text: "Compilar thesis.tex e verificar consistência dos Capítulos 2, 3 e 4", level: "sub" },
+          { id: "d7_t5", text: "Fazer commit no Git: 'Semana 1 concluída: Caps 2, 3 e 4 fechados'", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day8",
+    week: "week2",
+    dayNum: "Dia 8 (Próx. Seg)",
+    isLab: true,
+    title: "HARDWARE TEST DAY NO LAB (Ensaios Experimentais e Logs)",
+    subtitle: "Com a bancada física ligada, recolher 100% dos dados quantitativos para alimentar o Capítulo 5.",
+    hasNotes: true,
+    groups: [
+      {
+        title: "⏱️ Ensaios Experimentais na Bancada FMS",
+        badge: { text: "Kit Físico & Testes", type: "lab" },
+        items: [
+          { id: "d8_t1", text: "Ligar Docker BaSyx, cabo Ethernet ao Arduino e Unity no modo DigitalTwin", level: "sub" },
+          { id: "d8_t2", text: "Fazer 30 a 50 passagens de peças na esteira e registar logs de timestamps", level: "sub" },
+          { id: "d8_t3", text: "Medir a latência do ciclo (trigger sensor -> reflexo no Unity via REST)", level: "sub" },
+          { id: "d8_t4", text: "Medir latência equivalente via MQTT ou socket direto", level: "sub" },
+          { id: "d8_t5", text: "Guardar valores brutos em scratch/latencias_teste.csv", level: "sub" },
+          { id: "d8_t6", text: "Cronometrar o tempo de configuração pelo conveyor_wizard.py (Passo 1 a 5)", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day9",
+    week: "week2",
+    dayNum: "Dia 9 (Ter)",
+    title: "Capítulo 5 – Caso de Estudo, Resultados e Discussão",
+    subtitle: "Processar os dados colhidos no Dia 8, gerar gráficos e redigir o Capítulo 5.",
+    groups: [
+      {
+        title: "📊 Gráficos e Discussão",
+        badge: { text: "Resultados", type: "draw" },
+        items: [
+          { id: "d9_t1", text: "Inserir fotos fms_physical_bench.pdf e fms_sensor_actuator_details.pdf e escrever Secção 5.1", level: "sub" },
+          { id: "d9_t2", text: "Gerar gráfico manual_vs_wizard_time.pdf e escrever Secção 5.2 (Setup Time)", level: "sub" },
+          { id: "d9_t3", text: "Gerar boxplot sync_latency_boxplot.pdf e escrever Secção 5.3 (Latência REST vs MQTT)", level: "sub" },
+          { id: "d9_t4", text: "Escrever Secção 5.4 com a discussão crítica e limites de escala", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day10",
+    week: "week2",
+    dayNum: "Dia 10 (Qua)",
+    title: "Capítulo 1 – Introdução, Problema e Objetivos",
+    subtitle: "Agora que a solução e os resultados estão claros, a introdução fica precisa e assertiva.",
+    groups: [
+      {
+        title: "🎯 Enquadramento e Objetivos",
+        badge: { text: "Capítulo 1", type: "latex" },
+        items: [
+          { id: "d10_t1", text: "Rever Background & Motivação (I4.0_Needs.pdf e DigitalTwin_Concept.pdf)", level: "sub" },
+          { id: "d10_t2", text: "Escrever a definição formal do problema (Engineering-to-Operations Gap)", level: "sub" },
+          { id: "d10_t3", text: "Definir a questão central de investigação e os 4 Objetivos Específicos", level: "sub" },
+          { id: "d10_t4", text: "Listar as 4 Contribuições Principais e escrever o Thesis Outline", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day11",
+    week: "week2",
+    dayNum: "Dia 11 (Qui)",
+    title: "Capítulo 6 – Conclusões e Trabalho Futuro",
+    subtitle: "O espelho perfeito da Introdução: confirmar cada objetivo com base nos resultados.",
+    groups: [
+      {
+        title: "🏁 Conclusões e Futuro",
+        badge: { text: "Capítulo 6", type: "latex" },
+        items: [
+          { id: "d11_t1", text: "Responder ponto por ponto aos 4 objetivos do Capítulo 1 com dados do Capítulo 5", level: "sub" },
+          { id: "d11_t2", text: "Escrever o parágrafo de síntese e impacto prático para PMEs", level: "sub" },
+          { id: "d11_t3", text: "Listar trabalhos futuros: LLMs industriais (nvidia_llm.pdf), Realidade Aumentada e OPC UA", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day12",
+    week: "week2",
+    dayNum: "Dia 12 (Sex)",
+    title: "Front Matter, Resumos (PT/EN) e Acrónimos",
+    subtitle: "Assegurar o cartão de visita da dissertação.",
+    groups: [
+      {
+        title: "📄 Elementos Pré-Textuais",
+        badge: { text: "Front Matter", type: "latex" },
+        items: [
+          { id: "d12_t1", text: "Escrever Resumo em Português (abstract-pt.tex) em 4 parágrafos canónicos", level: "sub" },
+          { id: "d12_t2", text: "Escrever Abstract em Inglês (abstract-en.tex) de alta fidelidade técnica", level: "sub" },
+          { id: "d12_t3", text: "Preencher Agradecimentos (acknowledgements.tex) e Capa (3_cover.tex)", level: "sub" },
+          { id: "d12_t4", text: "Preencher declaração de IA (aidisclosure.tex) segundo as regras da NOVA", level: "sub" },
+          { id: "d12_t5", text: "Auditar acronyms.tex para garantir que todos os \\gls{...} estão definidos", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day13",
+    week: "week2",
+    dayNum: "Dia 13 (Sáb)",
+    title: "Auditoria Cruzada, Citações e Correção de Estilo",
+    subtitle: "Eliminar erros de compilação, gralhas e incoerências.",
+    groups: [
+      {
+        title: "🔍 Verificação de Qualidade",
+        badge: { text: "Polimento", type: "latex" },
+        items: [
+          { id: "d13_t1", text: "Eliminar referências e citações quebradas (pesquisar por '??' e '[?]')", level: "sub" },
+          { id: "d13_t2", text: "Verificar se todas as figuras têm \\caption e são referenciadas no texto", level: "sub" },
+          { id: "d13_t3", text: "Passar corretor gramatical em Inglês em todos os capítulos", level: "sub" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "day14",
+    week: "week2",
+    dayNum: "Dia 14 (Dom)",
+    title: "Formatação Final e Congelamento (Submission Freeze)",
+    subtitle: "Geração da versão final do documento para entrega.",
+    groups: [
+      {
+        title: "🏆 Entrega e Congelamento",
+        badge: { text: "Submissão", type: "latex" },
+        items: [
+          { id: "d14_t1", text: "Limpar ficheiros auxiliares (.aux, .bbl, etc.) e fazer compilação limpa completa", level: "sub" },
+          { id: "d14_t2", text: "Inspecionar visualmente o PDF página a página (quebras de linha, tabelas, figuras)", level: "sub" },
+          { id: "d14_t3", text: "Gerar Tese_Mestrado_TSGouveia_FINAL.pdf e criar a tag no Git (v1.0-submission)", level: "sub" }
+        ]
+      }
+    ]
+  }
+];
+
+// LocalStorage State Management
+const STORAGE_KEY = "thesis_sprint_14d_tracker_state";
+let state = {
+  checked: {},
+  notes: { day1: "", day8: "" }
+};
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      state = JSON.parse(saved);
+      if (!state.checked) state.checked = {};
+      if (!state.notes) state.notes = {};
+    }
+  } catch (e) {
+    console.error("Erro ao carregar estado do localStorage", e);
+  }
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    showToast();
+  } catch (e) {
+    console.error("Erro ao guardar estado", e);
+  }
+}
+
+function showToast() {
+  const toast = document.getElementById("toast");
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), 1500);
+}
+
+let currentFilter = "all";
+
+function setFilter(filter) {
+  currentFilter = filter;
+  document.querySelectorAll(".filter-btn").forEach(btn => btn.classList.remove("active"));
+  event.target.classList.add("active");
+  render();
+}
+
+function toggleItem(id) {
+  state.checked[id] = !state.checked[id];
+  saveState();
+  updateProgress();
+  const itemEl = document.getElementById(`item_${id}`);
+  if (itemEl) {
+    itemEl.classList.toggle("completed", state.checked[id]);
+  }
+  updateDayProgressPills();
+}
+
+function saveNotes(dayId, val) {
+  state.notes[dayId] = val;
+  saveState();
+}
+
+function resetProgress() {
+  if (confirm("Tens a certeza que queres reiniciar todo o progresso dos checkboxes?")) {
+    state.checked = {};
+    saveState();
+    render();
+  }
+}
+
+function toggleAllDays(expand) {
+  document.querySelectorAll(".day-body").forEach(b => {
+    b.classList.toggle("collapsed", !expand);
+  });
+}
+
+function toggleDay(dayId) {
+  const body = document.getElementById(`body_${dayId}`);
+  if (body) {
+    body.classList.toggle("collapsed");
+  }
+}
+
+function calculateProgress() {
+  let total = 0;
+  let completed = 0;
+  SPRINT_DAYS.forEach(day => {
+    day.groups.forEach(group => {
+      group.items.forEach(item => {
+        total++;
+        if (state.checked[item.id]) completed++;
+      });
+    });
+  });
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+  return { total, completed, percent };
+}
+
+function updateProgress() {
+  const { total, completed, percent } = calculateProgress();
+  document.getElementById("progressBar").style.width = `${percent}%`;
+  document.getElementById("progressText").textContent = `${percent}% (${completed} / ${total} tarefas completadas)`;
+}
+
+function updateDayProgressPills() {
+  SPRINT_DAYS.forEach(day => {
+    let dayTotal = 0;
+    let dayCompleted = 0;
+    day.groups.forEach(g => {
+      g.items.forEach(i => {
+        dayTotal++;
+        if (state.checked[i.id]) dayCompleted++;
+      });
+    });
+    const pill = document.getElementById(`pill_${day.id}`);
+    if (pill) {
+      pill.textContent = `${dayCompleted}/${dayTotal} concluídas`;
+      if (dayCompleted === dayTotal && dayTotal > 0) {
+        pill.style.borderColor = "#10b981";
+        pill.style.color = "#10b981";
+      } else {
+        pill.style.borderColor = "var(--card-border)";
+        pill.style.color = "var(--text-muted)";
+      }
+    }
+  });
+}
+
+function render() {
+  const container = document.getElementById("cardsContainer");
+  container.innerHTML = "";
+
+  SPRINT_DAYS.forEach(day => {
+    // Check filters
+    if (currentFilter === "today" && day.id !== "day1") return;
+    if (currentFilter === "tomorrow" && day.id !== "day2") return;
+    if (currentFilter === "day8" && day.id !== "day8") return;
+    if (currentFilter === "week1" && day.week !== "week1") return;
+    if (currentFilter === "week2" && day.week !== "week2") return;
+
+    let dayTotal = 0;
+    let dayCompleted = 0;
+    day.groups.forEach(g => {
+      g.items.forEach(i => {
+        dayTotal++;
+        if (state.checked[i.id]) dayCompleted++;
+      });
+    });
+
+    if (currentFilter === "pending" && dayCompleted === dayTotal && dayTotal > 0) return;
+
+    const card = document.createElement("div");
+    card.className = `day-card ${day.isLab ? "highlight-lab" : ""}`;
+    card.id = `card_${day.id}`;
+
+    let groupsHtml = "";
+    day.groups.forEach(group => {
+      let itemsHtml = "";
+      group.items.forEach(item => {
+        const isChecked = !!state.checked[item.id];
+        itemsHtml += `
+          <div class="todo-item level-${item.level} ${isChecked ? "completed" : ""}" id="item_${item.id}">
+            <input type="checkbox" id="chk_${item.id}" ${isChecked ? "checked" : ""} onchange="toggleItem('${item.id}')" />
+            <label class="todo-label" for="chk_${item.id}">${item.text}</label>
+          </div>
+        `;
+      });
+
+      const badgeHtml = group.badge 
+        ? `<span class="badge badge-${group.badge.type}">${group.badge.text}</span>` 
+        : "";
+
+      groupsHtml += `
+        <div class="task-group">
+          <div class="task-group-title">
+            <span>${group.title}</span>
+            ${badgeHtml}
+          </div>
+          ${itemsHtml}
+        </div>
+      `;
+    });
+
+    let notesHtml = "";
+    if (day.hasNotes) {
+      const savedNote = state.notes[day.id] || "";
+      const placeholder = day.id === "day1" 
+        ? "Ex: Sensor 1 (ótico) ligado ao I0_0, Sensor 2 (indutivo) ao I0_1, motor M1 ao relé R0_0..." 
+        : "Ex: Amostras de latência: 14ms, 18ms, 12ms... Setup manual levou 42 min vs wizard 6 min...";
+      notesHtml = `
+        <div class="lab-notes-box">
+          <div class="lab-notes-title">📝 Bloco de Notas (${day.dayNum})</div>
+          <textarea class="notes-area" placeholder="${placeholder}" oninput="saveNotes('${day.id}', this.value)">${savedNote}</textarea>
+        </div>
+      `;
+    }
+
+    card.innerHTML = `
+      <div class="day-header" onclick="toggleDay('${day.id}')">
+        <div class="day-info">
+          <span class="day-tag">${day.dayNum}</span>
+          <div>
+            <div class="day-title">${day.title}</div>
+            <div style="font-size:0.8rem; color:var(--text-muted);">${day.subtitle}</div>
+          </div>
+        </div>
+        <div class="day-progress-pill" id="pill_${day.id}">${dayCompleted}/${dayTotal} concluídas</div>
+      </div>
+      <div class="day-body" id="body_${day.id}">
+        ${groupsHtml}
+        ${notesHtml}
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+
+  updateProgress();
+  updateDayProgressPills();
+}
+
+// Init
+loadState();
+render();
+</script>
+
+</body>
+</html>

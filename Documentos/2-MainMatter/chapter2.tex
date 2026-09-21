@@ -48,8 +48,8 @@ Industry 4.0 demands a unified framework to manage digital manufacturing complex
 
 \begin{itemize}
     \item \textbf{Layers (Vertical Axis):} Represents asset perspectives, from physical reality to business processes.
-    \item \textbf{Life Cycle and Value Stream (Horizontal Axis):} Based on IEC 62890, this distinguishes between the ``Type'' and ``Instance'' phases.
-    \item \textbf{Hierarchy Levels (Third Axis):} Organizes functional units per IEC 62264/61512. \gls{RAMI} expands the traditional automation pyramid to include levels from ``Connected World'' down to ``Product''.
+    \item \textbf{Life Cycle and Value Stream (Horizontal Axis):} Based on \gls{IEC} 62890, this distinguishes between the ``Type'' and ``Instance'' phases.
+    \item \textbf{Hierarchy Levels (Third Axis):} Organizes functional units per \gls{IEC} 62264/61512. \gls{RAMI} expands the traditional automation pyramid to include levels from ``Connected World'' down to ``Product''.
 \end{itemize}
 
 \begin{figure}[htbp]
@@ -124,7 +124,7 @@ Unlike the \gls{DS}, the \gls{DT} is bidirectional, as shown in \Cref{fig:digita
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.9\textwidth]{5-Figures/digital_twin_flow.pdf} 
-    \caption{Data flow in a DT: Fully integrated bidirectional automated flow \cite{Kritzinger2018}.}
+    \caption{Data flow in a \gls{DT}: Fully integrated bidirectional automated flow \cite{Kritzinger2018}.}
     \label{fig:digital_twin}
 \end{figure}
 
@@ -167,7 +167,7 @@ The \gls{AAS} operates as a data structure and runtime framework, maintaining a 
 
 \subsection{AutomationML for Engineering}
 
-\gls{AML} (IEC 62714) is a leading open standard for engineering data exchange. This \gls{XML}-based format supports import, export, reuse, and collaboration on system models, facilitating \gls{DT} integration \cite{Lu2025}.
+\gls{AML} (\gls{IEC} 62714) is a leading open standard for engineering data exchange. This \gls{XML}-based format supports import, export, reuse, and collaboration on system models, facilitating \gls{DT} integration \cite{Lu2025}.
 
 \gls{AML} connects existing tools rather than replacing them. Based on \gls{CAEX} \cite{Drath2008}, it stores:
 \begin{itemize}
@@ -235,7 +235,7 @@ In practice, a critical discontinuity exists. \gls{AML} is inherently file-based
 
 \begin{table}[htbp]
     \centering
-    \caption{Comparison between AML and AAS \cite{Lu2025,Luder2020,Pajpach2025}.}
+    \caption{Comparison between \gls{AML} and \gls{AAS} \cite{Lu2025,Luder2020,Pajpach2025}.}
     \label{tab:aml_vs_aas}
     \begin{tabular}{@{}lll@{}}
         \toprule
@@ -336,7 +336,7 @@ The latest trend applies Generative \gls{AI} and \glspl{LLM} to bridge the gap b
 
 Furthermore, \textcite{Alexopoulos2025} utilize \glspl{LLM} for dynamic process generation. An \gls{LLM} generates simulation scenarios as \gls{BPMN} diagrams, allowing the \gls{DT} to explore and validate production strategies by automatically generating the driving process logic.
 
-While \glspl{LLM} offer flexibility, they suffer from stochastic behavior and lack determinism. For safety-critical industrial automation, deterministic approaches remain essential as a foundational layer, with AI serving as an auxiliary tool for optimization rather than structural generation.
+While \glspl{LLM} offer flexibility, they suffer from stochastic behavior and lack determinism. For safety-critical industrial automation, deterministic approaches remain essential as a foundational layer, with \gls{AI} serving as an auxiliary tool for optimization rather than structural generation.
 
 \subsection{Current Limitations}
 
@@ -353,7 +353,7 @@ Despite advancements, gaps persist. First, most solutions focus on generating ei
         \textbf{Approach} & \textbf{Precision} & \textbf{Manual Effort} & \textbf{Determinism} \\ \midrule
         \textbf{Model-Driven} & High (Design-based) & Low (Automated) & High \\
         \textbf{Data-Driven} & Medium (Approximated) & Medium (Discovery) & Medium \\
-        \textbf{Generative AI} & Variable (Stochastic) & Very Low & Low \\ \bottomrule
+        \textbf{Generative \gls{AI}} & Variable (Stochastic) & Very Low & Low \\ \bottomrule
     \end{tabular}
 \end{table}
 

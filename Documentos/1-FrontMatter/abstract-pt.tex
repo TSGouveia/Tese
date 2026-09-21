@@ -13,16 +13,17 @@
 
 \typeout{NT FILE abstract-pt.tex}%
 
-O paradigma da Indústria 4.0 depende intrinsecamente da virtualização dos sistemas de produção através de Digital Twins. No entanto, a criação destes modelos virtuais permanece um processo predominantemente manual, fragmentado e dispendioso, criando uma barreira significativa à sua adoção generalizada, especialmente em cenários de reconfiguração frequente. Existe, atualmente, uma descontinuidade crítica entre os dados ricos gerados durante a fase de engenharia de sistemas e os modelos semânticos necessários para a fase de operação.
+O paradigma da Indústria 4.0 assenta na convergência de \glspl{CPS} e \glspl{CPPS} para alcançar processos produtivos ágeis e resilientes. Neste ecossistema, os \glspl{DT} fornecem réplicas virtuais capazes de espelhar ativos físicos através de telemetria bidirecional em tempo real. No entanto, o ciclo de vida da engenharia de \glspl{DT} industriais enfrenta elevadas barreiras de implementação. O desenvolvimento convencional depende de software de simulação proprietário, modelos 3D \gls{CAD} fragmentados desprovidos de semântica cinemática e sensorial, e mapeamento manual exaustivo de endereços de \gls{IO}, tornando a reconfiguração frequente proibitivamente morosa e sujeita a erros.
 
-Esta dissertação propõe uma framework baseada em Engenharia Conduzida por Modelos para a geração automatizada de Digital Twins dinâmicos em sistemas de manufatura. A metodologia adota AutomationML como formato de integração de dados de engenharia e Asset Administration Shell como standard alvo para a interoperabilidade e representação digital na fase operacional. Através de regras de transformação definidas, a framework processa ficheiros AutomationML para instanciar automaticamente a estrutura de Asset Administration Shell e gerar, simultaneamente, o ambiente de simulação comportamental num motor de física.
+Para superar estas limitações, esta dissertação propõe uma arquitetura aberta, modular e orientada a modelos para a instanciação procedimental e sincronização em tempo real de \glspl{DT} industriais. Desenvolvida sob a metodologia \gls{DSR}, a solução estrutura-se em quatro camadas desacopladas: digitalização e modelação 3D de baixo custo poligonal (Camada~0); aplicação desktop sem código para mapeamento sensorial via \textit{raycasting} 3D e empacotamento \gls{AASX} (Camada~1); registo dinâmico e repositório de pacotes baseado em microsserviços Eclipse BaSyx~v2 em Docker (Camada~2); e montagem procedimental de cenários, simulação física de contactos, execução em modo duplo (\gls{VC} e telemetria em direto) e compensação cinemática de desvio em Unity 3D (Camada~3).
 
-Esta abordagem valida a utilização de AutomationML como precursor essencial para a criação expedita de Asset Administration Shells, garantindo a consistência semântica entre o projeto físico e a sua contraparte digital.
+A metodologia foi validada empiricamente numa bancada mecatrónica didática modular \gls{FMS} baseada em componentes \textit{fischertechnik}, controlada por um \gls{PLC} Industrial Shields com FreeRTOS, bem como através de testes de stress paramétricos escalando entre 5 e 1000 módulos transportadores. Os resultados experimentais comprovam a instanciação completa da bancada piloto em $2{,}79 \pm 0{,}04\,$s, sustentando taxas médias de renderização de $489{,}91 \pm 49{,}21\,$\gls{FPS} e latência de cauda P99 inferior a $9{,}94\,$ms. Os ensaios de escalabilidade confirmam complexidade quase linear até 250 módulos e execução estável em tempo real até 500 módulos ($93\,$\gls{FPS}), demonstrando a viabilidade da \gls{AAS} como norma unificadora para o gémeo digital industrial.
 
 \keywords{
   Digital Twin \and
-  Indústria 4.0 \and
-  AutomationML \and
+  Sistemas Ciber-Físicos \and
   Asset Administration Shell \and
-  Geração Automática
+  Simulação Procedimental \and
+  Comissionamento Virtual \and
+  Indústria 4.0
 }

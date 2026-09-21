@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -25,6 +25,7 @@ public class BaSyxManager : MonoBehaviour
     [Header("Error / Warning UI (Passed to Rule Engines)")]
     public GameObject warningPanel;
     public TextMeshProUGUI warningTextTMP;
+    public TextMeshProUGUI startupTimeTMP;
 
     [Header("Settings")]
     public float globalScale = 1.0f;
@@ -62,8 +63,21 @@ public class BaSyxManager : MonoBehaviour
         public bool hasTexture = false;
     }
 
+    private System.Diagnostics.Stopwatch startupStopwatch;
+    private float startupRealtimeSinceStartup;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void OnBeforeSceneLoad()
+    {
+        Debug.Log($"[StartupTimer] ⏱️ Engine Startup / BeforeSceneLoad iniciado aos {Time.realtimeSinceStartupAsDouble:F4}s");
+    }
+
     void Awake()
     {
+        startupStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        startupRealtimeSinceStartup = Time.realtimeSinceStartup;
+        Debug.Log($"[StartupTimer] ⏱️ BaSyxManager.Awake iniciado aos {startupRealtimeSinceStartup:F4}s desde o arranque do Unity!");
+
         baseCachePath = Path.Combine(Application.persistentDataPath, "AAS_Robots");
     }
 
@@ -78,15 +92,47 @@ public class BaSyxManager : MonoBehaviour
 
     void Update()
     {
+        bool rPressed = false;
+#if ENABLE_INPUT_SYSTEM
         if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.rKey.wasPressedThisFrame)
+            rPressed = true;
+#endif
+#if !ENABLE_INPUT_SYSTEM || ENABLE_LEGACY_INPUT_MANAGER
+        if (Input.GetKeyDown(KeyCode.R))
+            rPressed = true;
+#endif
+        if (rPressed)
         {
-            Debug.Log("[BaSyx] 🔄 Reloading current scene...");
+            Debug.Log("[BaSyx] 🔄 [R Key Pressed] Reiniciando cena atual...");
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
     }
 
     IEnumerator OrchestratedStartupRoutine()
     {
+        // 0. Pre-flight Check: Ensure HTTP services (Registry & AAS Server) are reachable
+        Debug.Log("[BaSyx] 🔍 Verificando conectividade HTTP com Registry e AAS Server...");
+        bool httpConnected = false;
+        while (!httpConnected)
+        {
+            using (UnityWebRequest testReg = UnityWebRequest.Get(registryUrl))
+            {
+                testReg.timeout = 3;
+                yield return testReg.SendWebRequest();
+
+                if (testReg.result == UnityWebRequest.Result.Success)
+                {
+                    httpConnected = true;
+                }
+                else
+                {
+                    Debug.LogError($"[BaSyx] ⛔ Não é possível conectar ao Registry HTTP ({registryUrl}): {testReg.error}. A aguardar conectividade antes de iniciar...");
+                    yield return new WaitForSeconds(2.0f);
+                }
+            }
+        }
+        Debug.Log("[BaSyx] 🌐 Conectividade HTTP verificada com sucesso.");
+
         // 1. Run initial synchronization to discover and start loading static shells
         yield return StartCoroutine(SyncRobotsRoutine());
         
@@ -142,10 +188,6 @@ public class BaSyxManager : MonoBehaviour
             Debug.Log("[BaSyx] ⏸️ Digital Twin mode active: skipping AAS Rule Engines initialization at startup.");
         }
         
-        IsStartupComplete = true;
-        Debug.Log("[BaSyx] 🎉 Orchestrated Startup is fully complete! Systems are ready.");
-        
-        yield return new WaitForSeconds(3.0f);
         if (AASArduinoLink.Instance != null)
         {
             AASArduinoLink.Instance.ConnectAll();
@@ -153,7 +195,18 @@ public class BaSyxManager : MonoBehaviour
 
         if (OperationModeManager.Current == OperationMode.DigitalTwin)
         {
-            // Wait 4 more seconds for snaps and initial sensor synchronization to finish
+            if (AASArduinoLink.Instance != null && AASArduinoLink.Instance.RegisteredEndpointCount > 0)
+            {
+                Debug.Log("[BaSyx] 🔌 Modo Digital Twin ativo: A aguardar conexão por Socket/TCP aos endpoints de hardware...");
+                while (!AASArduinoLink.Instance.HasActiveConnections())
+                {
+                    Debug.LogWarning("[BaSyx] ⚠️ DT Socket não conectado ao hardware! O DT não iniciará até estabelecer conexão...");
+                    yield return new WaitForSeconds(2.0f);
+                }
+                Debug.Log("[BaSyx] ⚡ Conexão Socket ao hardware estabelecida com sucesso!");
+            }
+
+            // Wait 4 seconds for snaps and initial sensor synchronization to finish
             yield return new WaitForSeconds(4.0f);
             
             Debug.Log("[BaSyx] 🚀 Startup delay over: Initializing AAS Rule Engines in Digital Twin mode.");
@@ -168,6 +221,20 @@ public class BaSyxManager : MonoBehaviour
             }
             pendingRules.Clear();
         }
+
+        IsStartupComplete = true;
+        if (startupStopwatch != null)
+        {
+            startupStopwatch.Stop();
+            float totalSecondsAwake = (float)startupStopwatch.Elapsed.TotalSeconds;
+            float totalSecondsEngine = Time.realtimeSinceStartup;
+            string timingLog = $"<color=cyan><b>[StartupTimer] 🏁 INICIALIZAÇÃO COMPLETA!</b></color>\n" +
+                               $"⏱️ Tempo desde Awake: <b>{totalSecondsAwake:F3}s</b> ({startupStopwatch.ElapsedMilliseconds} ms)\n" +
+                               $"⏱️ Tempo total desde arranque do Unity: <b>{totalSecondsEngine:F3}s</b>\n" +
+                               $"📦 Kits instanciados: {instantiatedRobots.Count}";
+            Debug.Log(timingLog);
+        }
+        Debug.Log("[BaSyx] 🎉 Orchestrated Startup is fully complete! Systems are ready.");
         
         // 7. Hand over control to the standard DiscoveryLoop for runtime AAS addition/removal
         StartCoroutine(DiscoveryLoop());
@@ -793,9 +860,16 @@ public class BaSyxManager : MonoBehaviour
         Dictionary<string, MaterialData> urdfMaterials = ParseUrdfMaterials(urdfPath);
 
         bool isURP = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null;
-        string shaderName = isURP ? "Universal Render Pipeline/Lit" : "Standard";
-        Shader targetShader = Shader.Find(shaderName);
+        Shader targetShader = null;
+        if (isURP)
+        {
+            targetShader = Shader.Find("Universal Render Pipeline/Lit");
+            if (targetShader == null) targetShader = Shader.Find("Universal Render Pipeline/Simple Lit");
+            if (targetShader == null) targetShader = Shader.Find("Universal Render Pipeline/Unlit");
+        }
         if (targetShader == null) targetShader = Shader.Find("Standard");
+        if (targetShader == null) targetShader = Shader.Find("Unlit/Texture");
+        if (targetShader == null) targetShader = Shader.Find("Unlit/Color");
 
         foreach (var renderer in robot.GetComponentsInChildren<Renderer>())
         {

@@ -269,9 +269,9 @@ def plot_all(df_runs, df_ts, output_dir):
     fig, ax = plt.subplots(figsize=(8, 5))
     sns.boxplot(data=df_runs, x='Conveyors', y='FPS_Mean', hue='Conveyors', legend=False, palette='Greens_d', ax=ax, showmeans=True,
                 meanprops={"marker":"o", "markerfacecolor":"red", "markeredgecolor":"black", "markersize": 6})
-    ax.axhline(60, color='blue', linestyle='--', alpha=0.6, label='60 FPS Target')
-    ax.axhline(30, color='red', linestyle='--', alpha=0.6, label='30 FPS Minimum Threshold')
-    ax.set_title("Mean FPS in Steady State (Boxplot)")
+    ax.axhline(60, color='blue', linestyle='--', alpha=0.6, label='60 FPS')
+    ax.axhline(30, color='red', linestyle='--', alpha=0.6, label='30 FPS')
+    ax.set_title("Mean FPS Distribution (Boxplot)")
     ax.set_xlabel("Number of Conveyors")
     ax.set_ylabel("Frames per Second (FPS)")
     ax.legend(loc='upper right')
@@ -280,8 +280,8 @@ def plot_all(df_runs, df_ts, output_dir):
     # 07. FPS Mean Violin Plot
     fig, ax = plt.subplots(figsize=(8, 5))
     sns.violinplot(data=df_runs, x='Conveyors', y='FPS_Mean', hue='Conveyors', legend=False, palette='Greens', ax=ax, inner="quartile")
-    ax.axhline(60, color='blue', linestyle='--', alpha=0.6, label='60 FPS Target')
-    ax.axhline(30, color='red', linestyle='--', alpha=0.6, label='30 FPS Minimum Threshold')
+    ax.axhline(60, color='blue', linestyle='--', alpha=0.6, label='60 FPS')
+    ax.axhline(30, color='red', linestyle='--', alpha=0.6, label='30 FPS')
     ax.set_title("Mean FPS Density (Violin Plot)")
     ax.set_xlabel("Number of Conveyors")
     ax.set_ylabel("Mean FPS")
@@ -294,9 +294,9 @@ def plot_all(df_runs, df_ts, output_dir):
     ax.fill_between(stats['Conveyors'], 
                     stats['FPS_Mean_mean'] - stats['FPS_Mean_std'], 
                     stats['FPS_Mean_mean'] + stats['FPS_Mean_std'], 
-                    alpha=0.25, color='#2ca02c', label='±1 Standard Deviation')
-    ax.axhline(60, color='blue', linestyle='--', alpha=0.7, label='60 FPS Target')
-    ax.axhline(30, color='red', linestyle='--', alpha=0.7, label='30 FPS Minimum Threshold')
+                    alpha=0.25, color='#2ca02c', label='±1 Std Dev')
+    ax.axhline(60, color='blue', linestyle='--', alpha=0.7, label='60 FPS')
+    ax.axhline(30, color='red', linestyle='--', alpha=0.7, label='30 FPS')
     ax.set_title("Mean FPS Degradation vs. Conveyor Scale")
     ax.set_xlabel("Number of Conveyors")
     ax.set_ylabel("Frames per Second (FPS)")
@@ -306,7 +306,7 @@ def plot_all(df_runs, df_ts, output_dir):
     # 09. FPS Mean vs FPS 1% Low (Micro-stuttering)
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.plot(stats['Conveyors'], stats['FPS_Mean_mean'], marker='o', color='#2ca02c', linewidth=2, label='Mean FPS')
-    ax.plot(stats['Conveyors'], stats['FPS_P01_Low_mean'], marker='^', color='#d62728', linewidth=2, linestyle='--', label='1% Low FPS (Worst Drops)')
+    ax.plot(stats['Conveyors'], stats['FPS_P01_Low_mean'], marker='^', color='#d62728', linewidth=2, linestyle='--', label='1% Low FPS')
     ax.axhline(60, color='gray', linestyle=':', alpha=0.6, label='60 FPS')
     ax.axhline(30, color='gray', linestyle='--', alpha=0.6, label='30 FPS')
     ax.set_title("Smoothness Stability: Mean FPS vs. 1% Low FPS")
@@ -318,7 +318,7 @@ def plot_all(df_runs, df_ts, output_dir):
     # 10. Absolute Minimum FPS per Run
     fig, ax = plt.subplots(figsize=(8, 5))
     sns.boxplot(data=df_runs, x='Conveyors', y='FPS_Min', hue='Conveyors', legend=False, palette='YlOrRd', ax=ax)
-    ax.set_title("Minimum Recorded FPS in Steady State (Worst Frame of Run)")
+    ax.set_title("Minimum Recorded FPS per Run")
     ax.set_xlabel("Number of Conveyors")
     ax.set_ylabel("Minimum FPS")
     save_single_plot(fig, output_dir, "10_fps_min_boxplot.png")
@@ -341,8 +341,8 @@ def plot_all(df_runs, df_ts, output_dir):
     df_pct_melted = df_runs.melt(id_vars=['Conveyors'], value_vars=['Pct_Frames_Below_60', 'Pct_Frames_Below_30'],
                                   var_name='Criterion', value_name='Percentage')
     df_pct_melted['Criterion'] = df_pct_melted['Criterion'].map({
-        'Pct_Frames_Below_60': '< 60 FPS (Loss of Smoothness)',
-        'Pct_Frames_Below_30': '< 30 FPS (Critical Stuttering)'
+        'Pct_Frames_Below_60': '< 60 FPS',
+        'Pct_Frames_Below_30': '< 30 FPS'
     })
     sns.barplot(data=df_pct_melted, x='Conveyors', y='Percentage', hue='Criterion', palette=['#f39c12', '#c0392b'], ax=ax, errorbar='sd', capsize=0.1)
     ax.set_title("Mean Percentage of Frames with Performance Degradation")
@@ -357,8 +357,8 @@ def plot_all(df_runs, df_ts, output_dir):
     fig, ax = plt.subplots(figsize=(8, 5))
     sns.boxplot(data=df_runs, x='Conveyors', y='FrameTime_Mean_ms', hue='Conveyors', legend=False, palette='Oranges_d', ax=ax, showmeans=True,
                 meanprops={"marker":"o", "markerfacecolor":"blue", "markeredgecolor":"black", "markersize": 6})
-    ax.axhline(16.67, color='green', linestyle='--', alpha=0.7, label='60 FPS (16.7 ms)')
-    ax.axhline(33.33, color='red', linestyle='--', alpha=0.7, label='30 FPS (33.3 ms)')
+    ax.axhline(16.67, color='green', linestyle='--', alpha=0.7, label='16.7 ms (60 FPS)')
+    ax.axhline(33.33, color='red', linestyle='--', alpha=0.7, label='33.3 ms (30 FPS)')
     ax.set_title("Mean Frame Rendering Time (Frame Time)")
     ax.set_xlabel("Number of Conveyors")
     ax.set_ylabel("Frame Time (ms)")
@@ -368,8 +368,8 @@ def plot_all(df_runs, df_ts, output_dir):
     # 14. Mean Frame Time Violin Plot
     fig, ax = plt.subplots(figsize=(8, 5))
     sns.violinplot(data=df_runs, x='Conveyors', y='FrameTime_Mean_ms', hue='Conveyors', legend=False, palette='Oranges', ax=ax, inner="quartile")
-    ax.axhline(16.67, color='green', linestyle='--', alpha=0.7, label='60 FPS (16.7 ms)')
-    ax.axhline(33.33, color='red', linestyle='--', alpha=0.7, label='30 FPS (33.3 ms)')
+    ax.axhline(16.67, color='green', linestyle='--', alpha=0.7, label='16.7 ms (60 FPS)')
+    ax.axhline(33.33, color='red', linestyle='--', alpha=0.7, label='33.3 ms (30 FPS)')
     ax.set_title("Mean Frame Time Density (Violin Plot)")
     ax.set_xlabel("Number of Conveyors")
     ax.set_ylabel("Frame Time (ms)")
@@ -379,8 +379,8 @@ def plot_all(df_runs, df_ts, output_dir):
     # 15. Frame Time 95th Percentile (P95) Boxplot
     fig, ax = plt.subplots(figsize=(8, 5))
     sns.boxplot(data=df_runs, x='Conveyors', y='FrameTime_P95_ms', hue='Conveyors', legend=False, palette='copper', ax=ax)
-    ax.axhline(16.67, color='green', linestyle='--', alpha=0.7, label='60 FPS Target (16.7 ms)')
-    ax.axhline(33.33, color='red', linestyle='--', alpha=0.7, label='30 FPS Threshold (33.3 ms)')
+    ax.axhline(16.67, color='green', linestyle='--', alpha=0.7, label='16.7 ms (60 FPS)')
+    ax.axhline(33.33, color='red', linestyle='--', alpha=0.7, label='33.3 ms (30 FPS)')
     ax.set_title("Frame Time - 95th Percentile (P95) vs. Scale")
     ax.set_xlabel("Number of Conveyors")
     ax.set_ylabel("Frame Time P95 (ms)")
@@ -397,11 +397,11 @@ def plot_all(df_runs, df_ts, output_dir):
 
     # 17. Comparison of Latency Metrics (Mean, P95 and P99)
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(stats['Conveyors'], stats['FrameTime_Mean_ms_mean'], marker='o', color='#2b5c8f', linewidth=2, label='Mean Frame Time')
-    ax.plot(stats['Conveyors'], stats['FrameTime_P95_ms_mean'], marker='s', color='#e67e22', linewidth=2, label='Frame Time P95')
-    ax.plot(stats['Conveyors'], stats['FrameTime_P99_ms_mean'], marker='^', color='#c0392b', linewidth=2, linestyle='--', label='Frame Time P99')
-    ax.axhline(16.67, color='green', linestyle=':', label='60 FPS Target (16.7 ms)')
-    ax.axhline(33.33, color='red', linestyle=':', label='30 FPS Threshold (33.3 ms)')
+    ax.plot(stats['Conveyors'], stats['FrameTime_Mean_ms_mean'], marker='o', color='#2b5c8f', linewidth=2, label='Mean')
+    ax.plot(stats['Conveyors'], stats['FrameTime_P95_ms_mean'], marker='s', color='#e67e22', linewidth=2, label='P95')
+    ax.plot(stats['Conveyors'], stats['FrameTime_P99_ms_mean'], marker='^', color='#c0392b', linewidth=2, linestyle='--', label='P99')
+    ax.axhline(16.67, color='green', linestyle=':', label='16.7 ms (60 FPS)')
+    ax.axhline(33.33, color='red', linestyle=':', label='33.3 ms (30 FPS)')
     ax.set_title("Latency Scaling: Mean vs. P95 vs. P99")
     ax.set_xlabel("Number of Conveyors")
     ax.set_ylabel("Milliseconds (ms)")
@@ -410,7 +410,7 @@ def plot_all(df_runs, df_ts, output_dir):
 
     # 18. Frame Time in Logarithmic Scale
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(stats['Conveyors'], stats['FrameTime_Mean_ms_mean'], marker='o', color='#d35400', linewidth=2.2, label='Mean Frame Time (Log-Y)')
+    ax.plot(stats['Conveyors'], stats['FrameTime_Mean_ms_mean'], marker='o', color='#d35400', linewidth=2.2, label='Mean Frame Time')
     ax.set_yscale('log')
     ax.axhline(16.67, color='green', linestyle='--', alpha=0.7, label='16.7 ms (60 FPS)')
     ax.axhline(33.33, color='red', linestyle='--', alpha=0.7, label='33.3 ms (30 FPS)')
@@ -573,8 +573,8 @@ def plot_all(df_runs, df_ts, output_dir):
         if len(vals) > 0:
             y = np.arange(1, len(vals) + 1) / len(vals)
             ax.step(vals, y, label=f"{c} conveyors", linewidth=2, color=colors_conv[idx % len(colors_conv)])
-    ax.axvline(16.67, color='green', linestyle=':', label='16.7 ms Target')
-    ax.axvline(33.33, color='red', linestyle=':', label='33.3 ms Threshold')
+    ax.axvline(16.67, color='green', linestyle=':', label='16.7 ms')
+    ax.axvline(33.33, color='red', linestyle=':', label='33.3 ms')
     ax.set_title("CDF (Cumulative Distribution Function) of Mean Frame Time")
     ax.set_xlabel("Mean Frame Time (ms)")
     ax.set_ylabel("Cumulative Probability P(X ≤ x)")
@@ -626,9 +626,17 @@ def plot_all(df_runs, df_ts, output_dir):
     # 36. Correlation Heatmap
     corr_cols = [
         'Conveyors', 'StartupTime_s', 'FPS_Mean', 'FPS_P01_Low',
-        'FrameTime_Mean_ms', 'FrameTime_P95_ms', 'RAM_Alloc_Max_MB', 'RAM_Reserved_Max_MB'
+        'FrameTime_Mean_ms', 'FrameTime_P95_ms'
     ]
-    df_corr = df_runs[corr_cols].corr()
+    rename_labels = {
+        'Conveyors': 'Conveyors',
+        'StartupTime_s': 'Startup Time',
+        'FPS_Mean': 'Mean FPS',
+        'FPS_P01_Low': '1% Low FPS',
+        'FrameTime_Mean_ms': 'Mean Frame Time',
+        'FrameTime_P95_ms': 'Frame Time P95'
+    }
+    df_corr = df_runs[corr_cols].rename(columns=rename_labels).corr()
     fig, ax = plt.subplots(figsize=(8, 6.5))
     sns.heatmap(df_corr, annot=True, fmt=".2f", cmap='vlag', vmin=-1, vmax=1, ax=ax, square=True, cbar_kws={'label': "Pearson's Correlation (r)"})
     ax.set_title("Linear Correlation Matrix between Performance Metrics")

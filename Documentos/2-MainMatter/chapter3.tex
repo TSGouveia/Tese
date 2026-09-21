@@ -126,7 +126,7 @@ Once the geometric boundaries, pivot points, and sensor trigger volumes are esta
 \subsection{Layer 1 - Asset Modeling}
 \label{sec:layer1_conceptual}
 
-Layer~1 provides the authoring tools needed to transform static geometry into an operational digital twin asset. A 3D model on its own is only a visual representation without any understanding of sensors, actuators, or control behavior. In conventional workflows, configuring these dynamics requires importing the model into a proprietary simulation suite and writing custom scripts inside that specific software.
+Layer~1 provides the authoring tools needed to transform static geometry into an operational \gls{DT} asset. A 3D model on its own is only a visual representation without any understanding of sensors, actuators, or control behavior. In conventional workflows, configuring these dynamics requires importing the model into a proprietary simulation suite and writing custom scripts inside that specific software.
 
 This approach creates significant lock-in. When a factory changes its simulation software or attempts to connect multiple tools at once, all previous modeling and scripting work is lost. In addition, if a limit switch on the physical machine is rewired to another \gls{PLC} input terminal, an engineer has to search for the corresponding script in the simulation project and update it by hand. Operational data ends up scattered between electrical drawings, control logic, and simulation files.
 
@@ -152,11 +152,11 @@ Compiling an asset package in Layer~1 completes the authoring pipeline for an in
 \subsection{Layer 2 - Storage and Registry}
 \label{sec:layer2_conceptual}
 
-In a flexible or reconfigurable factory, machines and transport units are frequently rearranged, upgraded, or swapped out. In conventional simulation architectures, loading a modified layout requires an operator to manually copy new 3D model files onto every simulation computer, update local file paths, and re-enter static IP addresses to connect to each machine's controller. 
+In a flexible or reconfigurable factory, machines and transport units are frequently rearranged, upgraded, or swapped out. In conventional simulation architectures, loading a modified layout requires an operator to manually copy new 3D model files onto every simulation computer, update local file paths, and re-enter static \gls{IP} addresses to connect to each machine's controller. 
 
 This static approach breaks down quickly in agile production. For example, if an \gls{AGV} enters a production cell, or a faulty drilling station is replaced by a backup unit with different network settings, any simulation system relying on hard-coded addresses or local files stops working until someone manually reconfigures the environment. Furthermore, mixing large file downloads with operational network queries often causes slow discovery responses and unnecessary network load.
 
-Layer~2 acts as the central service directory and artifact distribution point for the entire digital twin ecosystem. Its objective is to provide on-demand discovery and retrieval, allowing any authorized client on the factory network to locate active equipment, download corresponding models, and obtain the correct network topics automatically.
+Layer~2 acts as the central service directory and artifact distribution point for the entire \gls{DT} ecosystem. Its objective is to provide on-demand discovery and retrieval, allowing any authorized client on the factory network to locate active equipment, download corresponding models, and obtain the correct network topics automatically.
 
 To keep discovery fast and scalable, Layer~2 separates heavy static files from dynamic directory metadata (\Cref{fig:activity_layer2}) using two distinct services:
 \begin{enumerate}
@@ -172,12 +172,12 @@ To keep discovery fast and scalable, Layer~2 separates heavy static files from d
     \label{fig:activity_layer2}
 \end{figure}
 
-With the asset packages cataloged and network endpoints registered in Layer~2, the digital twin models are ready to be consumed. Layer~3 interacts directly with Layer~2 to discover these assets and instantiate the runtime simulation.
+With the asset packages cataloged and network endpoints registered in Layer~2, the \gls{DT} models are ready to be consumed. Layer~3 interacts directly with Layer~2 to discover these assets and instantiate the runtime simulation.
 
 \subsection{Layer 3 - Runtime Execution and Physical Synchronization}
 \label{sec:layer3_conceptual}
 
-The ultimate value of a digital twin lies in running a faithful, real-time virtual counterpart that mirrors physical production without human intervention. In standard industrial setups, assembling a virtual cell requires opening a simulation editor, dragging and dropping machine models into place, manually positioning them, and setting up real-time drivers. 
+The ultimate value of a \gls{DT} lies in running a faithful, real-time virtual counterpart that mirrors physical production without human intervention. In standard industrial setups, assembling a virtual cell requires opening a simulation editor, dragging and dropping machine models into place, manually positioning them, and setting up real-time drivers. 
 
 Even after a virtual cell is configured, maintaining accurate physical-digital synchronization presents a major technical hurdle. Physics engines compute movements through discrete time steps using numerical approximations. If a virtual belt conveyor runs solely on simulated friction, slight timing variances and rounding errors accumulate over continuous operation. A workpiece on the virtual conveyor will slowly drift away from its true physical position, causing virtual sensors to trigger at incorrect times and resulting in false alarms or desynchronized simulation states. Conversely, attempting to stream high-detail geometric meshes across the same communication channel that carries cyclic sensor telemetry creates queueing bottlenecks, delaying critical sensor packets.
 

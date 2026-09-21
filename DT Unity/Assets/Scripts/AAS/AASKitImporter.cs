@@ -147,9 +147,176 @@ public class AASKitImporter : MonoBehaviour
                                 
                                 Debug.Log($"[AASKitImporter] 📂 GLB Loaded for '{compName}'. Re-applied localEulerAngles={compObj.transform.localEulerAngles}, Child count={compObj.transform.childCount}");
                                 
-                                // POST-IMPORT FIXES (UVs and Colliders)
+                                // POST-IMPORT FIXES (UVs, Shaders and Colliders)
+                                // Cache source glTF material properties (colors, textures, roughness, metallic)
+                                // Because in Standalone builds, glTFast's shader graph may fail to link, causing mat.HasProperty() to return false!
+                                Dictionary<string, Material> createdLitMaterials = new Dictionary<string, Material>();
+                                Shader urpLitShader = Shader.Find("Universal Render Pipeline/Lit");
+                                if (urpLitShader == null) urpLitShader = Shader.Find("Universal Render Pipeline/Simple Lit");
+                                if (urpLitShader == null) urpLitShader = Shader.Find("Standard");
+
+                                for (int smIdx = 0; smIdx < gltf.MaterialCount; smIdx++)
+                                {
+                                    var srcMat = gltf.GetSourceMaterial(smIdx);
+                                    if (srcMat == null) continue;
+
+                                    string matKey = !string.IsNullOrEmpty(srcMat.name) ? srcMat.name : $"Material_{smIdx}";
+                                    if (urpLitShader != null)
+                                    {
+                                        Material newMat = new Material(urpLitShader);
+                                        newMat.name = matKey;
+
+                                        Color baseCol = Color.white;
+                                        float metallic = 0f;
+                                        float roughness = 0.5f;
+                                        Texture2D mainTexture = null;
+
+                                        if (srcMat.PbrMetallicRoughness != null)
+                                        {
+                                            baseCol = srcMat.PbrMetallicRoughness.BaseColor;
+                                            metallic = srcMat.PbrMetallicRoughness.metallicFactor;
+                                            roughness = srcMat.PbrMetallicRoughness.roughnessFactor;
+
+                                            if (srcMat.PbrMetallicRoughness.BaseColorTexture != null &&
+                                                srcMat.PbrMetallicRoughness.BaseColorTexture.index >= 0)
+                                            {
+                                                mainTexture = gltf.GetTexture(srcMat.PbrMetallicRoughness.BaseColorTexture.index);
+                                            }
+                                        }
+                                        else if (srcMat.Extensions?.KHR_materials_pbrSpecularGlossiness != null)
+                                        {
+                                            baseCol = srcMat.Extensions.KHR_materials_pbrSpecularGlossiness.DiffuseColor;
+                                            if (srcMat.Extensions.KHR_materials_pbrSpecularGlossiness.diffuseTexture != null &&
+                                                srcMat.Extensions.KHR_materials_pbrSpecularGlossiness.diffuseTexture.index >= 0)
+                                            {
+                                                mainTexture = gltf.GetTexture(srcMat.Extensions.KHR_materials_pbrSpecularGlossiness.diffuseTexture.index);
+                                            }
+                                        }
+
+                                        // Apply color (convert linear color if needed, or direct)
+                                        if (newMat.HasProperty("_BaseColor")) newMat.SetColor("_BaseColor", baseCol);
+                                        if (newMat.HasProperty("_Color")) newMat.color = baseCol;
+
+                                        if (mainTexture != null)
+                                        {
+                                            if (newMat.HasProperty("_BaseMap")) newMat.SetTexture("_BaseMap", mainTexture);
+                                            if (newMat.HasProperty("_MainTex")) newMat.SetTexture("_MainTex", mainTexture);
+                                            newMat.mainTexture = mainTexture;
+                                        }
+
+                                        if (newMat.HasProperty("_Metallic")) newMat.SetFloat("_Metallic", metallic);
+                                        if (newMat.HasProperty("_Smoothness")) newMat.SetFloat("_Smoothness", 1f - roughness);
+
+                                        // Double sided
+                                        if (newMat.HasProperty("_Cull")) newMat.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
+                                        if (newMat.HasProperty("_CullMode")) newMat.SetFloat("_CullMode", (float)UnityEngine.Rendering.CullMode.Off);
+
+                                        createdLitMaterials[matKey] = newMat;
+                                        // Also save by index as fallback
+                                        createdLitMaterials[$"Index_{smIdx}"] = newMat;
+                                    }
+                                }
+
+                                // Map glTF node names to their primitive material keys
+                                Dictionary<string, List<string>> nodePrimitiveMatKeys = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+                                var sourceRoot = gltf.GetSourceRoot();
+                                if (sourceRoot?.nodes != null && sourceRoot.meshes != null)
+                                {
+                                    foreach (var node in sourceRoot.nodes)
+                                    {
+                                        if (string.IsNullOrEmpty(node.name) || node.mesh < 0 || node.mesh >= sourceRoot.meshes.Length) continue;
+                                        var mesh = sourceRoot.meshes[node.mesh];
+                                        if (mesh?.primitives == null) continue;
+
+                                        List<string> pKeys = new List<string>();
+                                        foreach (var prim in mesh.primitives)
+                                        {
+                                            if (prim.material >= 0 && prim.material < gltf.MaterialCount)
+                                            {
+                                                var sm = gltf.GetSourceMaterial(prim.material);
+                                                string key = (sm != null && !string.IsNullOrEmpty(sm.name)) ? sm.name : $"Material_{prim.material}";
+                                                pKeys.Add(key);
+                                            }
+                                            else
+                                            {
+                                                pKeys.Add(null);
+                                            }
+                                        }
+                                        nodePrimitiveMatKeys[node.name] = pKeys;
+                                    }
+                                }
+
                                 foreach (var renderer in compObj.GetComponentsInChildren<MeshRenderer>())
                                 {
+                                    // 0. Build Standalone Missing Shader Fix (Pink/Magenta fallback & Culling)
+                                    Material[] mats = renderer.materials;
+                                    bool matChanged = false;
+                                    List<string> expectedMatKeys = null;
+                                    if (nodePrimitiveMatKeys.ContainsKey(renderer.name))
+                                        expectedMatKeys = nodePrimitiveMatKeys[renderer.name];
+                                    else if (renderer.transform.parent != null && nodePrimitiveMatKeys.ContainsKey(renderer.transform.parent.name))
+                                        expectedMatKeys = nodePrimitiveMatKeys[renderer.transform.parent.name];
+
+                                    for (int m = 0; m < mats.Length; m++)
+                                    {
+                                        var mat = mats[m];
+                                        if (mat == null) continue;
+
+                                        bool isBrokenShader = mat.shader == null || 
+                                                              mat.shader.name == "Hidden/InternalErrorShader" ||
+                                                              string.IsNullOrEmpty(mat.shader.name);
+
+                                        // If broken shader, restore from source glTF material mapping!
+                                        if (isBrokenShader)
+                                        {
+                                            string cleanMatName = mat.name.Replace(" (Instance)", "").Trim();
+                                            Material replacementMat = null;
+
+                                            // 1. Try glTF node primitive mapping (the exact material assigned to this mesh primitive)
+                                            if (expectedMatKeys != null && m < expectedMatKeys.Count && !string.IsNullOrEmpty(expectedMatKeys[m]))
+                                            {
+                                                string targetKey = expectedMatKeys[m];
+                                                if (createdLitMaterials.ContainsKey(targetKey))
+                                                    replacementMat = createdLitMaterials[targetKey];
+                                            }
+
+                                            // 2. Try match by clean material name
+                                            if (replacementMat == null && createdLitMaterials.ContainsKey(cleanMatName))
+                                                replacementMat = createdLitMaterials[cleanMatName];
+
+                                            // 3. Fallback: match by index only if material count matches slot count
+                                            if (replacementMat == null && createdLitMaterials.ContainsKey($"Index_{m}") && mats.Length > 1)
+                                                replacementMat = createdLitMaterials[$"Index_{m}"];
+
+                                            if (replacementMat != null)
+                                            {
+                                                mats[m] = replacementMat;
+                                                mat = replacementMat;
+                                                matChanged = true;
+                                                Debug.LogWarning($"[AASKitImporter] 🛠️ Replaced broken shader in '{renderer.name}' (slot {m}) with rebuilt URP Lit material '{replacementMat.name}' (Color: {replacementMat.color})");
+                                            }
+                                            else if (urpLitShader != null)
+                                            {
+                                                // Last resort fallback
+                                                mat.shader = urpLitShader;
+                                                matChanged = true;
+                                            }
+                                        }
+
+                                        // FIX INSIDE-OUT EFFECT: Set Cull Mode to Double-Sided (Off = 0)
+                                        if (mat.HasProperty("_Cull"))
+                                        {
+                                            mat.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
+                                            matChanged = true;
+                                        }
+                                        if (mat.HasProperty("_CullMode"))
+                                        {
+                                            mat.SetFloat("_CullMode", (float)UnityEngine.Rendering.CullMode.Off);
+                                            matChanged = true;
+                                        }
+                                    }
+                                    if (matChanged) renderer.materials = mats;
+
                                     // 1. UV Rotation Fix
                                     bool isBelt = renderer.name.ToLower().Contains("belt") || 
                                                   renderer.materials.Any(m => m.name.ToLower().Contains("belt"));
@@ -338,6 +505,25 @@ public class AASKitImporter : MonoBehaviour
             v[i] = Vector3.Scale(v[i], scale);
         }
         mesh.vertices = v;
+
+        // If any axis scale is flipped (negative determinant), winding order of triangles gets reversed.
+        // Inverting the triangles restores the correct outward-facing normals.
+        bool hasNegativeScale = (scale.x * scale.y * scale.z) < 0f;
+        if (hasNegativeScale)
+        {
+            for (int s = 0; s < mesh.subMeshCount; s++)
+            {
+                int[] tris = mesh.GetTriangles(s);
+                for (int t = 0; t < tris.Length; t += 3)
+                {
+                    int temp = tris[t];
+                    tris[t] = tris[t + 2];
+                    tris[t + 2] = temp;
+                }
+                mesh.SetTriangles(tris, s);
+            }
+        }
+
         mesh.RecalculateBounds();
         mesh.RecalculateNormals();
         mesh.RecalculateTangents();
