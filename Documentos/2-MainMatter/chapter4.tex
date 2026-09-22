@@ -44,12 +44,12 @@ To validate the framework, an existing \gls{FMS} testbed was used as the pilot c
 Mechanically, the bench includes three straight conveyor belts (Conveyors B, D, and F), two curved rotating sections (Conveyors C and E), one translating transfer conveyor (Conveyor A), and a vertical punch mechanism that simulates drilling, stamping, or screwing operations. Field instrumentation consists of 24\,V~DC magnetic track sensors to detect pallets, contact limit switches to monitor conveyor and punch positions, and 24\,V~DC motors driving each section. Control is managed by an Industrial Shields M-DUINO 57R+ \gls{PLC} (based on the Arduino Mega 2560), equipped with an Ethernet port and optocoupled \gls{IO} boards. Digital input pins (I0\_0 to I2\_3) read sensor states, while relay outputs (R0\_2 to R2\_8) command conveyor motors and punch actions (the full pin assignment is listed in \Cref{app:fms_io_mapping}).
 
 \subsection{Overall Component Architecture and Inter-Layer Interfaces}
-With this physical bench as the target, the complete framework was implemented across four operational layers. \Cref{fig:architecture_global} illustrates the system implementation as a component diagram.
+With this physical bench as the target, the complete framework was implemented across four operational layers. The \gls{UML} Component Diagram in \Cref{fig:architecture_global} illustrates the overall system implementation architecture across the four operational layers.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\textwidth]{5-Figures/Implementação.drawio.pdf}
-    \caption[Implementation architecture of the framework]{Implementation architecture of the framework: (0) Physical Asset Digitization in Blender, (1) Asset Modeling in the Python desktop application, (2) Storage and Registry in Eclipse BaSyx~v2 on Docker, and (3) Runtime Execution and Physical Synchronization in Unity 3D with an Industrial Shields M-DUINO \gls{PLC}.}
+    \caption[\gls{UML} Component Diagram of the framework implementation architecture]{\gls{UML} Component Diagram of the framework implementation architecture: (0) Physical Asset Digitization in Blender, (1) Asset Modeling in the Python desktop application, (2) Storage and Registry in Eclipse BaSyx~v2 on Docker, and (3) Runtime Execution and Physical Synchronization in Unity 3D with an Industrial Shields M-DUINO \gls{PLC}.}
     \label{fig:architecture_global}
 \end{figure}
 
@@ -63,7 +63,7 @@ In Layer~2 (Storage and Registry), Eclipse BaSyx~v2 services run inside Docker c
 
 As established in \Cref{sec:layer0_conceptual} (\cpageref{sec:layer0_conceptual}), physical machinery on existing factory floors often lacks simulation-ready 3D models. When manufacturing \gls{CAD} files do exist, their high polygon count slows down real-time physics engines, while missing functional motion joints, pivot points, and interaction colliders. Because the modular \gls{FMS} bench had no existing vendor models, Layer~0 was carried out as an upstream preparatory stage in Blender 5.2.0 LTS to create lightweight, rigged \gls{GLB} assets.
 
-\Cref{fig:component_layer0} illustrates the component architecture of Layer~0, structured into three sequential tasks:
+The \gls{UML} Component Diagram in \Cref{fig:component_layer0} illustrates the component architecture of Layer~0, structured into three sequential tasks:
 \begin{enumerate}
     \item \textbf{Physical Survey:} Measuring functional lengths, track widths, roller clearances, and mounting heights on the physical \gls{FMS} bench using calipers and surveying tape.
     \item \textbf{3D Mesh Modeling and Kinematic Rigging:} Reconstructing modules at a 1:1 scale matching Unity's coordinate frame.
@@ -73,7 +73,7 @@ As established in \Cref{sec:layer0_conceptual} (\cpageref{sec:layer0_conceptual}
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/Layer 0 - Physical Asset Digitization.pdf}
-    \caption{Component architecture and interface boundaries of Layer 0 (Physical Asset Digitization).}
+    \caption{\gls{UML} Component Diagram of Layer 0 (Physical Asset Digitization).}
     \label{fig:component_layer0}
 \end{figure}
 
@@ -106,12 +106,12 @@ The pivot point of each moving component was aligned with its physical axis of r
 
 Layer~1 was implemented as a standalone desktop application. It combines the Asset Model Editor and Package Exporter roles from \Cref{sec:layer1_conceptual} (\cpageref{sec:layer1_conceptual}) into a single tool. In line with requirement \textbf{NFR4} (Configuration Accessibility), the goal was to allow engineers to configure a \gls{DT} asset without writing any code.
 
-\Cref{fig:component_layer1} shows the component structure of the desktop application, divided into four modules: (1) the 3D Viewer \& Raycaster renders the model and detects user clicks on the mesh surface, (2) the \gls{GUI} \& Event Manager provides the PyQt6 interface with step-by-step tabs, (3) the Pin \& Logic Mapper links visual sensor placements and kinematic rules to controller pin registers, and (4) the BaSyx Python \gls{SDK} builds the in-memory \gls{AAS} submodels, packages the \gls{AASX} archive, and uploads it to Layer~2 via \gls{REST} endpoints.
+The \gls{UML} Component Diagram in \Cref{fig:component_layer1} shows the component structure of Layer~1 (Asset Modeling), divided into four modules: (1) the 3D Viewer \& Raycaster renders the model and detects user clicks on the mesh surface, (2) the \gls{GUI} \& Event Manager provides the PyQt6 interface with step-by-step tabs, (3) the Pin \& Logic Mapper links visual sensor placements and kinematic rules to controller pin registers, and (4) the BaSyx Python \gls{SDK} builds the in-memory \gls{AAS} submodels, packages the \gls{AASX} archive, and uploads it to Layer~2 via \gls{REST} endpoints.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/Layer 1 - Asset Modeling.pdf}
-    \caption{Component architecture and interface boundaries of Layer 1 (Asset Modeling).}
+    \caption{\gls{UML} Component Diagram of Layer 1 (Asset Modeling).}
     \label{fig:component_layer1}
 \end{figure}
 
@@ -156,12 +156,12 @@ To satisfy requirement \textbf{FR2} (Self-Describing Asset Packages) and reduce 
 
 When the user clicks in the viewport, a ray is projected from the camera through the clicked pixel. The raycasting engine finds the exact 3D contact point on the surface and calculates the surface normal vector. This normal vector automatically sets the orientation of the pin, making sure sensors placed on angled or vertical surfaces point outward in the correct direction.
 
-The complete interactive modeling sequence between the engineer, the \gls{GUI}, the 3D viewport, and the \gls{AAS} Data Model is shown in \Cref{fig:wizard_ui}.
+The complete interactive modeling sequence between the engineer, the \gls{GUI}, the 3D viewport, and the \gls{AAS} Data Model is illustrated in the \gls{UML} Sequence Diagram in \Cref{fig:wizard_ui}.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/sequence_layer1.drawio.pdf}
-    \caption{\gls{UML} Sequence Diagram depicting the interactive modeling workflow and data model population of Layer 1.}
+    \caption{\gls{UML} Sequence Diagram of the Layer 1 interactive asset modeling workflow.}
     \label{fig:wizard_ui}
 \end{figure}
 
@@ -188,7 +188,7 @@ The editor provides nine modular block types to build the logic tree:
     \item \textbf{Call HTTP:} Sends an outbound \gls{HTTP} \gls{REST} request to trigger external actions or services.
 \end{itemize}
 
-These rules are saved as structured \glspl{AST} in the \textit{ControlLogic} submodel, enabling Unity's local rule engine to simulate machine sequences without an external \gls{PLC}. \Cref{fig:sequence_rules} illustrates the rule configuration and deployment sequence.
+These rules are saved as structured \glspl{AST} in the \textit{ControlLogic} submodel, enabling Unity's local rule engine to simulate machine sequences without an external \gls{PLC}. The \gls{UML} Sequence Diagram in \Cref{fig:sequence_rules} illustrates the rule configuration and deployment workflow.
 
 \begin{figure}[htbp]
     \centering
@@ -204,21 +204,21 @@ Once asset properties, kinematic mappings, virtual pins, and control logic are f
 
 Layer~2 is implemented using Eclipse BaSyx~v2 deployed with Docker Compose. Docker makes the entire server stack reproducible: running \texttt{docker compose up} starts all services in the right order without manual configuration. This setup allows new asset submodels and services to start automatically, fulfilling requirement \textbf{FR1} (Plug-and-Play Asset Onboarding).
 
-\Cref{fig:component_layer2} illustrates the component structure of Layer~2, which consists of five main elements. The \gls{AAS} Environment Repository stores uploaded \gls{AASX} packages, handles package ingestion, and serves models to Unity clients. The \gls{AAS} Registry and Submodel Registry keep track of registered shells and submodel URLs, offering endpoints for registration and discovery. A shared MongoDB database stores metadata and descriptors persistently. Finally, operators can inspect active assets and submodels using the BaSyx Web \gls{GUI}.
+The \gls{UML} Component Diagram in \Cref{fig:component_layer2} illustrates the component structure of Layer~2 (Storage and Registry), which consists of five main elements. The \gls{AAS} Environment Repository stores uploaded \gls{AASX} packages, handles package ingestion, and serves models to Unity clients. The \gls{AAS} Registry and Submodel Registry keep track of registered shells and submodel URLs, offering endpoints for registration and discovery. A shared MongoDB database stores metadata and descriptors persistently. Finally, operators can inspect active assets and submodels using the BaSyx Web \gls{GUI}.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/Layer 2 - Storage & Registry.pdf}
-    \caption{Component architecture and interface boundaries of Layer 2 (Storage and Registry).}
+    \caption{\gls{UML} Component Diagram of Layer 2 (Storage and Registry).}
     \label{fig:component_layer2}
 \end{figure}
 
-The container networking and service topology is shown in \Cref{fig:basyx_docker_topology}.
+The \gls{UML} Deployment Diagram in \Cref{fig:basyx_docker_topology} illustrates the container networking, execution environments, and service deployment topology of Eclipse BaSyx~v2.
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.8\textwidth]{5-Figures/basyx_docker_topology.pdf}
-    \caption{Container networking and service topology of the Eclipse BaSyx v2 Docker deployment.}
+    \includegraphics[width=0.85\linewidth,height=0.72\textheight,keepaspectratio]{drawio/basyx_docker_topology.drawio.pdf}
+    \caption{\gls{UML} Deployment Diagram of the Eclipse BaSyx v2 Docker deployment and container topology.}
     \label{fig:basyx_docker_topology}
 \end{figure}
 
@@ -233,17 +233,17 @@ Following successful ingestion, registration calls are dispatched to both the \g
 \section{Layer 3: Runtime Execution and Physical Synchronization}
 \label{sec:impl_unity}
 
-Layer~3 connects the Unity 3D simulation with the physical testbed through the components shown in \Cref{fig:component_layer3}. The main orchestrator queries Layer~2 to download models and instantiate virtual assets. The asset importer parses submodel descriptors and attaches runtime scripts to the corresponding game objects. Virtual sensor inputs and actuator commands are managed by dedicated controllers, while the rule engine executes local conditional logic during virtual commissioning. The dynamic product controller handles workpiece movement and applies position corrections. Runtime modes are managed by the operation mode manager, while the hardware telemetry link streams data over \gls{TCP} and triggers physical actions via \gls{HTTP}. On the physical bench, the Industrial Shields M-DUINO \gls{PLC} reads sensor inputs through optocouplers and drives relay outputs for conveyor motors. This modular design isolates failures between layers, fulfilling requirement \textbf{NFR3} (Layer Independence).
+Layer~3 connects the Unity 3D simulation with the physical testbed through the components shown in the \gls{UML} Component Diagram (\Cref{fig:component_layer3}). The main orchestrator queries Layer~2 to download models and instantiate virtual assets. The asset importer parses submodel descriptors and attaches runtime scripts to the corresponding game objects. Virtual sensor inputs and actuator commands are managed by dedicated controllers, while the rule engine executes local conditional logic during virtual commissioning. The dynamic product controller handles workpiece movement and applies position corrections. Runtime modes are managed by the operation mode manager, while the hardware telemetry link streams data over \gls{TCP} and triggers physical actions via \gls{HTTP}. On the physical bench, the Industrial Shields M-DUINO \gls{PLC} reads sensor inputs through optocouplers and drives relay outputs for conveyor motors. This modular design isolates failures between layers, fulfilling requirement \textbf{NFR3} (Layer Independence).
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{5-Figures/Layer 3 - Runtime Execution & Synchronization.pdf}
-    \caption{Component architecture and interface boundaries of Layer 3 (Runtime Execution and Physical Synchronization).}
+    \caption{\gls{UML} Component Diagram of Layer 3 (Runtime Execution and Physical Synchronization).}
     \label{fig:component_layer3}
 \end{figure}
 
 \subsection{Dynamic Ingestion Flow and Procedural Scene Construction}
-To satisfy requirements \textbf{FR3} (Dynamic Scene Assembly) and \textbf{FR1} (Plug-and-Play Asset Onboarding), the Unity environment builds the scene procedurally at launch without using pre-saved scene files. The sequence follows three main phases (\Cref{fig:unity_runtime_sequence}):
+To satisfy requirements \textbf{FR3} (Dynamic Scene Assembly) and \textbf{FR1} (Plug-and-Play Asset Onboarding), the Unity environment builds the scene procedurally at launch without using pre-saved scene files. The sequence follows three main phases, illustrated in the \gls{UML} Sequence Diagram (\Cref{fig:unity_runtime_sequence}):
 
 \begin{enumerate}
     \item \textbf{Phase 1: Registry Discovery and Cache Clearing.} At launch, the orchestrator clears old cached files from disk. It then sends an \gls{HTTP} GET request to the BaSyx \gls{AAS} Registry on port 8082 to retrieve all registered assets and starts an asynchronous ingestion task for each asset found.
@@ -286,7 +286,7 @@ Because numerical physics calculations and network timing introduce small variat
 \label{sec:impl_firmware}
 \label{subsec:firmware_architecture}
 
-The physical testbed is a modular closed-loop conveyor system controlled by an Industrial Shields M-DUINO 57R+ \gls{PLC} (\Cref{fig:physical_hardware_photo}), powered by an Arduino Mega 2560 microcontroller and a W5500 Ethernet controller. \Cref{fig:arduino_freertos_schema} illustrates the sequence diagram of the embedded FreeRTOS firmware execution across hardware setup, sensor scanning, event queues, \gls{TCP} telemetry streaming, and \gls{HTTP} actuation channels.
+The physical testbed is a modular closed-loop conveyor system controlled by an Industrial Shields M-DUINO 57R+ \gls{PLC} (\Cref{fig:physical_hardware_photo}), powered by an Arduino Mega 2560 microcontroller and a W5500 Ethernet controller. The \gls{UML} Sequence Diagram in \Cref{fig:arduino_freertos_schema} illustrates the embedded FreeRTOS firmware execution across hardware setup, sensor scanning, event queues, \gls{TCP} telemetry streaming, and \gls{HTTP} actuation channels.
 
 \begin{figure}[htbp]
     \centering

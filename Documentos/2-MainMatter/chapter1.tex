@@ -22,21 +22,7 @@
 
 The manufacturing industry is undergoing a profound structural transformation driven by the concepts of Industry 4.0 and the evolution toward Industry 5.0. Modern production systems must move away from rigid, dedicated automation lines toward agile, highly flexible environments capable of rapid reconfiguration \cite{Khan2025}. In smart manufacturing, this agility is enabled by the convergence of \glspl{CPS} and \glspl{CPPS}, which deeply integrate physical shop-floor assets (such as conveyors, sensors, and actuators) with computational monitoring, embedded networking, and real-time control algorithms \cite{Abdel-Aty2022,Rocha2024}.
 
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.9\textwidth]{5-Figures/I4.0_Needs.pdf}
-    \caption{The ecosystem of Industry 4.0 technologies and industrial requirements \cite{Pajpach2025}.}
-    \label{fig:i4.0_needs}
-\end{figure}
-
-Within the \gls{CPPS} paradigm, the \gls{DT} has emerged as an indispensable technology for virtual commissioning, process optimization, and predictive decision-making without halting operational production lines \cite{Tao2019}. Unlike static 3D models or one-way monitoring dashboards, a true \gls{DT} establishes an automated, bidirectional data flow between the physical and digital domains (\Cref{fig:digital_twin_concept}): real-time field telemetry continuously synchronizes the virtual simulation state, while analytical and control decisions generated in the virtual space can be fed back to physical actuators on the shop floor \cite{Kritzinger2018,Pajpach2023}.
-
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.9\textwidth]{5-Figures/DigitalTwin_Concept.pdf}
-    \caption{Conceptual representation of a \gls{DT}, illustrating the bi-directional data flow: real-time monitoring from the physical asset and decision-making support from the digital counterpart (Adapted from \cite{Pajpach2023}).}
-    \label{fig:digital_twin_concept}
-\end{figure}
+Within the \gls{CPPS} paradigm, the \gls{DT} has emerged as an indispensable technology for virtual commissioning, process optimization, and predictive decision-making without halting operational production lines \cite{Tao2019}. Unlike static 3D models or one-way monitoring dashboards, a true \gls{DT} establishes an automated, bidirectional data flow between the physical and digital domains: real-time field telemetry continuously synchronizes the virtual simulation state, while analytical and control decisions generated in the virtual space can be fed back to physical actuators on the shop floor \cite{Kritzinger2018,Pajpach2023}.
 
 To facilitate cross-vendor interoperability and lifecycle data management in smart factories, the \gls{RAMI} and the \gls{IDTA} established the \gls{AAS} (\gls{IEC}~63278) as the official digital representation of industrial assets. Through standardized submodels, the \gls{AAS} provides a vendor-neutral digital envelope capable of describing mechanical specifications, operational properties, communication interfaces, and runtime capabilities \cite{Lu2025}.
 
@@ -58,10 +44,10 @@ The primary objective of this dissertation is to design, implement, and empirica
 
 To fulfill this overarching goal, the research pursues four specific objectives:
 \begin{itemize}
-    \item \textbf{SO1 -- Establish a Semantic Asset Metamodel:} Formulate a modular, technology-agnostic data model based on \gls{AAS} submodels that captures 3D visual structures, kinematic constraints, virtual \gls{IO} pin bindings, declarative control logic, and network endpoints within portable \gls{AASX} packages.
-    \item \textbf{SO2 -- Develop a No-Code Asset Modeling Application:} Implement an accessible authoring tool enabling automation engineers to visually instrument 3D geometry using raycasting, define sensor and actuator behaviors, and generate valid \gls{AASX} bundles without manual code programming.
-    \item \textbf{SO3 -- Realize a Procedural Runtime Simulation Engine:} Develop a game-engine runtime in Unity 3D that queries containerized \gls{AAS} repositories, procedurally instantiates 3D assets and PhysX colliders directly in memory at startup, and executes dual-mode simulation (pure software \gls{VC} and live \gls{PLC} telemetry synchronization with kinematic drift correction).
-    \item \textbf{SO4 -- Empirically Validate Performance and Scalability:} Benchmark the framework through 100 cold-boot validation runs on a physical modular \gls{FMS} mechatronic testbed, followed by parametric stress testing scaling from 5 to 1000 conveyor modules to determine computational and algorithmic boundaries.
+    \item \textbf{SO1 (Semantic Asset Metamodel):} Formulate a modular, technology-agnostic data model based on \gls{AAS} submodels that captures 3D visual structures, kinematic constraints, virtual \gls{IO} pin bindings, declarative control logic, and network endpoints within portable \gls{AASX} packages.
+    \item \textbf{SO2 (No-Code Asset Modeling Application):} Implement an accessible authoring tool enabling automation engineers to visually instrument 3D geometry using raycasting, define sensor and actuator behaviors, and generate valid \gls{AASX} bundles without manual code programming.
+    \item \textbf{SO3 (Procedural Runtime Simulation Engine):} Develop a game-engine runtime in Unity 3D that queries containerized \gls{AAS} repositories, procedurally instantiates 3D assets and PhysX colliders directly in memory at startup, and executes dual-mode simulation (pure software \gls{VC} and live \gls{PLC} telemetry synchronization with kinematic drift correction).
+    \item \textbf{SO4 (Empirical Validation and Scalability):} Benchmark the framework through 100 cold-boot validation runs on a physical modular \gls{FMS} mechatronic testbed, followed by parametric stress testing scaling from 5 to 1000 conveyor modules to determine computational and algorithmic boundaries.
 \end{itemize}
 
 \section{Expected Contributions}

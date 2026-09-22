@@ -117,7 +117,7 @@ The workflow relies on two main components:
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.7\textwidth]{drawio/layer0.pdf}
-    \caption{Conceptual component diagram of Layer 0 (Physical Asset Digitization).}
+    \caption{\gls{UML} Component Diagram of Layer 0 (Physical Asset Digitization).}
     \label{fig:layer0_conceptual}
 \end{figure}
 
@@ -132,7 +132,7 @@ This approach creates significant lock-in. When a factory changes its simulation
 
 Layer~1 resolves this fragmentation by keeping semantic modeling independent of any runtime engine. Its purpose is to combine visual geometry, kinematic limits, electrical pin mappings, and control rules into a standardized and portable asset package. 
 
-The sequence of operations is illustrated in \Cref{fig:activity_layer1}, where the \textit{Asset Model Editor} and the \textit{Package Exporter} coordinate the process:
+The procedural workflow is illustrated in the \gls{UML} Activity Diagram in \Cref{fig:activity_layer1}, where the \textit{Asset Model Editor} and the \textit{Package Exporter} coordinate the process:
 \begin{enumerate}
     \item \textbf{\gls{CAD} Import and Metadata Configuration:} The engineer imports the clean 3D file produced in Layer~0 into the \textit{Asset Model Editor} and assigns administrative metadata, including a unique global identifier, asset classification, and descriptive tags.
     \item \textbf{Kinematic Parsing and Joint Limits:} The \textit{Package Exporter} inspects the 3D transform hierarchy, identifies movable nodes, and allows the engineer to define their kinematic properties, including motion types, motion axes, and mechanical travel limits.
@@ -143,7 +143,7 @@ The sequence of operations is illustrated in \Cref{fig:activity_layer1}, where t
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.85\textwidth]{drawio/assetmodeleditor.pdf}
-    \caption{Activity diagram illustrating the workflow of Layer 1 (Asset Modeling).}
+    \caption{\gls{UML} Activity Diagram of Layer 1 (Asset Modeling).}
     \label{fig:activity_layer1}
 \end{figure}
 
@@ -158,7 +158,7 @@ This static approach breaks down quickly in agile production. For example, if an
 
 Layer~2 acts as the central service directory and artifact distribution point for the entire \gls{DT} ecosystem. Its objective is to provide on-demand discovery and retrieval, allowing any authorized client on the factory network to locate active equipment, download corresponding models, and obtain the correct network topics automatically.
 
-To keep discovery fast and scalable, Layer~2 separates heavy static files from dynamic directory metadata (\Cref{fig:activity_layer2}) using two distinct services:
+To keep discovery fast and scalable, Layer~2 separates heavy static files from dynamic directory metadata (illustrated in the \gls{UML} Activity Diagram in \Cref{fig:activity_layer2}) using two distinct services:
 \begin{enumerate}
     \item \textbf{Model Repository:} Acts as a dedicated file store. It receives published asset packages from Layer~1, extracts the heavy 3D geometry meshes and descriptor schemas, and hosts them through standard \gls{HTTP} endpoints.
     \item \textbf{Asset Registry:} Functions as a lightweight service catalog. It records high-level metadata: the unique asset identifier, device classification, operational status, and active communication endpoints (such as the specific \gls{MQTT} broker address, port, and topic names used by the machine's \gls{PLC}).
@@ -168,7 +168,7 @@ To keep discovery fast and scalable, Layer~2 separates heavy static files from d
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.85\textwidth]{5-Figures/Activity Storage and Registry.pdf}
-    \caption{Activity diagram illustrating the workflow of Layer 2 (Storage and Registry).}
+    \caption{\gls{UML} Activity Diagram of Layer 2 (Storage and Registry).}
     \label{fig:activity_layer2}
 \end{figure}
 
@@ -183,7 +183,7 @@ Even after a virtual cell is configured, maintaining accurate physical-digital s
 
 Layer~3 solves these problems by combining automated procedural scene generation with real-time state synchronization and drift correction. Its objective is to build the virtual environment dynamically at startup and maintain tight digital-physical alignment throughout production.
 
-As shown in \Cref{fig:activity_layer3}, Layer~3 coordinates the runtime engine with the physical automation plant through parallel execution loops:
+As shown in the \gls{UML} Activity Diagram (\Cref{fig:activity_layer3}), Layer~3 coordinates the runtime engine with the physical automation plant through parallel execution loops:
 \begin{enumerate}
     \item \textbf{Procedural Scene Assembly:} When launched, the simulation runtime queries the Layer~2 registry, downloads the necessary asset packages, and reconstructs the virtual factory floor directly in memory. It automatically creates 3D visual nodes, binds physics colliders, assigns kinematic joint limits, and maps virtual pins based on the downloaded descriptors, requiring no manual scene editing.
     \item \textbf{Continuous Physics Simulation:} The simulation engine runs an internal physics loop at a steady frequency, calculating rigid-body collisions, gravity, and joint movements so that material handling and mechanical operations behave realistically.
@@ -194,7 +194,7 @@ As shown in \Cref{fig:activity_layer3}, Layer~3 coordinates the runtime engine w
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.85\textwidth]{drawio/Runtime Execution & Synchronization.pdf}
-    \caption{Activity diagram illustrating runtime simulation and physical synchronization in Layer 3.}
+    \caption{\gls{UML} Activity Diagram of Layer 3 (Runtime Execution and Physical Synchronization).}
     \label{fig:activity_layer3}
 \end{figure}
 
@@ -220,12 +220,12 @@ Segregating these three flows ensures that heavy model transfers never interfere
 
 To avoid relying on proprietary simulation tools, the framework defines a technology-neutral data model. The model standardizes how shop-floor machinery is described across all layers, separating visual 3D geometry, kinematics, \gls{IO} signals, local control logic, and network endpoints.
 
-\Cref{fig:asset_metamodel_conceptual} shows the complete \gls{UML} class diagram of the conceptual asset metamodel. The root entity, \textit{AssetDescriptor}, brings together five submodel classes: \textit{VisualStructure}, \textit{BehaviorMapping}, \textit{VirtualPins}, \textit{NetworkEndpoint}, and \textit{ControlLogic}. All attributes use standard primitive types (\textit{String}, \textit{Float}, \textit{Integer}, \textit{Boolean}, and \textit{Vector3}, representing a 3D float coordinate or vector $(x, y, z)$).
+\Cref{fig:asset_metamodel_conceptual} shows the complete \gls{UML} Class Diagram of the conceptual asset metamodel. The root entity, \textit{AssetDescriptor}, brings together five submodel classes: \textit{VisualStructure}, \textit{BehaviorMapping}, \textit{VirtualPins}, \textit{NetworkEndpoint}, and \textit{ControlLogic}. All attributes use standard primitive types (\textit{String}, \textit{Float}, \textit{Integer}, \textit{Boolean}, and \textit{Vector3}, representing a 3D float coordinate or vector $(x, y, z)$).
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\textwidth]{5-Figures/Modelo de Dados.drawio.pdf}
-    \caption{\gls{UML} class diagram of the conceptual asset metamodel and constituent submodel classes.}
+    \caption{\gls{UML} Class Diagram of the conceptual asset metamodel and constituent submodel classes.}
     \label{fig:asset_metamodel_conceptual}
 \end{figure}
 
@@ -234,12 +234,12 @@ Each subsection below describes one class in detail, covering its purpose, multi
 \subsection{AssetDescriptor (Core Entity)}
 \label{sec:model_asset_descriptor}
 
-The \textit{AssetDescriptor} is the main container and identity root for any machine or workstation. It holds identity and classification data, acting as the entry point for registries and simulation parsers, as depicted in the class diagram in \Cref{fig:metamodel_asset_descriptor}.
+The \textit{AssetDescriptor} is the main container and identity root for any machine or workstation. It holds identity and classification data, acting as the entry point for registries and simulation parsers, as depicted in the \gls{UML} Class Diagram in \Cref{fig:metamodel_asset_descriptor}.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.4\textwidth]{5-Figures/AssetDescriptor.pdf}
-    \caption{Class diagram of the core \textit{AssetDescriptor} entity.}
+    \caption{\gls{UML} Class Diagram of the core \textit{AssetDescriptor} entity.}
     \label{fig:metamodel_asset_descriptor}
 \end{figure}
 
@@ -253,12 +253,12 @@ The attributes of \textit{AssetDescriptor} are:
 \subsection{VisualStructure Class}
 \label{sec:model_visual_structure}
 
-The \textit{VisualStructure} class defines the 3D visual and spatial layout of an asset, independent of any particular graphics format. An \textit{AssetDescriptor} may have one or more \textit{VisualStructure} entries ($1..*$). Each entry contains a collection of \textit{SceneObject} nodes ($1..*$), and each node carries exactly one \textit{Transform}. The structural organization of this hierarchy is illustrated in \Cref{fig:metamodel_visual_structure}.
+The \textit{VisualStructure} class defines the 3D visual and spatial layout of an asset, independent of any particular graphics format. An \textit{AssetDescriptor} may have one or more \textit{VisualStructure} entries ($1..*$). Each entry contains a collection of \textit{SceneObject} nodes ($1..*$), and each node carries exactly one \textit{Transform}. The structural organization of this hierarchy is illustrated in the \gls{UML} Class Diagram in \Cref{fig:metamodel_visual_structure}.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.4\textwidth]{5-Figures/VisualStructure.pdf}
-    \caption{Class diagram of the \textit{VisualStructure} hierarchy: \textit{VisualStructure}, \textit{SceneObject}, and \textit{Transform}.}
+    \caption{\gls{UML} Class Diagram of the \textit{VisualStructure} hierarchy (\textit{VisualStructure}, \textit{SceneObject}, and \textit{Transform}).}
     \label{fig:metamodel_visual_structure}
 \end{figure}
 
@@ -295,12 +295,12 @@ The \textit{BehaviorMapping} class does not store the raw boolean signal values.
     \item \textbf{For a Sensor:} It defines the spatial detection boundary, target filtering criteria, electrical signal inversion logic, and synchronization snapping parameters.
 \end{itemize}
 
-Before inspecting the structure, \Cref{fig:metamodel_behavior_binding} illustrates the class hierarchy for \textit{BehaviorMapping} and \textit{BehaviorBinding}.
+Before inspecting the structure, the \gls{UML} Class Diagram in \Cref{fig:metamodel_behavior_binding} illustrates the class hierarchy for \textit{BehaviorMapping} and \textit{BehaviorBinding}.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.4\textwidth]{5-Figures/BehaviorMapping.pdf}
-    \caption{Class diagram of the \textit{BehaviorMapping} hierarchy: \textit{BehaviorMapping} and \textit{BehaviorBinding}.}
+    \caption{\gls{UML} Class Diagram of the \textit{BehaviorMapping} hierarchy (\textit{BehaviorMapping} and \textit{BehaviorBinding}).}
     \label{fig:metamodel_behavior_binding}
 \end{figure}
 
@@ -352,12 +352,12 @@ In contrast to \textit{BehaviorMapping} (which defines behavioral characteristic
 
 Each \textit{VirtualPins} instance contains one or more \textit{PinGroup} collections categorized by data direction (\textit{INPUT} or \textit{OUTPUT}). Each group contains the individual \textit{Pin} instances representing discrete boolean states ($1..*$).
 
-To illustrate the relationship between terminals, signal direction, and individual channels, \Cref{fig:metamodel_signal_interface} details the \textit{VirtualPins} hierarchy.
+To illustrate the relationship between terminals, signal direction, and individual channels, the \gls{UML} Class Diagram in \Cref{fig:metamodel_signal_interface} details the \textit{VirtualPins} hierarchy.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.4\textwidth]{5-Figures/VirtualPins.pdf}
-    \caption{Class diagram of the \textit{VirtualPins} hierarchy: \textit{VirtualPins}, \textit{PinGroup}, and \textit{Pin}.}
+    \caption{\gls{UML} Class Diagram of the \textit{VirtualPins} hierarchy (\textit{VirtualPins}, \textit{PinGroup}, and \textit{Pin}).}
     \label{fig:metamodel_signal_interface}
 \end{figure}
 
@@ -386,12 +386,12 @@ Through this decoupling, \textit{VirtualPins} strictly reflects the live electri
 \subsection{ControlLogic Class}
 \label{sec:model_control_logic}
 
-The \textit{ControlLogic} class stores local control rules and interlocks inside the asset ($0..*$), as shown in \Cref{fig:metamodel_control_logic}. With this class, machines can run local automated sequences without needing an external \gls{PLC}.
+The \textit{ControlLogic} class stores local control rules and interlocks inside the asset ($0..*$), as shown in the \gls{UML} Class Diagram in \Cref{fig:metamodel_control_logic}. With this class, machines can run local automated sequences without needing an external \gls{PLC}.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.4\textwidth]{5-Figures/ControlLogic.pdf}
-    \caption{Class diagram of the \textit{ControlLogic} class.}
+    \caption{\gls{UML} Class Diagram of the \textit{ControlLogic} class.}
     \label{fig:metamodel_control_logic}
 \end{figure}
 
@@ -405,12 +405,12 @@ The attributes of \textit{ControlLogic} are:
 \subsection{NetworkEndpoint Class}
 \label{sec:model_network_endpoint}
 
-The \textit{NetworkEndpoint} class specifies the network protocol and address used to communicate with the physical equipment or data services ($0..*$). The structure of this interface is depicted in \Cref{fig:metamodel_network_endpoint}.
+The \textit{NetworkEndpoint} class specifies the network protocol and address used to communicate with the physical equipment or data services ($0..*$). The structure of this interface is depicted in the \gls{UML} Class Diagram in \Cref{fig:metamodel_network_endpoint}.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.4\textwidth]{5-Figures/NetworkEndpoint.pdf}
-    \caption{Class diagram of the \textit{NetworkEndpoint} class.}
+    \caption{\gls{UML} Class Diagram of the \textit{NetworkEndpoint} class.}
     \label{fig:metamodel_network_endpoint}
 \end{figure}
 
