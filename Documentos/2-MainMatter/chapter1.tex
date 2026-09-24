@@ -18,71 +18,110 @@
 \setlength\epigraphwidth{12.5cm}
 \setlength\epigraphrule{0pt}
 
-\section{Background and Motivation}
+\section{Background and Contextualization}
 
-The manufacturing industry is undergoing a profound structural transformation driven by the concepts of Industry 4.0 and the evolution toward Industry 5.0. Modern production systems must move away from rigid, dedicated automation lines toward agile, highly flexible environments capable of rapid reconfiguration \cite{Khan2025}. In smart manufacturing, this agility is enabled by the convergence of \glspl{CPS} and \glspl{CPPS}, which deeply integrate physical shop-floor assets (such as conveyors, sensors, and actuators) with computational monitoring, embedded networking, and real-time control algorithms \cite{Abdel-Aty2022,Rocha2024}.
+Modern factories need to adapt quickly to changing market demands. In traditional manufacturing, production lines were built to make large volumes of a single product with dedicated machinery. However, today's industrial systems must be modular and reconfigurable, allowing machines to be added, moved, or swapped to produce smaller batches of customized items \cite{Khan2025}. This flexibility is made possible by \glspl{CPS} and \glspl{CPPS}, which connect physical shop-floor equipment with computers, sensors, and real-time networks \cite{Abdel-Aty2022,Rocha2024}.
 
-Within the \gls{CPPS} paradigm, the \gls{DT} has emerged as an indispensable technology for virtual commissioning, process optimization, and predictive decision-making without halting operational production lines \cite{Tao2019}. Unlike static 3D models or one-way monitoring dashboards, a true \gls{DT} establishes an automated, bidirectional data flow between the physical and digital domains: real-time field telemetry continuously synchronizes the virtual simulation state, while analytical and control decisions generated in the virtual space can be fed back to physical actuators on the shop floor \cite{Kritzinger2018,Pajpach2023}.
+In this context, the \gls{DT} has become an important tool for \gls{VC}, operational monitoring, and testing control logic without interrupting real production \cite{Tao2019}. While static 3D models or simple monitoring dashboards (\glspl{DS}) only offer one-way data display, a true \gls{DT} maintains automated, two-way communication with the physical machine \cite{Kritzinger2018}. Telemetry updates the virtual model in real time, while simulation decisions can send commands back to physical controllers \cite{Pajpach2023}.
 
-To facilitate cross-vendor interoperability and lifecycle data management in smart factories, the \gls{RAMI} and the \gls{IDTA} established the \gls{AAS} (\gls{IEC}~63278) as the official digital representation of industrial assets. Through standardized submodels, the \gls{AAS} provides a vendor-neutral digital envelope capable of describing mechanical specifications, operational properties, communication interfaces, and runtime capabilities \cite{Lu2025}.
+To help equipment from different vendors share data, the Plattform Industrie 4.0 community established the \gls{RAMI} reference architecture. Within \gls{RAMI}, the \gls{AAS} (\gls{IEC}~63278), maintained by the \gls{IDTA}, serves as the standard digital representation for physical assets \cite{Lu2025}. An \gls{AAS} organizes mechanical properties, operational variables, and communication settings into standardized submodels, providing a common format to access machine data.
 
-\section{Problem Definition}
+\section{Motivation and Problem Statement}
 
-Despite the strategic benefits of \glspl{DT}, their practical deployment in industrial automation remains severely constrained by high engineering costs, proprietary software lock-in, and configuration fragmentation \cite{Schaper2025}. Traditional development pipelines suffer from three fundamental bottlenecks:
+Even though digital twins offer clear benefits, building and maintaining them in practice is still difficult, especially for \glspl{SME} \cite{Schaper2025}. Traditional development pipelines face three main bottlenecks:
 
-\begin{enumerate}
-    \item \textbf{High-Poly Geometric Fragmentation:} Industrial machinery is typically documented using high-polygon \gls{CAD} files designed for manufacturing tolerances rather than real-time interactive simulation. These dense geometric files overload physics engines, lack proper kinematic joints, and omit functional collider envelopes required for contact physics and sensor triggers.
-    \item \textbf{Manual and Vendor-Locked Toolchains:} Existing commercial simulation platforms require engineers to reconstruct plant layouts manually, importing 3D models into proprietary environments and writing custom scripts for kinematic motion and sensor logic. If a physical limit switch or motor is rewired or an asset is reconfigured, the simulation environment must be updated by hand, resulting in obsolete virtual models that fail to match the shop floor.
-    \item \textbf{Semantic Decoupling from Control Interfaces:} Conventional digital twins rarely incorporate standardized semantic descriptions of \gls{IO} electrical pin mappings and control rules. When transitioning between offline \gls{VC} and live online synchronization with physical \glspl{PLC}, engineers must manually rewire variable tags across disparate software tools, introducing integration errors and communication bottlenecks.
-\end{enumerate}
+First, 3D geometry is fragmented across engineering tools. Most factory machines are designed using detailed \gls{CAD} files intended for mechanical manufacturing. These files contain millions of polygons and internal components, such as bolts and brackets, which slow down real-time game engines. At the same time, standard CAD exports lack kinematic joint definitions, movement limits, and trigger colliders needed to detect workpieces in physics simulations.
 
-These barriers make the adoption of digital twins prohibitively slow and expensive, particularly for \glspl{SME} operating in agile markets where production layouts change frequently. Consequently, there is an urgent need for an open, modular, model-driven framework capable of procedurally instantiating interactive 3D simulation environments directly from standardized semantic packages.
+Second, the toolchains used to build simulation scenes are mostly manual and vendor-locked. Automation engineers have to import 3D meshes into proprietary simulation software, manually set up coordinate systems, and script motion behaviors by hand. When a physical machine is rearranged or rewired on the factory floor, the simulation scene must be manually rebuilt in the editor, which creates maintenance delays and causes the virtual model to become outdated.
+
+Third, simulation tools are often decoupled from control hardware. Standard digital twin models rarely include electrical pin mappings or control rules. Moving between offline \gls{VC} and live synchronization with physical \glspl{PLC} requires remapping signal tags across different software tools by hand, which is tedious and prone to configuration mistakes.
+
+These limitations explain why commercial simulation platforms struggle in agile, reconfigurable production lines. Because proprietary tools depend on pre-compiled scenes, static component catalogs, and manual address mapping, even minor adjustments to physical equipment require time-consuming manual intervention. To overcome these barriers, this research explores how open, standardized information models can replace manual workflows and drive automated simulation pipelines.
+
+\section{Research Questions and Hypotheses}
+
+This dissertation investigates how standardized \glspl{AAS} can be used to generate and synchronize interactive digital twins automatically. The main research question guiding this work is:
+
+\begin{quote}
+    \textbf{Main Research Question:} \textit{How can standardized \glspl{AAS} be used to procedurally assemble and synchronize interactive, physics-enabled \glspl{DT} at runtime?}
+\end{quote}
+
+To address this question, three research sub-questions and their working hypotheses are defined:
+
+\begin{itemize}
+    \item \textbf{RQ1 (Semantic Integration):} \textit{How can 3D geometry, kinematic constraints, electrical pins, and control logic be structured within a standardized semantic model?}
+    \begin{itemize}
+        \item[\textbf{H1:}] A modular \gls{AAS} submodel schema that links low-polygon 3D meshes, kinematic limits, \gls{IO} pin mappings, and declarative control rules provides a vendor-neutral representation capable of supporting both virtual commissioning and live synchronization.
+    \end{itemize}
+
+    \item \textbf{RQ2 (Procedural Generation):} \textit{Can an interactive 3D simulation scene be assembled at runtime directly from \gls{AAS} packages without pre-compiled scene files?}
+    \begin{itemize}
+        \item[\textbf{H2:}] A runtime loader can download and unpack containerized \gls{AAS} archives, build 3D visual hierarchies, configure physical colliders, and connect telemetry bindings in memory at startup, removing the need for manual scene composition.
+    \end{itemize}
+
+    \item \textbf{RQ3 (Real-Time Performance and Scalability):} \textit{What are the performance limits of procedurally generated digital twins during live physical synchronization?}
+    \begin{itemize}
+        \item[\textbf{H3:}] Separating network communication loops from the fixed physics timestep and applying kinematic drift correction maintains stable synchronization with physical \glspl{PLC}, while parametric scaling tests show clear computational boundaries as module counts increase.
+    \end{itemize}
+\end{itemize}
 
 \section{Research Objectives}
 
-The primary objective of this dissertation is to design, implement, and empirically validate an open, modular, model-driven framework for the automated procedural generation and real-time synchronization of industrial \glspl{DT} using standardized \gls{AAS} packages.
+The primary objective of this dissertation is to design, build, and test an open, model-driven framework that procedurally generates and synchronizes industrial \glspl{DT} using standardized \gls{AAS} packages.
 
-To fulfill this overarching goal, the research pursues four specific objectives:
-\begin{itemize}
-    \item \textbf{SO1 (Semantic Asset Metamodel):} Formulate a modular, technology-agnostic data model based on \gls{AAS} submodels that captures 3D visual structures, kinematic constraints, virtual \gls{IO} pin bindings, declarative control logic, and network endpoints within portable \gls{AASX} packages.
-    \item \textbf{SO2 (No-Code Asset Modeling Application):} Implement an accessible authoring tool enabling automation engineers to visually instrument 3D geometry using raycasting, define sensor and actuator behaviors, and generate valid \gls{AASX} bundles without manual code programming.
-    \item \textbf{SO3 (Procedural Runtime Simulation Engine):} Develop a game-engine runtime in Unity 3D that queries containerized \gls{AAS} repositories, procedurally instantiates 3D assets and PhysX colliders directly in memory at startup, and executes dual-mode simulation (pure software \gls{VC} and live \gls{PLC} telemetry synchronization with kinematic drift correction).
-    \item \textbf{SO4 (Empirical Validation and Scalability):} Benchmark the framework through 100 cold-boot validation runs on a physical modular \gls{FMS} mechatronic testbed, followed by parametric stress testing scaling from 5 to 1000 conveyor modules to determine computational and algorithmic boundaries.
-\end{itemize}
+To reach this goal, four specific objectives were defined:
 
-\section{Expected Contributions}
+First, \textbf{SO1 (Semantic Asset Metamodel)} defines an open data model using \gls{AAS} submodels. This model captures 3D visual structures, kinematic motion limits, virtual \gls{IO} pins, declarative control rules, and network addresses inside portable \gls{AASX} files.
 
-This dissertation contributes to the fields of Industrial Informatics, Cyber-Physical Systems, and Model-Driven Engineering through the following outcomes:
+Second, \textbf{SO2 (Visual Asset Modeling Pipeline)} develops a desktop authoring tool that lets engineers configure 3D assets, place virtual sensors on model surfaces using mouse clicks, and export valid \gls{AASX} packages without writing software code.
 
-\begin{itemize}
-    \item \textbf{Model-Driven Procedural Digital Twin Architecture:} An open, multi-tier pipeline that eliminates pre-compiled 3D scenes by assembling and executing interactive simulation environments dynamically from \gls{AAS} packages.
-    \item \textbf{Unified Semantic Metamodel for Physics and Control:} A standardized submodel schema connecting low-polygon 3D meshes, kinematic joints, and \gls{IO} registers with declarative boolean control rules, bridging the gap between virtual commissioning and operational synchronization.
-    \item \textbf{Accessible No-Code Authoring Pipeline:} A functional desktop authoring environment combining 3D surface raycasting with the Eclipse BaSyx \gls{SDK}, allowing domain engineers to model and deploy modular \gls{CPS} assets rapidly.
-    \item \textbf{Empirical Scalability Guidelines for Real-Time Physics:} Quantitative performance benchmarks on physical mechatronic hardware and large-scale synthetic layouts, establishing deterministic latency bounds and identifying single-threaded physics boundaries for industrial \glspl{DT}.
-\end{itemize}
+Third, \textbf{SO3 (Procedural Simulation Runtime)} creates a real-time runtime engine in Unity 3D that queries the semantic repository, instantiates 3D meshes and colliders in memory, and runs in both offline virtual commissioning mode and live telemetry synchronization mode.
+
+Fourth, \textbf{SO4 (Empirical Validation and Scalability Evaluation)} evaluates the framework on a physical modular conveyor testbed, followed by automated stress tests scaling from 5 to 1000 modules to measure startup times, frame rates, and latency limits.
+
+\section{Approach and Contributions}
+
+This work uses a four-layer architecture to connect physical factory equipment with real-time virtual simulation:
+
+In Layer~0 (Geometric Preparation), physical machine dimensions are measured and turned into lightweight 3D models in Blender. Coordinate origins and movement axes are aligned with physical pivots, and unnecessary interior geometry is removed.
+
+In Layer~1 (Semantic Authoring), a Python desktop application lets users import the 3D model, configure machine properties, and place sensors on surfaces using raycasting. The tool then builds and exports an \gls{AASX} package containing the 3D mesh and all required submodels.
+
+In Layer~2 (Middleware and Storage), Eclipse BaSyx~v2 microservices running in Docker containers store the uploaded \gls{AASX} packages and host \gls{REST} registries so client applications can discover available machines on the network.
+
+In Layer~3 (Runtime Simulation), a Unity 3D engine downloads the models from BaSyx at startup, builds the 3D scene in memory, and connects to an Industrial Shields \gls{PLC} using \gls{TCP} and \gls{HTTP} to synchronize movements and sensor states.
+
+The main contributions of this dissertation are:
+\begin{enumerate}
+    \item An open, model-driven pipeline that replaces static, pre-compiled simulation files by generating interactive virtual environments dynamically from \gls{AAS} packages.
+    \item A unified \gls{AAS} submodel schema that links 3D meshes, joint limits, electrical pins, and IF-THEN control rules in a single portable format.
+    \item An interactive authoring tool that allows engineers to place sensors visually and export valid \gls{AASX} archives without custom programming.
+    \item Quantitative experimental benchmarks on physical mechatronic hardware and large-scale synthetic layouts, providing realistic latency and frame rate limits for procedurally assembled digital twins.
+\end{enumerate}
 
 \section{Research Methodology}
 
-To accomplish the stated objectives, this dissertation adopts the \gls{DSR} methodology, an established engineering research paradigm focused on solving identified practical problems through the creation and iterative evaluation of innovative artifacts \cite{Peffers2007}. The research trajectory is structured across four systematic phases:
+To achieve the research objectives, this dissertation follows the \gls{DSR} methodology \cite{Peffers2007}, an established framework for solving engineering problems by designing, developing, and evaluating practical software artifacts. The work was divided into four main phases:
 
-\begin{enumerate}
-    \item \textbf{Problem Explication and Literature Survey:} Critical analysis of current literature on Industry 4.0, \gls{CPPS}, \gls{DT} architectures, and semantic standards, identifying the limitations of proprietary simulation software and manual modeling workflows (\Cref{cha:stateoftheart}).
-    \item \textbf{Artifact Conceptualization and Metamodel Design:} Specification of the technology-agnostic conceptual architecture, functional requirements, cross-layer communication protocols, and the semantic \gls{AAS} asset metamodel (\Cref{cha:architecture}).
-    \item \textbf{Artifact Development and Technical Realization:} Implementation of the four-tier framework, encompassing low-poly asset digitization in Blender (Layer~0), the PyQt6/PyVista asset modeling tool (Layer~1), containerized Eclipse BaSyx~v2 microservices on Docker (Layer~2), and the procedural runtime engine in Unity 3D interfacing with an Industrial Shields \gls{PLC} running FreeRTOS (Layer~3) (\Cref{cha:implementation}).
-    \item \textbf{Empirical Demonstration and Evaluation:} Rigorous empirical testing on the physical modular \gls{FMS} bench and parametric scalability benchmarking across eight scale levels ($N=5$ to $N=1000$), measuring startup duration, frame rates, and tail latencies to evaluate performance hypotheses (\Cref{cha:discussion}).
-\end{enumerate}
+In Phase~1 (Problem Analysis and Literature Review), existing work on Industry~4.0, digital twin taxonomies, and semantic standards was reviewed to identify the limitations of current simulation tools (\Cref{cha:stateoftheart}).
+
+In Phase~2 (Architecture and Metamodel Design), the overall four-layer architecture, requirements, and \gls{AAS} submodel schemas were specified (\Cref{cha:architecture}).
+
+In Phase~3 (Implementation), the complete toolchain was implemented, including 3D asset preparation in Blender, the PyQt6 and PyVista authoring tool, Eclipse BaSyx microservices, the Unity 3D procedural runtime, and FreeRTOS firmware on an Industrial Shields \gls{PLC} (\Cref{cha:implementation}).
+
+In Phase~4 (Experimental Evaluation), the framework was tested on the physical conveyor testbed and evaluated through stress benchmarks across multiple layout scales to assess startup times, frame stability, and synchronization behavior (\Cref{cha:discussion}).
 
 \section{Dissertation Structure}
 \label{sec:structure}
 
-The remainder of this dissertation is organized into five subsequent chapters:
+The remainder of this dissertation is organized into five chapters:
 
-\textbf{\Cref{cha:stateoftheart} (State of the Art)} reviews foundational literature on Industry 4.0, \glspl{CPS}, \gls{DT} taxonomies, semantic modeling standards (\gls{AAS} and \gls{AML}), real-time physics engines, and automated simulation generation methodologies.
+\textbf{\Cref{cha:stateoftheart} (State of the Art)} reviews related work on smart manufacturing, digital twins, the \gls{AAS} standard, game engine simulation, and existing automated model generation methods.
 
-\textbf{\Cref{cha:architecture} (Conceptual System Architecture)} presents the technology-agnostic conceptual architecture, semantic metamodel specifications, configuration workflows, and the dual-mode execution framework.
+\textbf{\Cref{cha:architecture} (Conceptual System Architecture)} presents the four-layer system architecture, functional requirements, and detailed specifications for each \gls{AAS} submodel.
 
-\textbf{\Cref{cha:implementation} (Technological Implementation)} details the software engineering realization, describing the Python modeling tool, Eclipse BaSyx~v2 middleware, Unity 3D physics runtime, and embedded Arduino FreeRTOS firmware.
+\textbf{\Cref{cha:implementation} (Technological Implementation)} describes the software and hardware implementation of each layer, covering the authoring tool, containerized BaSyx services, the Unity runtime loader, and PLC firmware.
 
-\textbf{\Cref{cha:discussion} (Results and Evaluation)} presents the empirical validation on the modular \gls{FMS} bench and the synthetic scalability stress benchmarks, providing quantitative analysis of startup complexity, frame rendering latency, and tail performance.
+\textbf{\Cref{cha:discussion} (Results and Evaluation)} presents the experimental findings from the physical conveyor testbed and the scalability stress tests, analyzing startup duration, rendering frame rates, and latency limits.
 
-\textbf{\Cref{cha:conclusion} (Conclusion and Future Work)} synthesizes the core contributions, discusses operational limitations, and details future research avenues including Unity \gls{DOTS}, \gls{ROS} robotics integration, continuous systems co-simulation, extensible logic interpreters, and immersive extended reality (\gls{VR}/\gls{AR}).
+\textbf{\Cref{cha:conclusion} (Conclusion and Future Work)} summarizes the findings, discusses current limitations, and outlines future research directions, including multi-threaded physics, robotic arm integration, and augmented reality interfaces.

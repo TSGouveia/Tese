@@ -307,8 +307,8 @@ The physical testbed is instrumented with 24\,V~DC optical and inductive proximi
 The embedded firmware runs on the FreeRTOS real-time operating system to guarantee deterministic task scheduling and non-blocking network communication across four concurrent tasks:
 \begin{enumerate}
     \item \textbf{Hardware Setup and Server Initialization:} On boot, the microcontroller configures input pins and motor relay output registers, initializes a 30-element \gls{FIFO} sensor event queue, and creates a mutex semaphore protecting socket transmission. It then starts an embedded \gls{HTTP} server on port 80 and a raw \gls{TCP} socket server on port 8888, handing task execution to the FreeRTOS preemptive scheduler.
-    \item \textbf{Real-Time Scanning and Telemetry:} The sensor scanner task operates as the highest-priority routine (Priority 3). It performs a 5\,ms scan loop across digital input pins with software debounce filtering. When a valid state change occurs, an event token is placed in the \gls{FIFO} queue. This wakes the telemetry task (Priority 2), which formats a compact \gls{JSON} packet and streams it over \gls{TCP} port 8888 to Unity with minimal latency, directly satisfying \textbf{NFR1} (Low-Latency Telemetry).
-    \item \textbf{Actuation and Connection Management:} External actuation requests (such as skill invocations from BaSyx) are handled by the \gls{HTTP} server task (Priority 1) on port 80, which parses incoming command parameters and drives physical relays. Concurrently, a session monitor task (Priority 1) performs connection watchdog checks, recovering seamlessly from network drops without interrupting automation routines.
+    \item \textbf{Real-Time Scanning and Telemetry:} The sensor scanner task operates as the highest-priority routine (Priority 3). It performs a 5\,ms scan loop across digital input pins with software debounce filtering. When a valid state change occurs, an event token is placed in the \gls{FIFO} queue. Buffering up to 30 events in this queue prevents dropped edge transitions if temporary network jitter or socket congestion delays transmission. The queued token immediately wakes the telemetry task (Priority 2), which formats a compact \gls{JSON} packet and streams it over \gls{TCP} port 8888 to Unity with minimal latency, directly satisfying \textbf{NFR1} (Low-Latency Telemetry).
+    \item \textbf{Actuation and Connection Management:} External actuation requests (such as skill invocations from BaSyx) are handled by the \gls{HTTP} server task (Priority 1) on port 80, which parses incoming command parameters and drives physical relays. Concurrently, a session monitor task (Priority 1) performs connection watchdog checks, recovering automatically from network drops without interrupting automation routines.
 \end{enumerate}
 
 \section{Implementation Traceability and Requirement Coverage}
@@ -322,7 +322,7 @@ To verify how the technical implementation fulfills the design requirements from
     \label{tab:impl_traceability_matrix}
     \small
     \renewcommand{\arraystretch}{1.3}
-    \begin{tabularx}{\textwidth}{@{}p{3.2cm} p{3.4cm} p{2.1cm} X@{}}
+    \begin{tabularx}{\textwidth}{@{}p{3.0cm} p{3.4cm} p{1.9cm} X@{}}
         \toprule
         \textbf{Layer / Component} & \textbf{Core Technologies} & \textbf{Requirements} & \textbf{Functional Role} \\ \midrule
         \textbf{Layer 0: Digitization} & Blender 5.2 LTS, \gls{glTF}/\gls{GLB} & FR2 & 1:1 metric modeling, pivot alignment, low-poly geometry \\

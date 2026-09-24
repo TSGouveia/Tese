@@ -28,6 +28,10 @@ The experimental validation conducted in \Cref{cha:discussion} substantiated the
     \item \textbf{Decoupled Control Logic and Virtual Commissioning:} By packaging operational rules within semantic \textit{ControlLogic} submodels, virtual cells operate in pure software \gls{VC} mode without requiring physical hardware. Transitioning to operational \gls{DT} mode requires only redirecting sensor state streams to live \gls{TCP} telemetry from the shop floor, eliminating configuration fragmentation.
 \end{enumerate}
 
+\subsection{Operational Scope and Process Boundaries}
+
+While these results prove the viability of procedural digital twins, it is essential to delineate the operational boundaries of this research. The proposed framework was specifically designed and validated for \textbf{discrete manufacturing systems}, where production steps are defined by solid, identifiable workpieces moving across mechanical handling units, triggering binary sensors, and receiving discrete actuation commands. Continuous process industries (such as chemical refining, fluid mixing, or thermodynamic processing) operate on fluid dynamics, thermal gradients, and differential equations that cannot be represented solely by rigid-body contact physics or discrete state snapping. As detailed in the future research directions, extending the architecture to such hybrid and continuous environments requires coupling the semantic \gls{AAS} descriptions to numerical co-simulation solvers via standards such as \gls{FMI}.
+
 % =============================================================================
 \section{Future Work}
 \label{sec:future_work}
@@ -38,14 +42,14 @@ At the same time, the quantitative stress tests and architectural boundaries ide
 
 To bridge these gaps and expand the applicability of the proposed open architecture, five key research trajectories are identified:
 
-\subsection{Physics Acceleration via Unity \gls{DOTS} and Massively Parallel Compute Shaders}
+\subsection{Physics Acceleration via Unity DOTS and Massively Parallel Compute Shaders}
 As demonstrated in \Cref{sec:eval_frametime_latency}, scaling beyond 500 active modules exposes the single-threaded \gls{CPU} update boundary of Unity's conventional PhysX implementation. To scale procedural \glspl{DT} to gigafactory density ($N \ge 1000$ modules and tens of thousands of dynamic rigidbodies):
 \begin{itemize}
     \item \textbf{Adoption of Unity \gls{DOTS}:} Transforming asset instances from object-oriented GameObjects into memory-contiguous entities via the \gls{ECS}, the C\# Job System, and the Burst Compiler. This transition allows kinematics, belt velocities, and bounding-box overlap tests to be distributed across all available \gls{CPU} cores.
     \item \textbf{Compute Shader Physics:} Offloading contact-friction calculations and pallet surface kinematics to the \gls{GPU} using compute shaders, enabling real-time execution of massive discrete manufacturing lines without \gls{CPU} saturation.
 \end{itemize}
 
-\subsection{Robotic Manipulation Integration via \gls{ROS} and \gls{ROS}~2}
+\subsection{Robotic Manipulation Integration via ROS and ROS 2}
 The current framework was benchmarked primarily on material handling and discrete stamping mechanisms. Expanding the pipeline to articulate industrial manipulators and mobile logistics requires standardizing robotic kinematics:
 \begin{itemize}
     \item \textbf{\gls{URDF} and Kinematic Tree Ingestion:} Standardizing the encapsulation of \gls{URDF} joint definitions, link mass properties, and transmission limits inside \gls{AAS} submodels.
@@ -68,7 +72,7 @@ The rule engine currently parses declarative IF-THEN conditions stored in \gls{J
 \end{itemize}
 
 
-\subsection{Immersive Interfaces: Virtual Reality and Augmented Reality (\gls{VR}/\gls{AR})}
+\subsection{Immersive Interfaces: Virtual Reality and Augmented Reality (VR/AR)}
 Because the runtime engine is developed natively in Unity 3D, extending the procedural pipeline to immersive extended reality headsets (such as Meta Quest, Apple Vision Pro, or Microsoft HoloLens) represents a natural and highly valuable progression:
 \begin{itemize}
     \item \textbf{Immersive \gls{VR} Operator Training and Commissioning:} Allowing maintenance personnel and plant operators to navigate procedurally generated factories at 1:1 scale before physical installation, testing manual interventions, safety zones, and ergonomic clearance without hazards.
