@@ -31,7 +31,7 @@ The chapter is organized as follows:
 
 Turning the conceptual architecture from \Cref{cha:architecture} into a working implementation requires matching abstract layer roles to concrete software tools, network protocols, and hardware platforms. This section describes the modular \gls{FMS} bench used for testing and outlines the overall component architecture.
 
-\subsection{Physical Testbed Context: The Modular FMS Bench}
+\subsection{Physical Testbed Context: The Modular \texorpdfstring{\gls{FMS}}{FMS} Bench}
 To validate the framework, an existing \gls{FMS} testbed was used as the pilot case study (\Cref{fig:fms_pilot_testbed}), based on the modular \gls{CPPS} architecture proposed by \textcite{Rocha2024}. The physical apparatus is an educational and industrial training model built using \textit{fischertechnik} modular mechatronic components, organized as a closed-loop conveyor bench to transport pallets across processing and inspection stations. While compact in physical footprint, this testbed replicates the electromechanical topology and real-time control constraints of real-world production cells, making it well-suited to evaluate whether the \gls{DT} can reconstruct a factory floor modularly, asset by asset, and coordinate distributed mechanisms in real time.
 
 \begin{figure}[htbp]
@@ -124,16 +124,16 @@ To fill this gap, the tool implements the five domain-specific submodels defined
     \item \textbf{\textit{BehaviorMapping}}: Binds moving components to motion parameters, defining translation or rotation axes, pivot offsets, and speeds.
     \item \textbf{\textit{VirtualPins}}: Maps sensors and actuators to physical \gls{PLC} addresses (such as I0\_0 or R0\_0) and stores their current value.
     \item \textbf{\textit{NetworkEndpoint}}: Configures network communication settings, including controller \gls{IP} addresses, ports, and protocol bindings.
-    \item \textbf{\textit{ControlLogic}}: Formats IF-THEN rules into structured \glspl{AST} for local testing during virtual commissioning.
+    \item \textbf{\textit{ControlLogic}}: Formats IF-THEN rules into structured \glspl{AST} for local testing during \gls{VC}.
 \end{itemize}
 
-\subsection{Modeling Tool GUI and 3D Viewport Architecture}
+\subsection{Modeling Tool \texorpdfstring{\gls{GUI}}{GUI} and 3D Viewport Architecture}
 The desktop application is built with PyQt6, providing a graphical interface that avoids writing raw \gls{JSON} files by hand. The central 3D viewport uses PyVista and \gls{VTK}, with Trimesh handling geometry operations. Within the viewport, users can inspect bounding dimensions and navigate the mesh hierarchy (\Cref{fig:conveyor_wizard_gui_screenshot}).
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\linewidth,keepaspectratio]{5-Figures/asset_modeling_gui.png}
-    \caption{Graphical user interface of the Asset Modeling application showing the interactive 3D viewport, configuration panels, and model structure hierarchy.}
+    \caption{\gls{GUI} of the Asset Modeling application showing the interactive 3D viewport, configuration panels, and model structure hierarchy.}
     \label{fig:conveyor_wizard_gui_screenshot}
 \end{figure}
 
@@ -171,7 +171,7 @@ To support standalone validation during \gls{VC}, the tool includes a no-code \t
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\textwidth,keepaspectratio]{5-Figures/rule_editor_gui.png}
-    \caption{User interface of the no-code \textit{ControlLogic} rule editor.}
+    \caption{\gls{UI} of the no-code \textit{ControlLogic} rule editor.}
     \label{fig:rule_editor_ui}
 \end{figure}
 
@@ -185,7 +185,7 @@ The editor provides nine modular block types to build the logic tree:
     \item \textbf{While Loop:} Repeats a group of steps while a sensor condition holds true.
     \item \textbf{Repeat N Times:} Executes a sequence for a fixed number of cycles ($N$).
     \item \textbf{Set Variable:} Updates an internal variable used across conditional checks.
-    \item \textbf{Call HTTP:} Sends an outbound \gls{HTTP} \gls{REST} request to trigger external actions or services.
+    \item \textbf{Call \gls{HTTP}:} Sends an outbound \gls{HTTP} \gls{REST} request to trigger external actions or services.
 \end{itemize}
 
 These rules are saved as structured \glspl{AST} in the \textit{ControlLogic} submodel, enabling Unity's local rule engine to simulate machine sequences without an external \gls{PLC}. The \gls{UML} Sequence Diagram in \Cref{fig:sequence_rules} illustrates the rule configuration and deployment workflow.
@@ -226,14 +226,14 @@ The \gls{UML} Deployment Diagram in \Cref{fig:basyx_docker_topology} illustrates
 The containerized services carry out the repository and registry tasks described in \Cref{fig:activity_layer2} (\cpageref{fig:activity_layer2}). The \gls{AAS} Environment Repository (port 8081) exposes standard \gls{REST} endpoints to store and serve packages, submodels, and 3D mesh files. The \gls{AAS} Registry (port 8082) and Submodel Registry (port 8083) maintain directories of active assets, mapping unique IDs to network URLs. Persistent storage is provided by MongoDB (port 27017). By separating these functions into microservices, Layer~2 scales easily as more machines and clients join the network, satisfying requirement \textbf{NFR2} (Scalability). Although the standard BaSyx stack includes Mosquitto \gls{MQTT} (port 1883) and InfluxDB (port 8086), live synchronization in this work uses direct \gls{TCP} sockets with the \gls{PLC} to minimize telemetry delay. Operators can inspect the running system through the BaSyx Web dashboard (port 3000).
 
 \subsection{Package Ingestion and Registry Resolution}
-When an \gls{AASX} package is uploaded via \gls{HTTP} POST to the repository endpoint (port 8081), the server decompresses the package archive and parses the internal manifests. Embedded 3D mesh files (.glb) are extracted and placed directly into the static web server directory, making them accessible to simulation clients via standard URLs. Concurrently, the asset administration shell metadata and individual submodels (visual structure, behavior mapping, virtual pins, control logic, and network endpoints) are committed to MongoDB for persistent retrieval.
+When an \gls{AASX} package is uploaded via \gls{HTTP} POST to the repository endpoint (port 8081), the server decompresses the package archive and parses the internal manifests. Embedded 3D mesh files (.glb) are extracted and placed directly into the static web server directory, making them accessible to simulation clients via standard URLs. Concurrently, the \gls{AAS} metadata and individual submodels (visual structure, behavior mapping, virtual pins, control logic, and network endpoints) are committed to MongoDB for persistent retrieval.
 
 Following successful ingestion, registration calls are dispatched to both the \gls{AAS} Registry (port 8082) and the Submodel Registry (port 8083). These records publish the asset identifier, human-readable name, and specific \gls{REST} endpoint URLs for each submodel. By centralizing these discovery records, simulation clients in Layer~3 can locate all active machines, query their physical configurations, and retrieve their operational parameters with a single directory request.
 
 \section{Layer 3: Runtime Execution and Physical Synchronization}
 \label{sec:impl_unity}
 
-Layer~3 connects the Unity 3D simulation with the physical testbed through the components shown in the \gls{UML} Component Diagram (\Cref{fig:component_layer3}). The main orchestrator queries Layer~2 to download models and instantiate virtual assets. The asset importer parses submodel descriptors and attaches runtime scripts to the corresponding game objects. Virtual sensor inputs and actuator commands are managed by dedicated controllers, while the rule engine executes local conditional logic during virtual commissioning. The dynamic product controller handles workpiece movement and applies position corrections. Runtime modes are managed by the operation mode manager, while the hardware telemetry link streams data over \gls{TCP} and triggers physical actions via \gls{HTTP}. On the physical bench, the Industrial Shields M-DUINO \gls{PLC} reads sensor inputs through optocouplers and drives relay outputs for conveyor motors. This modular design isolates failures between layers, fulfilling requirement \textbf{NFR3} (Layer Independence).
+Layer~3 connects the Unity 3D simulation with the physical testbed through the components shown in the \gls{UML} Component Diagram (\Cref{fig:component_layer3}). The main orchestrator queries Layer~2 to download models and instantiate virtual assets. The asset importer parses submodel descriptors and attaches runtime scripts to the corresponding game objects. Virtual sensor inputs and actuator commands are managed by dedicated controllers, while the rule engine executes local conditional logic during \gls{VC}. The dynamic product controller handles workpiece movement and applies position corrections. Runtime modes are managed by the operation mode manager, while the hardware telemetry link streams data over \gls{TCP} and triggers physical actions via \gls{HTTP}. On the physical bench, the Industrial Shields M-DUINO \gls{PLC} reads sensor inputs through optocouplers and drives relay outputs for conveyor motors. This modular design isolates failures between layers, fulfilling requirement \textbf{NFR3} (Layer Independence).
 
 \begin{figure}[htbp]
     \centering
@@ -262,7 +262,7 @@ To provide realistic behavior, conveyor belts are simulated using contact physic
 
 The runtime supports two execution modes (\Cref{fig:unity_runtime_sequence}):
 \begin{itemize}
-    \item \textbf{Mode A (\gls{VC}):} In virtual commissioning mode (\texttt{DIGITAL\_TWIN = false}), logic is tested without physical hardware. When a workpiece triggers a virtual sensor, the sensor controller informs the rule engine, which executes the IF-THEN rules from the \textit{ControlLogic} submodel to command virtual actuators.
+    \item \textbf{Mode A (\gls{VC}):} In \gls{VC} mode (\texttt{DIGITAL\_TWIN = false}), logic is tested without physical hardware. When a workpiece triggers a virtual sensor, the sensor controller informs the rule engine, which executes the IF-THEN rules from the \textit{ControlLogic} submodel to command virtual actuators.
     \item \textbf{Mode B (\gls{DT}):} In \gls{DT} mode (\texttt{DIGITAL\_TWIN = true}), local rule evaluation is disabled. The system connects directly to the \gls{PLC} via a low-latency \gls{TCP} socket (port 8888). Sensor state changes from the bench immediately update virtual markers and notify the dynamic product controller. At the same time, asynchronous \gls{HTTP} calls update live properties in the BaSyx repository.
 \end{itemize}
 
@@ -291,7 +291,7 @@ The physical testbed is a modular closed-loop conveyor system controlled by an I
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.65\linewidth,height=0.45\textheight,keepaspectratio]{5-Figures/fms_mduino_plc.jpg}
-    \caption{Industrial Shields M-Duino 57R+ \gls{PLC} with DIN-rail mount, field \gls{IO} terminal blocks, and Ethernet and USB interfaces.}
+    \caption{Industrial Shields M-Duino 57R+ \gls{PLC} with \gls{DIN}-rail mount, field \gls{IO} terminal blocks, and Ethernet and USB interfaces.}
     \label{fig:physical_hardware_photo}
 \end{figure}
 

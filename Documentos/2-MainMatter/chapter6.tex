@@ -36,20 +36,20 @@ While these results prove the viability of procedural digital twins, it is essen
 \section{Future Work}
 \label{sec:future_work}
 
-The experimental findings presented in this dissertation validate the feasibility of model-driven procedural digital twins for discrete modular transport systems. By demonstrating automated scene generation, sub-3-second startup times, and deterministic multi-hundred FPS synchronization on mechatronic hardware, the framework proves that semantic standards can eliminate manual simulation rebuilds. 
+The experimental findings presented in this dissertation validate the feasibility of model-driven procedural digital twins for discrete modular transport systems. By demonstrating automated scene generation, sub-3-second startup times, and deterministic multi-hundred \gls{FPS} synchronization on mechatronic hardware, the framework proves that semantic standards can eliminate manual simulation rebuilds. 
 
 At the same time, the quantitative stress tests and architectural boundaries identified in \Cref{cha:discussion} highlight key challenges that arise when transitioning from controlled pilot benches to large-scale, heterogeneous manufacturing plants. Modern industrial environments operate across multiple physical domains, incorporate articulated robotic manipulators, execute diverse programming logic beyond simple boolean conditions, and require immersive visual interfaces for human operators on the shop floor. 
 
-To bridge these gaps and expand the applicability of the proposed open architecture, five key research trajectories are identified:
+To bridge these gaps and expand the applicability of the proposed open architecture, six key research trajectories are identified:
 
-\subsection{Physics Acceleration via Unity DOTS and Massively Parallel Compute Shaders}
+\subsection{Physics Acceleration via Unity \texorpdfstring{\gls{DOTS}}{DOTS} and Massively Parallel Compute Shaders}
 As demonstrated in \Cref{sec:eval_frametime_latency}, scaling beyond 500 active modules exposes the single-threaded \gls{CPU} update boundary of Unity's conventional PhysX implementation. To scale procedural \glspl{DT} to gigafactory density ($N \ge 1000$ modules and tens of thousands of dynamic rigidbodies):
 \begin{itemize}
     \item \textbf{Adoption of Unity \gls{DOTS}:} Transforming asset instances from object-oriented GameObjects into memory-contiguous entities via the \gls{ECS}, the C\# Job System, and the Burst Compiler. This transition allows kinematics, belt velocities, and bounding-box overlap tests to be distributed across all available \gls{CPU} cores.
     \item \textbf{Compute Shader Physics:} Offloading contact-friction calculations and pallet surface kinematics to the \gls{GPU} using compute shaders, enabling real-time execution of massive discrete manufacturing lines without \gls{CPU} saturation.
 \end{itemize}
 
-\subsection{Robotic Manipulation Integration via ROS and ROS 2}
+\subsection{Robotic Manipulation Integration via \texorpdfstring{\gls{ROS}}{ROS} and \texorpdfstring{\gls{ROS}}{ROS}~2}
 The current framework was benchmarked primarily on material handling and discrete stamping mechanisms. Expanding the pipeline to articulate industrial manipulators and mobile logistics requires standardizing robotic kinematics:
 \begin{itemize}
     \item \textbf{\gls{URDF} and Kinematic Tree Ingestion:} Standardizing the encapsulation of \gls{URDF} joint definitions, link mass properties, and transmission limits inside \gls{AAS} submodels.
@@ -72,7 +72,14 @@ The rule engine currently parses declarative IF-THEN conditions stored in \gls{J
 \end{itemize}
 
 
-\subsection{Immersive Interfaces: Virtual Reality and Augmented Reality (VR/AR)}
+\subsection{Multi-Agent System (\texorpdfstring{\gls{MAS}}{MAS}) Coordination and Autonomous Negotiation}
+While the current architecture validates procedural digital twin generation and control rule synchronization from static or central \gls{AAS} manifests, modern reconfigurable manufacturing relies on decentralized decision-making. Future iterations can couple each procedural \gls{DT} asset with an autonomous software agent to form a collaborative \gls{MAS}:
+\begin{itemize}
+    \item \textbf{Autonomous Asset Agents for Plug-and-Produce:} As proposed by \textcite{Rocha2024}, wrapping modular mechatronic assets into agent-driven \gls{AAS} units enables dynamic plug-and-produce. Instead of relying on a centralized layout topology, individual conveyor modules and processing stations can autonomously announce their capabilities, negotiate workpiece routing via contract net protocols, and discover neighboring transfer points.
+    \item \textbf{Agent-to-Twin Communication Protocols:} Implementing standard agent communication languages (such as FIPA-ACL over \gls{MQTT} or \gls{TCP}) directly into the simulation runtime. Software agents representing physical orders or material pallets can query the virtual asset capabilities, request alternative routing paths when a bottleneck or fault occurs, and validate proposed schedule adaptations inside the procedural twin before executing them on physical \glspl{PLC}.
+\end{itemize}
+
+\subsection{Immersive Interfaces: Virtual Reality and Augmented Reality (\texorpdfstring{\gls{VR}}{VR}/\texorpdfstring{\gls{AR}}{AR})}
 Because the runtime engine is developed natively in Unity 3D, extending the procedural pipeline to immersive extended reality headsets (such as Meta Quest, Apple Vision Pro, or Microsoft HoloLens) represents a natural and highly valuable progression:
 \begin{itemize}
     \item \textbf{Immersive \gls{VR} Operator Training and Commissioning:} Allowing maintenance personnel and plant operators to navigate procedurally generated factories at 1:1 scale before physical installation, testing manual interventions, safety zones, and ergonomic clearance without hazards.

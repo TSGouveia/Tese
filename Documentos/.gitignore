@@ -404,4 +404,13 @@ $RECYCLE.BIN/
 ### Scripts ###
 Scripts/
 
+# Draw.io backup and temporary files
+**/.*.drawio.bkp
+**/.*.drawio.dtmp
+*.old
+cardoso_front.txt
+joao_dissertation_intro.txt
+nelson_*.txt
+paper_catalog.txt
+
 # End of https://www.toptal.com/developers/gitignore/api/latex,windows,linux,macos
