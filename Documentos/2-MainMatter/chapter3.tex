@@ -80,7 +80,7 @@ Current industrial \gls{DT} implementations face several practical bottlenecks t
 
     \item \textbf{Network Latency and Channel Congestion:} Several experimental architectures send both heavy visual assets and real-time operational data across the same communication channel or \gls{API} endpoint \cite{Gil2024,Pajpach2023}. Downloading large 3D models while simultaneously streaming high-frequency sensor updates creates network delays and jitter. In fast assembly lines, delayed sensor readings cause the simulation to lag behind the physical equipment, creating positional drift and breaking synchronization \cite{Kritzinger2018}.
 
-    \item \textbf{Lack of Simulation-Ready Models for Existing Machinery:} Many factories rely on brownfield equipment that either lacks 3D digital models entirely or only has detailed manufacturing \gls{CAD} drawings \cite{Lee2014,Striffler2023}. These manufacturing files often contain thousands of internal details, such as screw threads or wiring harnesses, while lacking kinematic joints and local pivot axes. Loading such models directly into a real-time physics engine degrades rendering performance and prevents moving components from functioning correctly.
+    \item \textbf{Lack of Simulation-Ready Models for Existing Machinery:} Many factories rely on brownfield equipment that either lacks 3D \glspl{DM} entirely or only has detailed manufacturing \gls{CAD} drawings \cite{Lee2014,Striffler2023}. These manufacturing files often contain thousands of internal details, such as screw threads or wiring harnesses, while lacking kinematic joints and local pivot axes. Loading such models directly into a real-time physics engine degrades rendering performance and prevents moving components from functioning correctly.
 \end{enumerate}
 
 To address these challenges, the framework separates the asset lifecycle into three conceptual layers, supported by an initial preparation stage (Layer~0), as shown in \Cref{fig:architecture_conceptual}:
@@ -245,7 +245,7 @@ The \textit{AssetDescriptor} is the main container and identity root for any mac
 
 The attributes of \textit{AssetDescriptor} are:
 \begin{itemize}
-    \item \textbf{\textit{id}} (\textit{String}, $[1]$): A unique identifier used for naming, user interfaces, and registry lookups.
+    \item \textbf{\textit{id}} (\textit{String}, $[1]$): A unique identifier used for naming, \glspl{UI}, and registry lookups.
     \item \textbf{\textit{assetKind}} (\textit{String}, $[1]$): The functional type or category of the machine.
     \item \textbf{\textit{description}} (\textit{String}, $[0..1]$): An optional text description of the machine.
 \end{itemize}
@@ -253,7 +253,7 @@ The attributes of \textit{AssetDescriptor} are:
 \subsection{VisualStructure Class}
 \label{sec:model_visual_structure}
 
-The \textit{VisualStructure} class defines the 3D visual and spatial layout of an asset, independent of any particular graphics format. An \textit{AssetDescriptor} may have one or more \textit{VisualStructure} entries ($1..*$). Each entry contains a collection of \textit{SceneObject} nodes ($1..*$), and each node carries exactly one \textit{Transform}. The structural organization of this hierarchy is illustrated in the \gls{UML} Class Diagram in \Cref{fig:metamodel_visual_structure}.
+The \textit{VisualStructure} class defines the 3D visual and spatial layout of an asset, independent of any particular graphics format. An \textit{AssetDescriptor} contains a single \textit{VisualStructure} submodel ($1$). Within this submodel, the asset defines a collection of one or more \textit{SceneObject} nodes ($1..*$), where each node carries exactly one \textit{Transform} ($1$). The structural organization of this hierarchy is illustrated in the \gls{UML} Class Diagram in \Cref{fig:metamodel_visual_structure}.
 
 \begin{figure}[htbp]
     \centering
@@ -287,7 +287,7 @@ The attributes in the \textit{VisualStructure} hierarchy are:
 \subsection{BehaviorMapping Class}
 \label{sec:model_behavior_mapping}
 
-While 3D meshes define visual geometry, they do not inherently convey how a physical component operates or responds to automation signals. The \textit{BehaviorMapping} class bridges this gap by defining the operational behavior and kinematic properties of sensors and actuators ($0..*$). It encapsulates the domain configuration and physics parameters required by the simulation engine, grouping one or more \textit{BehaviorBinding} entries ($1..*$). 
+While 3D meshes define visual geometry, they do not inherently convey how a physical component operates or responds to automation signals. The \textit{BehaviorMapping} class bridges this gap by defining the operational behavior and kinematic properties of sensors and actuators ($0..1$). It encapsulates the domain configuration and physics parameters required by the simulation engine, grouping one or more \textit{BehaviorBinding} entries ($1..*$). 
 
 The \textit{BehaviorMapping} class does not store the raw boolean signal values. Instead, it specifies how each component behaves during operation:
 \begin{itemize}
@@ -348,9 +348,9 @@ The attributes across the \textit{BehaviorMapping} hierarchy (\Cref{fig:metamode
 \subsection{VirtualPins Class}
 \label{sec:model_virtual_pins}
 
-In contrast to \textit{BehaviorMapping} (which defines behavioral characteristics and kinematic kinematics), the \textit{VirtualPins} class models the pure electrical input/output (\gls{IO}) interface of the asset ($0..*$). It acts as the digital image of physical controller terminals or fieldbus communication tags, abstracting raw hardware addresses into standardized discrete channels.
+In contrast to \textit{BehaviorMapping} (which defines behavioral characteristics and kinematic kinematics), the \textit{VirtualPins} class models the pure electrical \gls{IO} interface of the asset ($0..1$). It acts as the digital image of physical controller terminals or fieldbus communication tags, abstracting raw hardware addresses into standardized discrete channels.
 
-Each \textit{VirtualPins} instance contains one or more \textit{PinGroup} collections categorized by data direction (\textit{INPUT} or \textit{OUTPUT}). Each group contains the individual \textit{Pin} instances representing discrete boolean states ($1..*$).
+Each \textit{VirtualPins} instance contains two dedicated \textit{PinGroup} collections categorized by data direction (\textit{INPUT} and \textit{OUTPUT}). Each group contains the individual \textit{Pin} instances representing discrete boolean states ($1..*$).
 
 To illustrate the relationship between terminals, signal direction, and individual channels, the \gls{UML} Class Diagram in \Cref{fig:metamodel_signal_interface} details the \textit{VirtualPins} hierarchy.
 
@@ -386,7 +386,7 @@ Through this decoupling, \textit{VirtualPins} strictly reflects the live electri
 \subsection{ControlLogic Class}
 \label{sec:model_control_logic}
 
-The \textit{ControlLogic} class stores local control rules and interlocks inside the asset ($0..*$), as shown in the \gls{UML} Class Diagram in \Cref{fig:metamodel_control_logic}. With this class, machines can run local automated sequences without needing an external \gls{PLC}.
+The \textit{ControlLogic} class stores local control rules and interlocks inside the asset ($0..1$), as shown in the \gls{UML} Class Diagram in \Cref{fig:metamodel_control_logic}. With this class, machines can run local automated sequences without needing an external \gls{PLC}.
 
 \begin{figure}[htbp]
     \centering
@@ -405,7 +405,7 @@ The attributes of \textit{ControlLogic} are:
 \subsection{NetworkEndpoint Class}
 \label{sec:model_network_endpoint}
 
-The \textit{NetworkEndpoint} class specifies the network protocol and address used to communicate with the physical equipment or data services ($0..*$). The structure of this interface is depicted in the \gls{UML} Class Diagram in \Cref{fig:metamodel_network_endpoint}.
+The \textit{NetworkEndpoint} class specifies the network protocol and address used to communicate with the physical equipment or data services ($0..1$). The structure of this interface is depicted in the \gls{UML} Class Diagram in \Cref{fig:metamodel_network_endpoint}.
 
 \begin{figure}[htbp]
     \centering

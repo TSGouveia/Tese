@@ -17,7 +17,7 @@ To provide a comprehensive evaluation, the experimental assessment is divided in
 \begin{enumerate}
     \item \textbf{Demonstrative Case Study (\Cref{sec:eval_case_study}):} An end-to-end qualitative walkthrough illustrating how an industrial mechatronic module is authored, packaged into \gls{AAS}, uploaded to the registry, and procedurally instantiated in Unity.
     \item \textbf{\gls{FMS} Pilot Bench Execution Analysis (\Cref{sec:eval_fms_bench}):} A targeted empirical validation benchmarking the complete digital replica of the physical modular \gls{FMS} bench across 100 cold-boot execution lifecycles.
-    \item \textbf{High-Density Scalability Stress Testing (\Cref{sec:eval_methodology}--\Cref{sec:eval_timeseries_stability}):} A parametric stress benchmark evaluating the computational boundaries of the procedural pipeline across eight scale levels ($N \in \{5, \dots, 1000\}$ conveyor modules), totaling 800 automated simulation runs.
+    \item \textbf{High-Density Scalability Stress Testing (\cref{sec:eval_stress_testing}):} A parametric stress benchmark evaluating the computational boundaries of the procedural pipeline across eight scale levels ($N \in \{5, \dots, 1000\}$ conveyor modules), totaling 800 automated simulation runs.
 \end{enumerate}
 
 All benchmark tests were executed on a Lenovo laptop equipped with a 13th Generation Intel Core i7-13650HX processor (14 cores, 20 threads up to 4.9\,GHz), 16\,GB of DDR5 \gls{RAM}, and an NVIDIA GeForce RTX 4060 Laptop \gls{GPU} with 8\,GB of \gls{VRAM}, running Windows 11 Home (version 25H2) and Unity 6 (version 6000.3.10f1).
@@ -29,11 +29,11 @@ All benchmark tests were executed on a Lenovo laptop equipped with a 13th Genera
 \section{Demonstrative Case Study: End-to-End Asset Onboarding}
 \label{sec:eval_case_study}
 
-To validate the practical usability and operational workflow of the framework (addressing objective \textbf{SO2} and requirement \textbf{NFR4}), this section presents an end-to-end walkthrough demonstrating the onboarding of a new mechatronic asset: introducing an additional modular conveyor unit, designated as \textbf{Conveyor~G} (Asset ID: \texttt{Conveyor\_G}), into the production line. The case study demonstrates how this new equipment is designed, semantically enriched, packaged into a standardized \gls{AAS}, and procedurally executed as an active digital twin without modifying or recompiling the simulation scene.
+To validate the practical usability and operational workflow of the framework (addressing objective \textbf{SO2} and requirement \textbf{NFR4}), this section presents an end-to-end walkthrough demonstrating the onboarding of a new mechatronic asset: introducing an additional modular conveyor unit, designated as \textbf{Conveyor~G} (Asset ID: \texttt{Conveyor\_G}), into the production line. The case study demonstrates how this new equipment is designed, semantically enriched, packaged into a standardized \gls{AAS}, and procedurally executed as an active \gls{DT} without modifying or recompiling the simulation scene.
 
 The onboarding lifecycle spans five sequential stages, progressing from initial 3D mesh modeling to live state synchronization:
 
-\subsection{CAD Design and Kinematic Rigging in Blender}
+\subsection{\texorpdfstring{\gls{CAD}}{CAD} Design and Kinematic Rigging in Blender}
 To guarantee full geometric control, lightweight rendering, and accurate dimensional conformity with the physical equipment, mechatronic modules are designed directly from scratch in Blender rather than relying on unoptimized third-party exports. As described in \Cref{sec:impl_layer0} and illustrated in \Cref{fig:fms_physical_vs_blender} (\cpageref{fig:fms_physical_vs_blender}), the mechanical structure is modeled to scale based on physical tape measurements of the testbed. 
 
 The mesh reproduces the functional geometry while avoiding redundant internal features, ensuring high real-time rendering efficiency. The assembly is partitioned into distinct sub-meshes separating static frame elements from mobile components, such as conveyor belts and pneumatic cylinders. The local coordinate origin (\textit{pivot point}) of each mobile part is positioned on its physical axis of motion (rotational center for drive rollers or linear slide direction for pistons), preventing geometric distortion during procedural runtime animations. Finally, the finished assembly is exported as a single binary \gls{GLB} container with embedded materials and standard $Y$-up coordinate orientation.
@@ -70,15 +70,15 @@ A virtual optical beam sensor is aligned along the surface normal and anchored t
 \subsection{Control Logic Rule Definition}
 Following signal and kinematic configuration, the engineer specifies autonomous edge behavior for Conveyor~G using the visual Rule Editor introduced in \Cref{fig:rule_editor_ui} (\cpageref{fig:rule_editor_ui}). Rather than writing low-level microcontroller code or proprietary script routines, the engineer composes event-condition-action statements through block sequences. For this conveyor module, a transfer sequence is authored where entry optical detection initiates belt motion, holds the state until the exit retroreflective barrier trips, and then de-energizes the motor while signaling handoff readiness to the downstream workstation. These rules are serialized into the standard \textit{ControlLogic} submodel schema, allowing the simulation engine or edge interpreter to execute localized automation independently of external supervisory intervention.
 
-\subsection{AASX Compilation and Repository Publication}
+\subsection{\texorpdfstring{\gls{AASX}}{AASX} Compilation and Repository Publication}
 Once physical metadata, pin assignments, kinematic hierarchies, and operational rules are defined, the engineer triggers package export. The tool uses the Eclipse BaSyx Python \gls{SDK} to generate five standardized \gls{JSON} submodel descriptors: \textit{VisualStructure} (geometric manifests and node paths), \textit{VirtualPins} (sensor and actuator pin topologies), \textit{KinematicTopology} (degrees of freedom, speed limits, and motion types), \textit{ControlLogic} (autonomous edge rules), and \textit{TechnicalData} (operational ratings, power requirements, and mechanical envelopes).
 
-The serialized submodel definitions and the binary \gls{GLB} mesh are packed into an Open Packaging Conventions \gls{AASX} container file. The application dispatches an \gls{HTTP} POST request directly to the centralized Eclipse BaSyx v2 server. The server extracts the container, exposes the submodels through standard \gls{REST} endpoints, and registers the global Asset ID in the \gls{AAS} Registry.
+The serialized submodel definitions and the binary \gls{GLB} mesh are packed into an \gls{OPC} \gls{AASX} container file. The application dispatches an \gls{HTTP} POST request directly to the centralized Eclipse BaSyx v2 server. The server extracts the container, exposes the submodels through standard \gls{REST} endpoints, and registers the global Asset ID in the \gls{AAS} Registry.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.90\linewidth,height=0.38\textheight,keepaspectratio]{5-Figures/5-aas}
-    \caption{Standardized AASX container for Conveyor~G uploaded and registered in the Eclipse BaSyx v2 repository.}
+    \caption{Standardized \gls{AASX} container for Conveyor~G uploaded and registered in the Eclipse BaSyx v2 repository.}
     \label{fig:case_study_step3}
 \end{figure}
 
@@ -99,7 +99,7 @@ Finally, the simulation engine connects to the physical controller via \gls{TCP}
 % =============================================================================
 % SECTION: FMS BENCHMARK
 % =============================================================================
-\section{Empirical Validation: Modular FMS Pilot Bench}
+\section{Empirical Validation: Modular \texorpdfstring{\gls{FMS}}{FMS} Pilot Bench}
 \label{sec:eval_fms_bench}
 
 To validate whether the model-driven \gls{DT} operates with sufficient fidelity and responsiveness for physical automation systems, an individual benchmark was dedicated entirely to the modular \gls{FMS} pilot system. Mechanically and functionally, the virtual replica instantiates the exact components of the physical workbench: three linear conveyors, two curved rotational conveyors, one translating transfer unit, and the vertical pneumatic punch station, accompanied by all associated virtual sensing colliders and actuator endpoints.
@@ -108,7 +108,7 @@ An automated test harness conducted 100 independent cold executions of the compl
 
 \begin{table}[htbp]
     \centering
-    \caption{Experimental results for the modular FMS pilot bench across 100 test runs.}
+    \caption{Experimental results for the modular \gls{FMS} pilot bench across 100 test runs.}
     \label{tab:fms_results}
     \renewcommand{\arraystretch}{1.3}
     \small
@@ -131,7 +131,7 @@ As shown in \Cref{tab:fms_results}, procedural reconstitution of the pilot bench
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.88\linewidth,height=0.32\textheight,keepaspectratio]{5-Figures/fms_metrics_distributions.pdf}
-    \caption{Distribution of startup initialization time and steady-state rendering frame rate across 100 experimental runs of the modular FMS pilot bench.}
+    \caption{Distribution of startup initialization time and steady-state rendering frame rate across 100 experimental runs of the modular \gls{FMS} pilot bench.}
     \label{fig:fms_distributions}
 \end{figure}
 
@@ -140,7 +140,7 @@ As shown in \Cref{tab:fms_results}, procedural reconstitution of the pilot bench
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.88\linewidth,height=0.35\textheight,keepaspectratio]{5-Figures/fms_timeseries_evolution.pdf}
-    \caption{Dynamic execution timeline of the modular FMS bench, contrasting frame rate with frame latency over simulation time.}
+    \caption{Dynamic execution timeline of the modular \gls{FMS} bench, contrasting frame rate with frame latency over simulation time.}
     \label{fig:fms_timeseries}
 \end{figure}
 
@@ -308,7 +308,7 @@ The empirical findings from both evaluation tracks directly validate the three c
 \begin{itemize}
     \item \textbf{Validation of H1 (Semantic Integration):} Confirmed. The modular \gls{AAS} submodel schema successfully united 3D visual geometry, kinematic bounds, virtual \gls{IO} pins, and declarative control rules. The exact same \gls{AASX} packages drove both standalone \gls{VC} in Unity and live physical hardware telemetry without modifying asset manifests.
     \item \textbf{Validation of H2 (Procedural Generation):} Confirmed. The runtime engine dynamically assembled all visual meshes, physical colliders, and telemetry bindings entirely in memory at launch (cold-boot initialization in $2.79 \pm 0.04\,$s for the pilot bench and $5.22 \pm 0.09\,$s for a 50-conveyor layout), fully eliminating pre-compiled scenes.
-    \item \textbf{Validation of H3 (Real-Time Synchronization and Scalability):} Confirmed. Decoupling the asynchronous \gls{TCP} telemetry stream from the fixed physics loop alongside sensor-triggered kinematic snapping maintained continuous physical-digital alignment without drift. Parametric stress testing mapped the deterministic operational ceiling up to 500 modules ($93\,$\gls{FPS}) and isolated the single-threaded CPU physics saturation at $N=1000$.
+    \item \textbf{Validation of H3 (Real-Time Synchronization and Scalability):} Confirmed. Decoupling the asynchronous \gls{TCP} telemetry stream from the fixed physics loop alongside sensor-triggered kinematic snapping maintained continuous physical-digital alignment without drift. Parametric stress testing mapped the deterministic operational ceiling up to 500 modules ($93\,$\gls{FPS}) and isolated the single-threaded \gls{CPU} physics saturation at $N=1000$.
 \end{itemize}
 
 Overall, the evaluation demonstrates that the framework provides responsive, bounded real-time performance for modular production lines containing up to 250 modules, while maintaining valid operational fidelity up to 500 modules, confirming the feasibility of model-driven \gls{DT} generation in smart manufacturing.
