@@ -1,6 +1,6 @@
 <mxfile host="Electron" agent="5.0">
   <diagram id="unity_runtime_sequence" name="Unity 3D Runtime Sequence">
-    <mxGraphModel dx="2357" dy="1482" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1400" math="0" shadow="0">
+    <mxGraphModel dx="1414" dy="889" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1400" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -132,7 +132,7 @@
             <mxPoint x="795" y="525" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="m8" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#375996;fontSize=13;fontStyle=0;" value="Rotate Conveyor Belt UVs &amp;amp; Inject Convex Colliders + Rigidbodies">
+        <mxCell id="m8" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#375996;fontSize=13;fontStyle=0;" value="Inject Convex Colliders + Rigidbodies">
           <mxGeometry relative="1" as="geometry">
             <mxPoint x="355" y="575" as="sourcePoint" />
             <mxPoint x="795" y="575" as="targetPoint" />
@@ -218,7 +218,7 @@
         <mxCell id="p2_title" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#64748B;strokeWidth=1.5;fontStyle=1;fontSize=13;fontColor=#1E293B;align=center;verticalAlign=middle;" value="PHASE 2: Procedural Import, Mesh Normalization &amp;amp; Physics Setup (AASKitImporter.cs)" vertex="1">
           <mxGeometry height="26" width="670" x="55" y="367" as="geometry" />
         </mxCell>
-        <mxCell id="p3_title" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;strokeWidth=1.5;fontStyle=1;fontSize=13;fontColor=#B45309;align=center;verticalAlign=middle;labelBackgroundColor=default;fillStyle=solid;" value="PHASE 3: Dual-Mode Execution Loop (Virtual Commissioning vs Live Digital Twin)" vertex="1">
+        <mxCell id="p3_title" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;strokeWidth=1.5;fontStyle=1;fontSize=13;fontColor=#B45309;align=center;verticalAlign=middle;labelBackgroundColor=default;fillStyle=solid;" value="PHASE 3: Dual-Mode Execution Loop (Virtual Commissioning vs Digital Twin)" vertex="1">
           <mxGeometry height="26" width="610" x="55" y="697" as="geometry" />
         </mxCell>
         <mxCell id="mode_a_title" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F57C00;strokeWidth=1.5;fontStyle=1;fontSize=13;fontColor=#E65100;align=center;verticalAlign=middle;" value="MODE A: Virtual Commissioning" vertex="1">

@@ -217,12 +217,12 @@ The \gls{AAS} metamodel, standardized under \gls{IEC}~63278 and specified by the
     \item \textbf{Submodel:} A group of related properties for a specific domain, such as identification, technical specs, or kinematics. Each submodel has an identifier and a reference to a standardized semantic definition (such as \gls{ECLASS} or \gls{IDTA} templates).
     \item \textbf{Submodel Elements:} The actual data fields within a submodel \cite{Reichardt2024,Barnard2024}:
     \begin{itemize}
-        \item \texttt{Property}: Stores a single value, such as a number, text, or boolean.
-        \item \texttt{MultiLanguageProperty}: Stores text in multiple languages.
-        \item \texttt{Range}: Sets minimum and maximum limits for a numerical value.
-        \item \texttt{File} and \texttt{Blob}: References or embeds files, such as 3D meshes, user manuals, or drawings.
-        \item \texttt{SubmodelElementCollection} and \texttt{SubmodelElementList}: Groups multiple submodel elements together.
-        \item \texttt{Operation}: Defines invokable functions with input and output parameters.
+        \item \textit{Property}: Stores a single value, such as a number, text, or boolean.
+        \item \textit{MultiLanguageProperty}: Stores text in multiple languages.
+        \item \textit{Range}: Sets minimum and maximum limits for a numerical value.
+        \item \textit{File} and \textit{Blob}: References or embeds files, such as 3D meshes, user manuals, or drawings.
+        \item \textit{SubmodelElementCollection} and \textit{SubmodelElementList}: Groups multiple submodel elements together.
+        \item \textit{Operation}: Defines invokable functions with input and output parameters.
     \end{itemize}
 \end{itemize}
 
@@ -270,7 +270,7 @@ To use \glspl{AAS} during operation, server software must host them and provide 
         \item \textit{DataBridge:} Connects \gls{AAS} properties directly to field protocols like \gls{OPCUA} and \gls{MQTT} \cite{Perez2025,Caldana2025}.
     \end{itemize}
     \item \textbf{AASX Package Explorer:} A graphical tool used to create, inspect, and validate \gls{AASX} files \cite{Pajpach2025}.
-    \item \textbf{Development Libraries:} Open-source libraries such as \texttt{aas-core} and \mbox{\texttt{basyx-python-sdk}} allow software applications to read and write \gls{AAS} data across Python, C\#, and TypeScript.
+    \item \textbf{Development Libraries:} Open-source libraries such as aas-core and basyx-python-sdk allow software applications to read and write \gls{AAS} data across Python, C\#, and TypeScript.
 \end{itemize}
 
 %=============================================================================
@@ -432,7 +432,7 @@ Comparing these methods highlights clear trade-offs. Model-driven methods \cite{
 \label{sec:sota_gaps}
 %=============================================================================
 
-Reviewing the literature shows that while individual pieces of the \gls{DT} puzzle (such as 3D mesh optimization, \gls{AAS} servers, and game engine visualization) have progressed, integrating them into an automated procedural system remains an open challenge. Four main gaps stand out:
+Reviewing the literature shows that while individual pieces of the \gls{DT} have progressed, integrating them into an automated procedural system remains an open challenge. Four main gaps stand out:
 
 \begin{enumerate}
     \item \textbf{Gap 1: Fragmented Aspects vs. Unified Semantic Metamodel.}

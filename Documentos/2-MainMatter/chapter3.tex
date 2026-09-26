@@ -16,9 +16,9 @@ This chapter presents the conceptual architecture, semantic data model, and inte
 The remainder of this chapter is organized as follows:
 \begin{itemize}
     \item \Cref{sec:design_requirements} defines the functional and non-functional requirements that guide the architectural design, along with their normative taxonomy and literature rationale.
-    \item \Cref{sec:architecture_conceptual} introduces the conceptual architecture, outlining the core design principles, the upstream digitization stage (Layer~0), and the operational activity workflows for Asset Modeling (Layer~1), Storage and Registry (Layer~2), and Runtime Execution (Layer~3).
-    \item \Cref{sec:architecture_flows} describes cross-layer communication protocols and data exchange between the physical shop floor and the virtual environment.
+    \item \Cref{sec:architecture_conceptual} introduces the conceptual architecture, outlining the core design principles, the upstream digitization stage (Layer~0), the operational activity workflows (Layers~1 to 3), and cross-layer interaction flows.
     \item \Cref{sec:asset_data_model} details the semantic metamodel, decomposing industrial assets into standardized submodels for 3D geometry, kinematics, \gls{IO} pin mappings, control logic, and network endpoints.
+    \item \Cref{sec:architecture_summary} summarizes the conceptual architecture and provides the transition to the technological implementation.
 \end{itemize}
 
 \section{Design Requirements and Constraints}
@@ -44,7 +44,7 @@ Based on these principles and the gaps identified in the literature, the functio
 \subsection{Functional Requirements}
 
 \begin{enumerate}
-    \item[\textbf{FR1}] \textbf{Plug-and-Play Asset Onboarding:} The framework shall support the registration and deployment of new industrial assets into the active ecosystem without requiring recompilation or manual changes to simulation software or \gls{PLC} firmware. Each asset shall be independently described, validated, and onboarded without disrupting running operations \cite{Rocha2024,AshtariTalkhestani2019}.
+    \item[\textbf{FR1}] \textbf{Plug-and-Play Asset Onboarding:} The framework shall support the registration and deployment of new industrial assets into the active ecosystem without requiring recompilation or manual changes to simulation software. Each asset shall be independently described, validated, and onboarded without disrupting running operations \cite{Rocha2024,AshtariTalkhestani2019}.
 
     \item[\textbf{FR2}] \textbf{Self-Describing Asset Packages:} All information needed to configure and execute a \gls{DT} shall be bundled into a single, standardized, and portable package per asset. This archive shall encapsulate 3D visual geometry, kinematic degrees of freedom, virtual sensor/actuator pin mappings, network endpoints, and behavioral control rules \cite{Lu2025,Gollner2022}.
 
@@ -161,8 +161,8 @@ Layer~2 acts as the central service directory and artifact distribution point fo
 To keep discovery fast and scalable, Layer~2 separates heavy static files from dynamic directory metadata (illustrated in the \gls{UML} Activity Diagram in \Cref{fig:activity_layer2}) using two distinct services:
 \begin{enumerate}
     \item \textbf{Model Repository:} Acts as a dedicated file store. It receives published asset packages from Layer~1, extracts the heavy 3D geometry meshes and descriptor schemas, and hosts them through standard \gls{HTTP} endpoints.
-    \item \textbf{Asset Registry:} Functions as a lightweight service catalog. It records high-level metadata: the unique asset identifier, device classification, operational status, and active communication endpoints (such as the specific \gls{MQTT} broker address, port, and topic names used by the machine's \gls{PLC}).
-    \item \textbf{Dynamic Discovery and Provisioning:} When a simulation client starts up or detects a new machine on the factory floor, it queries the lightweight \textit{Asset Registry} via a \gls{REST} \gls{API} to find out which assets are available. The registry responds with the metadata and download URLs. Using these links, the client fetches the 3D geometry and submodels from the \textit{Model Repository}, loading them into memory without needing pre-installed local files.
+    \item \textbf{Asset Registry:} Functions as a lightweight service catalog. It records high-level metadata: the unique asset identifier, device classification, operational status, and active communication endpoints.
+    \item \textbf{Dynamic Discovery and Provisioning:} When a simulation client starts up it queries the lightweight \textit{Asset Registry} via a \gls{REST} \gls{API} to find out which assets are available. The registry responds with the metadata and download URLs. Using these links, the client fetches the 3D geometry and submodels from the \textit{Model Repository}, loading them into memory without needing pre-installed local files.
 \end{enumerate}
 
 \begin{figure}[htbp]
@@ -187,13 +187,13 @@ As shown in the \gls{UML} Activity Diagram (\Cref{fig:activity_layer3}), Layer~3
 \begin{enumerate}
     \item \textbf{Procedural Scene Assembly:} When launched, the simulation runtime queries the Layer~2 registry, downloads the necessary asset packages, and reconstructs the virtual factory floor directly in memory. It automatically creates 3D visual nodes, binds physics colliders, assigns kinematic joint limits, and maps virtual pins based on the downloaded descriptors, requiring no manual scene editing.
     \item \textbf{Continuous Physics Simulation:} The simulation engine runs an internal physics loop at a steady frequency, calculating rigid-body collisions, gravity, and joint movements so that material handling and mechanical operations behave realistically.
-    \item \textbf{Isolated Low-Latency Telemetry:} In parallel, the physical machines on the shop floor run their cyclic \gls{PLC} scan routines. When physical limit switches, optical sensors, or actuator states change, the controller sends compact telemetry packets over a dedicated, low-overhead messaging protocol straight to the simulation runtime, bypassing storage databases entirely to minimize delay.
+    \item \textbf{Isolated Low-Latency Telemetry:} In parallel, the physical machines on the shop floor run their cyclic \gls{PLC} scan routines. When physical sensors or actuator states change, the controller sends compact telemetry packets over a dedicated, low-overhead messaging protocol straight to the simulation runtime, bypassing storage databases entirely to minimize delay.
     \item \textbf{State Updates and Drift Correction Snapping:} When the simulation receives an incoming telemetry packet, it updates the virtual sensor indicators and commands the virtual actuators. Because friction and contact physics accumulate small numerical errors over time, a moving workpiece will naturally drift away from its real position. To eliminate this divergence, each physical sensor detection acts as an absolute ground-truth reference point: the moment the hardware sensor trips, the simulation engine instantly snaps the virtual workpiece to the exact physical coordinates of that sensor before the next physics tick. This resets accumulated drift to zero and guarantees continuous physical-digital alignment even during extended production runs.
 \end{enumerate}
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.85\textwidth]{drawio/Runtime Execution & Synchronization.pdf}
+    \includegraphics[width=0.85\textwidth]{5-Figures/activity_layer3.pdf}
     \caption{\gls{UML} Activity Diagram of Layer 3 (Runtime Execution and Physical Synchronization).}
     \label{fig:activity_layer3}
 \end{figure}
@@ -377,7 +377,7 @@ The attributes across the \textit{VirtualPins} hierarchy (\Cref{fig:metamodel_si
 \textbf{\textit{Pin}:}
 \begin{itemize}
     \item \textbf{\textit{name}} (\textit{String}, $[1]$): The logical tag name or physical \gls{PLC}/\gls{IO} terminal address.
-    \item \textbf{\textit{value}} (\textit{Boolean}, $[1]$): The instantaneous discrete boolean state of the electrical signal (\texttt{true} for HIGH, \texttt{false} for LOW).
+    \item \textbf{\textit{value}} (\textit{Boolean}, $[1]$): The instantaneous discrete boolean state of the electrical signal (\textit{true} for HIGH, \textit{false} for LOW).
 \end{itemize}
 
 Through this decoupling, \textit{VirtualPins} strictly reflects the live electrical state, while \textit{BehaviorMapping} interprets that state to orchestrate physical kinematics inside the simulation engine.
@@ -426,7 +426,7 @@ The attributes of \textit{NetworkEndpoint} are:
 \section{Chapter Summary and Architectural Transition}
 \label{sec:architecture_summary}
 
-This chapter established the conceptual foundation of the model-driven \gls{DT} framework. By formalizing four functional requirements (\textbf{FR1}--\textbf{FR4}) and four non-functional requirements (\textbf{NFR1}--\textbf{NFR4}) under the normative taxonomy of \textcite{Alemao2022}, the framework directly resolves the challenges of vendor lock-in, manual reconstruction, and synchronization drift. The architecture decouples asset authoring from runtime execution through three functional layers, backed by a vendor-neutral semantic metamodel that integrates 3D visual representations, kinematic definitions, virtual pin mappings, behavioral rule logic, and network endpoints into self-describing packages.
+This chapter established the conceptual foundation of the \gls{DT} framework. By formalizing four functional requirements (\textbf{FR1}--\textbf{FR4}) and four non-functional requirements (\textbf{NFR1}--\textbf{NFR4}) under the normative taxonomy of \textcite{Alemao2022}, the framework directly resolves the challenges of vendor lock-in, manual reconstruction, and synchronization drift. The architecture decouples asset authoring from runtime execution through three functional layers, backed by a vendor-neutral semantic metamodel that integrates 3D visual representations, kinematic definitions, virtual pin mappings, behavioral rule logic, and network endpoints into self-describing packages.
 
 While this chapter focused on technology-agnostic specifications, the practical deployment of this architecture requires concrete software engineering choices, standards serializations, and physical hardware interfaces. \Cref{cha:implementation} details the technical implementation of this architecture, describing the realization of the modeling wizard in Python and PyQt6, the semantic repository using Eclipse BaSyx v2, the runtime simulation engine in Unity, and the real-time embedded firmware on industrial Arduino controllers.
 
