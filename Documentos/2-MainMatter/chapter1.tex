@@ -34,7 +34,7 @@ First, 3D geometry is fragmented across engineering tools. Most factory machines
 
 Second, the toolchains used to build simulation scenes are mostly manual and vendor-locked. Automation engineers have to import 3D meshes into proprietary simulation software, manually set up coordinate systems, and script motion behaviors by hand. When a physical machine is rearranged or rewired on the factory floor, the simulation scene must be manually rebuilt in the editor, which creates maintenance delays and causes the virtual model to become outdated \cite{Alexopoulos2025}.
 
-Third, simulation tools are often decoupled from control hardware. Standard \gls{DT} models rarely include electrical pin mappings or control rules. Moving between offline \gls{VC} and live synchronization with physical \glspl{PLC} requires remapping signal tags across different software tools by hand, which is tedious and prone to configuration mistakes \cite{Striffler2023}.
+Third, simulation tools are often decoupled from control hardware. Standard models rarely include electrical pin mappings or control rules. Moving between offline \gls{VC} and an operational \gls{DT} connected to physical \glspl{PLC} requires remapping signal tags across different software tools by hand, which is tedious and prone to configuration mistakes \cite{Striffler2023}.
 
 These limitations explain why commercial simulation platforms struggle in agile, reconfigurable production lines \cite{Rocha2024}. Because proprietary tools depend on pre-compiled scenes, static component catalogs, and manual address mapping, even minor adjustments to physical equipment require time-consuming manual intervention. To overcome these barriers, this research explores how open, standardized information models can replace manual workflows and drive automated simulation pipelines \cite{Luder2020}.
 
@@ -51,7 +51,7 @@ To address this question, three research sub-questions and their working hypothe
 \begin{itemize}
     \item \textbf{RQ1 (Semantic Integration):} \textit{How can 3D geometry, kinematic constraints, electrical pins, and control logic be structured within a standardized semantic model?}
     \begin{itemize}
-        \item[\textbf{H1:}] A modular \gls{AAS} submodel schema that links low-polygon 3D meshes, kinematic limits, \gls{IO} pin mappings, and declarative control rules provides a vendor-neutral representation capable of supporting both \gls{VC} and live synchronization.
+        \item[\textbf{H1:}] A modular \gls{AAS} submodel schema that links low-polygon 3D meshes, kinematic limits, \gls{IO} pin mappings, and declarative control rules provides a vendor-neutral representation capable of supporting both \gls{VC} and an operational \gls{DT}.
     \end{itemize}
 
     \item \textbf{RQ2 (Procedural Generation):} \textit{Can an interactive 3D simulation scene be assembled at runtime directly from \gls{AAS} packages without pre-compiled scene files?}
@@ -67,7 +67,7 @@ To address this question, three research sub-questions and their working hypothe
 
 \section{Research Objectives}
 
-The primary objective of this dissertation is to design, build, and test an open, model-driven framework that procedurally generates and synchronizes industrial \glspl{DT} using standardized \gls{AAS} packages.
+The primary objective of this dissertation is to design, build, and test an open framework that procedurally generates and synchronizes industrial \glspl{DT} using standardized \gls{AAS} packages.
 
 To reach this goal, four specific objectives were defined:
 
@@ -75,7 +75,7 @@ First, \textbf{SO1 (Semantic Asset Metamodel)} defines an open data model using 
 
 Second, \textbf{SO2 (Visual Asset Modeling Pipeline)} develops a desktop authoring tool that lets engineers configure 3D assets, place virtual sensors on model surfaces using mouse clicks, and export valid \gls{AASX} packages without writing software code.
 
-Third, \textbf{SO3 (Procedural Simulation Runtime)} creates a real-time runtime engine in Unity 3D that queries the semantic repository, instantiates 3D meshes and colliders in memory, and runs in with live telemetry synchronization.
+Third, \textbf{SO3 (Procedural Simulation Runtime)} creates a real-time runtime engine in Unity 3D that queries the semantic repository, instantiates 3D meshes and colliders in memory, and operates in both virtual commissioning and operational \gls{DT} modes.
 
 Fourth, \textbf{SO4 (Empirical Validation and Scalability Evaluation)} evaluates the framework on a physical modular conveyor testbed, followed by automated stress tests scaling from 5 to 1000 modules to measure startup times, frame rates, and latency limits.
 
@@ -93,7 +93,7 @@ In Layer~3 (Runtime Simulation), a Unity 3D engine downloads the models from BaS
 
 The main contributions of this dissertation are:
 \begin{enumerate}
-    \item An open, model-driven pipeline that replaces static, pre-compiled simulation files by generating interactive virtual environments dynamically from \gls{AAS} packages.
+    \item An open pipeline that replaces static, pre-compiled simulation files by generating interactive virtual environments dynamically from \gls{AAS} packages.
     \item A unified \gls{AAS} submodel schema that links 3D meshes, joint limits, electrical pins, and IF-THEN control rules in a single portable format.
     \item An interactive authoring tool that allows engineers to configure sensors visually and export valid \gls{AASX} archives without custom programming.
     \item Quantitative experimental benchmarks on physical mechatronic hardware and large-scale synthetic layouts, providing realistic latency and frame rate limits for procedurally assembled \glspl{DT}.

@@ -11,7 +11,7 @@
 \chapter{Technological Implementation}
 \label{cha:implementation}
 
-This chapter describes how the model-driven \gls{DT} framework from \Cref{cha:architecture} was implemented in practice. Moving from conceptual designs to a working system requires connecting standardized semantic models, such as the \gls{AAS}, with game-engine physics, interactive software tools, and industrial shop-floor hardware.
+This chapter describes how the \gls{DT} framework from \Cref{cha:architecture} was implemented in practice. Moving from conceptual designs to a working system requires connecting standardized semantic models, such as the \gls{AAS}, with game-engine physics, interactive software tools, and industrial shop-floor hardware.
 
 To evaluate the pipeline under realistic manufacturing conditions, each layer was implemented and tested on a physical modular \gls{FMS} bench.
 
@@ -21,7 +21,7 @@ The chapter is organized as follows:
     \item \Cref{sec:impl_layer0} presents Layer~0 (Physical Asset Digitization), covering physical measurements, low-polygon 3D modeling, pivot rigging, and \gls{GLB} export in Blender.
     \item \Cref{sec:impl_wizard} describes Layer~1 (Asset Modeling), detailing the PyQt6 and PyVista desktop application, surface raycasting for placing sensors, the no-code control logic editor, and \gls{AASX} package generation with the BaSyx Python \gls{SDK}.
     \item \Cref{sec:impl_basyx} covers Layer~2 (Storage and Registry), explaining the containerized Eclipse BaSyx~v2 microservices, port mappings, and MongoDB database.
-    \item \Cref{sec:impl_unity} details Layer~3 (Runtime Execution and Physical Synchronization), focusing on procedural scene assembly in Unity 3D, PhysX contact mechanics, dual-mode execution (\gls{VC} and live synchronization), and kinematic drift correction.
+    \item \Cref{sec:impl_unity} details Layer~3 (Runtime Execution and Physical Synchronization), focusing on procedural scene assembly in Unity 3D, PhysX contact mechanics, dual-mode execution (\gls{VC} and operational \gls{DT}), and kinematic drift correction.
     \item \Cref{sec:impl_firmware} describes the physical automation setup and embedded firmware running FreeRTOS on an Industrial Shields M-DUINO \gls{PLC}, including sensor scanning, low-latency \gls{TCP} telemetry, and \gls{HTTP} actuation.
     \item \Cref{sec:impl_traceability} maps each technical component to its functional and non-functional requirements in a traceability matrix.
 \end{itemize}
@@ -41,7 +41,7 @@ To validate the framework, an existing \gls{FMS} testbed was used as the pilot c
     \label{fig:fms_pilot_testbed}
 \end{figure}
 
-Mechanically, the bench includes three straight conveyor belts (Conveyors B, D, and F), two curved rotating sections (Conveyors C and E), one translating transfer conveyor (Conveyor A), and a vertical punch mechanism that simulates drilling, stamping, or screwing operations. Field instrumentation consists of 24\,V~DC magnetic track sensors to detect pallets, contact limit switches to monitor conveyor and punch positions, and 24\,V~DC motors driving each section. Control is managed by an Industrial Shields M-DUINO 57R+ \gls{PLC} (based on the Arduino Mega 2560), equipped with an Ethernet port and optocoupled \gls{IO} boards. Digital input pins (I0\_0 to I2\_3) read sensor states, while relay outputs (R0\_2 to R2\_8) command conveyor motors and punch actions (the full pin assignment is listed in \Cref{app:fms_io_mapping}).
+Mechanically, the bench includes three stationary conveyor belts (Conveyors B, D, and F), two rotating sections (Conveyors C and E), one translating conveyor (Conveyor A), and a punch mechanism that simulates drilling, stamping, or screwing operations. Field instrumentation consists of 24\,V~DC magnetic track sensors to detect workpieces, contact limit switches to monitor conveyor and punch positions, and 24\,V~DC motors driving each section. Control is managed by an Industrial Shields M-DUINO 57R+ \gls{PLC} (based on the Arduino Mega 2560), equipped with an Ethernet port and optocoupled \gls{IO} boards. Digital input pins (I0\_0 to I2\_3) read sensor states, while relay outputs (R0\_2 to R2\_8) command conveyor motors and punch actions (the full pin assignment is listed in \Cref{app:fms_io_mapping}).
 
 \subsection{Overall Component Architecture and Inter-Layer Interfaces}
 With this physical bench as the target, the complete framework was implemented across four operational layers. The \gls{UML} Component Diagram in \Cref{fig:architecture_global} illustrates the overall system implementation architecture across the four operational layers.
@@ -65,7 +65,7 @@ As established in \Cref{sec:layer0_conceptual} (\cpageref{sec:layer0_conceptual}
 
 The \gls{UML} Component Diagram in \Cref{fig:component_layer0} illustrates the component architecture of Layer~0, structured into three sequential tasks:
 \begin{enumerate}
-    \item \textbf{Physical Survey:} Measuring functional lengths, track widths, roller clearances, and mounting heights on the physical \gls{FMS} bench using calipers and surveying tape.
+    \item \textbf{Physical Measurements:} Measuring the dimensions of the physical \gls{FMS} modules using a measuring tape.
     \item \textbf{3D Mesh Modeling and Kinematic Rigging:} Reconstructing modules at a 1:1 scale matching Unity's coordinate frame.
     \item \textbf{\gls{GLB} Packaging:} Exporting self-contained binary \gls{glTF} files (.glb) containing geometry, materials, hierarchies, and trigger colliders for direct ingestion into Layer~1.
 \end{enumerate}
@@ -98,7 +98,7 @@ The \gls{UML} Component Diagram in \Cref{fig:component_layer0} illustrates the c
 
 To meet the requirements of the \textit{VisualStructure} metamodel (\Cref{sec:model_visual_structure}, \cpageref{sec:model_visual_structure}), each asset was structured into a clean parent-child hierarchy separating static frames from moving mechanisms. Static chassis parts were merged into a single root node with its coordinate origin set at the base reference point $(0, 0, 0)$. Dynamic elements, such as conveyor belts, rotating conveyors, and the punch station, were isolated into child objects. 
 
-The pivot point of each moving component was aligned with its physical axis of rotation or linear motion vector. In physics engines, an offset pivot causes parts to wobble or translate along unintended paths when animated by \textit{BehaviorBinding} scripts (\Cref{sec:model_behavior_mapping}, \cpageref{sec:model_behavior_mapping}). In addition, invisible geometric trigger colliders were placed at physical sensor locations to detect passing workpieces during simulation. Once modeled and validated, all modules were exported as compact binary \gls{GLB} files ready for the modeling application.
+The pivot point of each moving component was aligned with its physical axis of rotation or linear motion vector. In physics engines, an offset pivot causes parts to rotate or translate along unintended paths when animated by \textit{BehaviorBinding} scripts (\Cref{sec:model_behavior_mapping}, \cpageref{sec:model_behavior_mapping}). In addition, invisible geometric trigger colliders were placed at physical sensor locations to detect passing workpieces during simulation. Once modeled and validated, all modules were exported as compact binary \gls{GLB} files ready for the modeling application.
 
 
 \section{Layer 1: Asset Modeling Desktop Application}
@@ -118,13 +118,13 @@ The \gls{UML} Component Diagram in \Cref{fig:component_layer1} shows the compone
 \subsection{\texorpdfstring{\gls{AAS}}{AAS} Data Model \& Submodel Specifications}
 Rather than following a rigid sequence, the modeling tool acts as an editor that populates standardized \gls{IEC}~63278 \gls{AAS} submodels (\Cref{fig:asset_metamodel_conceptual}, \cpageref{fig:asset_metamodel_conceptual}). Although the \gls{IDTA} provides official templates for static equipment data (such as \textit{Digital Nameplate}), it lacks standard definitions for 3D physics, spatial sensor placement, and live controller synchronization.
 
-To fill this gap, the tool implements the five domain-specific submodels defined in \Cref{sec:asset_data_model} (\cpageref{sec:asset_data_model}):
+To fill this gap, the tool implements the domain-specific submodels defined in \Cref{sec:asset_data_model} (\cpageref{sec:asset_data_model}):
 \begin{itemize}
-    \item \textbf{\textit{VisualStructure}}: Stores the 3D \gls{GLB} file and defines the transform hierarchy for rendering.
-    \item \textbf{\textit{BehaviorMapping}}: Binds moving components to motion parameters, defining translation or rotation axes, pivot offsets, and speeds.
-    \item \textbf{\textit{VirtualPins}}: Maps sensors and actuators to physical \gls{PLC} addresses (such as I0\_0 or R0\_0) and stores their current value.
-    \item \textbf{\textit{NetworkEndpoint}}: Configures network communication settings, including controller \gls{IP} addresses, ports, and protocol bindings.
-    \item \textbf{\textit{ControlLogic}}: Formats IF-THEN rules into structured \glspl{AST} for local testing during \gls{VC}.
+    \item \textbf{\textit{VisualStructure}}: Stores the 3D \gls{GLB} file and defines the transform hierarchy (position, rotation, scale) for rendering.
+    \item \textbf{\textit{VirtualPins}}: Maps sensors and actuators to physical \gls{PLC} addresses (such as \texttt{I0\_0} or \texttt{R0\_2}) and stores their boolean values.
+    \item \textbf{\textit{BehaviorMapping}}: Binds components to motion parameters, defining translation or rotation axes, continuous speeds, and sensor trigger envelopes.
+    \item \textbf{\textit{AssetInterfacesDescription}} (or \textbf{\textit{NetworkEndpoint}}): Configures network communication settings, including controller \gls{IP} addresses, ports, and protocol bindings.
+    \item \textbf{\textit{ControlLogic}}: Formats IF-THEN rules into structured conditions for local edge execution during \gls{VC}.
 \end{itemize}
 
 \subsection{Modeling Tool \texorpdfstring{\gls{GUI}}{GUI} and 3D Viewport Architecture}
@@ -144,7 +144,7 @@ As shown in \Cref{fig:conveyor_wizard_gui_screenshot}, the interface is divided 
     \begin{enumerate}
         \item \textit{Model Selection (Step 1):} Selects the asset type and loads the 3D model into the viewport.
         \item \textit{Basic Info \& Transform (Step 2):} Configures metadata (\gls{AAS} ID, asset name, description), 3D transform settings (position, rotation, scale), and communication endpoints (\gls{IP} and port).
-        \item \textit{Configure Sensors (Step 3):} Places virtual sensor pins directly on the 3D surface using raycasting and sets their parameters.
+        \item \textit{Configure Sensors (Step 3):} Configures virtual sensor pins directly on the 3D surface using raycasting and sets their parameters.
         \item \textit{Configure Actuators (Step 4):} Defines virtual actuator pins, motion types, direction vectors, and speeds mapped to specific mesh nodes.
         \item \textit{Review \& Deploy (Step 5):} Displays the generated submodel tree, previews the \gls{JSON} manifest, and exports or uploads the .aasx bundle.
     \end{enumerate}
@@ -197,12 +197,12 @@ These rules are saved as structured \glspl{AST} in the \textit{ControlLogic} sub
     \label{fig:sequence_rules}
 \end{figure}
 
-Once asset properties, kinematic mappings, virtual pins, and control logic are fully defined, the application initiates the export pipeline. Using the \texttt{basyx-python-sdk}, the tool builds the official \gls{IEC}~63278 \gls{AASX} archive in memory. The 3D \gls{GLB} mesh is stored as an embedded binary \texttt{Blob}, while the five submodels are serialized into standard-compliant \gls{JSON} manifests within the package. Finally, the application validates package integrity and automatically uploads the generated \gls{AASX} bundle to the Layer~2 BaSyx repository via \gls{REST} endpoints.
+Once asset properties, kinematic mappings, virtual pins, and control logic are fully defined, the application initiates the export pipeline. Using the basyx-python-sdk library, the tool builds the official \gls{IEC}~63278 \gls{AASX} archive in memory. The 3D \gls{GLB} mesh is stored as an embedded binary \textit{Blob}, while the five submodels are serialized into standard-compliant \gls{JSON} manifests within the package. Finally, the application validates package integrity and automatically uploads the generated \gls{AASX} bundle to the Layer~2 BaSyx repository via \gls{REST} endpoints.
 
 \section{Layer 2: Storage and Registry (Eclipse BaSyx v2)}
 \label{sec:impl_basyx}
 
-Layer~2 is implemented using Eclipse BaSyx~v2 deployed with Docker Compose. Docker makes the entire server stack reproducible: running \texttt{docker compose up} starts all services in the right order without manual configuration. This setup allows new asset submodels and services to start automatically, fulfilling requirement \textbf{FR1} (Plug-and-Play Asset Onboarding).
+Layer~2 is implemented using Eclipse BaSyx~v2 deployed with Docker Compose. Docker makes the entire server stack reproducible: running Docker Compose starts all services in the right order without manual configuration. This setup allows new asset submodels and services to start automatically, fulfilling requirement \textbf{FR1} (Plug-and-Play Asset Onboarding).
 
 The \gls{UML} Component Diagram in \Cref{fig:component_layer2} illustrates the component structure of Layer~2 (Storage and Registry), which consists of five main elements. The \gls{AAS} Environment Repository stores uploaded \gls{AASX} packages, handles package ingestion, and serves models to Unity clients. The \gls{AAS} Registry and Submodel Registry keep track of registered shells and submodel URLs, offering endpoints for registration and discovery. A shared MongoDB database stores metadata and descriptors persistently. Finally, operators can inspect active assets and submodels using the BaSyx Web \gls{GUI}.
 
@@ -223,7 +223,7 @@ The \gls{UML} Deployment Diagram in \Cref{fig:basyx_docker_topology} illustrates
 \end{figure}
 
 \subsection{Microservice Architecture and Port Allocation}
-The containerized services carry out the repository and registry tasks described in \Cref{fig:activity_layer2} (\cpageref{fig:activity_layer2}). The \gls{AAS} Environment Repository (port 8081) exposes standard \gls{REST} endpoints to store and serve packages, submodels, and 3D mesh files. The \gls{AAS} Registry (port 8082) and Submodel Registry (port 8083) maintain directories of active assets, mapping unique IDs to network URLs. Persistent storage is provided by MongoDB (port 27017). By separating these functions into microservices, Layer~2 scales easily as more machines and clients join the network, satisfying requirement \textbf{NFR2} (Scalability). Although the standard BaSyx stack includes Mosquitto \gls{MQTT} (port 1883) and InfluxDB (port 8086), live synchronization in this work uses direct \gls{TCP} sockets with the \gls{PLC} to minimize telemetry delay. Operators can inspect the running system through the BaSyx Web dashboard (port 3000).
+The containerized services carry out the repository and registry tasks described in \Cref{fig:activity_layer2} (\cpageref{fig:activity_layer2}). The \gls{AAS} Environment Repository (port 8081) exposes standard \gls{REST} endpoints to store and serve packages, submodels, and 3D mesh files. The \gls{AAS} Registry (port 8082) and Submodel Registry (port 8083) maintain directories of active assets, mapping unique IDs to network URLs. Persistent storage is provided by MongoDB (port 27017). By separating these functions into microservices, Layer~2 scales easily as more machines and clients join the network, satisfying requirement \textbf{NFR2} (Scalability). Although the standard BaSyx stack includes Mosquitto \gls{MQTT} (port 1883) and InfluxDB (port 8086), operational \gls{DT} execution in this work uses direct \gls{TCP} sockets with the \gls{PLC} to minimize telemetry delay. Operators can inspect the running system through the BaSyx Web dashboard (port 3000).
 
 \subsection{Package Ingestion and Registry Resolution}
 When an \gls{AASX} package is uploaded via \gls{HTTP} POST to the repository endpoint (port 8081), the server decompresses the package archive and parses the internal manifests. Embedded 3D mesh files (.glb) are extracted and placed directly into the static web server directory, making them accessible to simulation clients via standard URLs. Concurrently, the \gls{AAS} metadata and individual submodels (visual structure, behavior mapping, virtual pins, control logic, and network endpoints) are committed to MongoDB for persistent retrieval.
@@ -308,7 +308,7 @@ The embedded firmware runs on the FreeRTOS real-time operating system to guarant
 \begin{enumerate}
     \item \textbf{Hardware Setup and Server Initialization:} On boot, the microcontroller configures input pins and motor relay output registers, initializes a 30-element \gls{FIFO} sensor event queue, and creates a mutex semaphore protecting socket transmission. It then starts an embedded \gls{HTTP} server on port 80 and a raw \gls{TCP} socket server on port 8888, handing task execution to the FreeRTOS preemptive scheduler.
     \item \textbf{Real-Time Scanning and Telemetry:} The sensor scanner task operates as the highest-priority routine (Priority 3). It performs a 5\,ms scan loop across digital input pins with software debounce filtering. When a valid state change occurs, an event token is placed in the \gls{FIFO} queue. Buffering up to 30 events in this queue prevents dropped edge transitions if temporary network jitter or socket congestion delays transmission. The queued token immediately wakes the telemetry task (Priority 2), which formats a compact \gls{JSON} packet and streams it over \gls{TCP} port 8888 to Unity with minimal latency, directly satisfying \textbf{NFR1} (Low-Latency Telemetry).
-    \item \textbf{Actuation and Connection Management:} External actuation requests (such as skill invocations from BaSyx) are handled by the \gls{HTTP} server task (Priority 1) on port 80, which parses incoming command parameters and drives physical relays. Concurrently, a session monitor task (Priority 1) performs connection watchdog checks, recovering automatically from network drops without interrupting automation routines.
+    \item \textbf{Actuation and Connection Management:} External actuation requests are handled by the \gls{HTTP} server task (Priority 1) on port 80, which parses incoming command parameters and drives physical relays. Concurrently, a session monitor task (Priority 1) performs connection watchdog checks, recovering automatically from network drops without interrupting automation routines.
 \end{enumerate}
 
 \section{Implementation Traceability and Requirement Coverage}
@@ -336,5 +336,5 @@ To verify how the technical implementation fulfills the design requirements from
 \section{Chapter Summary}
 \label{sec:impl_summary}
 
-This chapter presented the physical and software realization of the \gls{DT} framework across four tiers. Layer~0 digitized existing conveyor hardware in Blender to produce low-poly \gls{GLB} models with properly aligned motion pivots. Layer~1 implemented the Python desktop application, enabling engineers to visually instrument equipment using 3D raycasting and generate standardized \gls{AASX} packages without programming. Layer~2 realized model storage and discovery registries using containerized Eclipse BaSyx~v2 microservices on Docker backed by MongoDB. Finally, Layer~3 implemented the runtime in Unity 3D, providing procedural scene assembly, PhysX contact mechanics, dual-mode execution (\gls{VC} and live synchronization), and drift correction via an Industrial Shields \gls{PLC} running FreeRTOS firmware. The experimental evaluation of this implementation is presented in \Cref{cha:discussion}.
+This chapter presented the physical and software realization of the \gls{DT} framework across four tiers. Layer~0 digitized existing conveyor hardware in Blender to produce low-poly \gls{GLB} models with properly aligned motion pivots. Layer~1 implemented the Python desktop application, enabling engineers to visually instrument equipment using 3D raycasting and generate standardized \gls{AASX} packages without programming. Layer~2 realized model storage and discovery registries using containerized Eclipse BaSyx~v2 microservices on Docker backed by MongoDB. Finally, Layer~3 implemented the runtime in Unity 3D, providing procedural scene assembly, PhysX contact mechanics, dual-mode execution (\gls{VC} and operational \gls{DT}), and drift correction. The experimental evaluation of this implementation is presented in \Cref{cha:discussion}.
 
