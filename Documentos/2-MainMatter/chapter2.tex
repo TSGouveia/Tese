@@ -412,14 +412,14 @@ Data-driven methods work well when engineering files are missing, but they produ
 
 Recent work explores using \glspl{LLM} and generative \gls{AI} to assist in creating \glspl{DT} \cite{Dong2024,Alexopoulos2025}.
 
+As shown in \Cref{fig:llm_nvidia_omniverse}, \textcite{Dong2024} use an \gls{LLM} that translates natural language prompts into Python scripts that build 3D scenes in NVIDIA Omniverse. \textcite{Alexopoulos2025} use \glspl{LLM} to generate simulation test scenarios as \gls{BPMN} process charts.
+
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.88\textwidth]{5-Figures/nvidia_llm.pdf} 
     \caption{Digital twin code generation process for NVIDIA Omniverse using \glspl{LLM} \cite{Dong2024}.}
     \label{fig:llm_nvidia_omniverse}
 \end{figure}
-
-As shown in \Cref{fig:llm_nvidia_omniverse}, \textcite{Dong2024} use an \gls{LLM} that translates natural language prompts into Python scripts that build 3D scenes in NVIDIA Omniverse. \textcite{Alexopoulos2025} use \glspl{LLM} to generate simulation test scenarios as \gls{BPMN} process charts.
 
 While \glspl{LLM} are flexible, their outputs can vary and sometimes contain errors. In industrial automation, deterministic behavior is essential for machine safety, meaning \gls{AI} tools are better suited as assistants for testing rather than for generating core machine structures.
 
@@ -436,16 +436,16 @@ Reviewing the literature shows that while individual pieces of the \gls{DT} have
 
 \begin{enumerate}
     \item \textbf{Gap 1: Fragmented Aspects vs. Unified Semantic Metamodel.}
-    Most tools focus on only one part of the problem. 3D extraction tools \cite{Chowdhury2025,Dong2024} handle meshes but ignore electrical \gls{IO} and control logic. In contrast, semantic tools \cite{Gollner2022,Perez2025} manage data properties but treat 3D graphics as an unrelated external viewer. An open submodel schema is needed that combines 3D meshes, kinematic limits, virtual \gls{IO} pins, and control logic rules in a single portable package.
+    While 3D extraction tools \cite{Chowdhury2025,Dong2024} handle meshes without electrical \gls{IO} or control logic, semantic tools \cite{Gollner2022,Perez2025} manage properties without integrated 3D kinematics. An open submodel schema is needed that combines 3D meshes, kinematic limits, virtual \gls{IO} pins, and control logic rules in a single portable package.
     
     \item \textbf{Gap 2: Proprietary Formats vs. Standardized AAS Source of Truth.}
-    Several automated systems generate custom scripts or prefabs tied to a specific simulation tool \cite{Alexopoulos2025,Schaper2025,Koch2024}. Once generated, the digital asset cannot easily share its state with other factory systems. Keeping the standardized \gls{AAS} as the main runtime source of truth ensures the \gls{DT} remains accessible across different tools.
+    Several automated systems generate custom scripts or prefabs tied to a specific simulation tool \cite{Alexopoulos2025,Schaper2025,Koch2024}. Keeping the standardized \gls{AAS} as the runtime source of truth ensures the digital asset remains interoperable across different factory systems.
     
     \item \textbf{Gap 3: Pre-Compiled Scenes vs. Runtime Procedural Instantiation.}
-    In most game engine setups \cite{Alexopoulos2025,Pajpach2022,Garcia2025}, the 3D scene must be manually built and compiled ahead of time. If a physical machine is added or swapped on the shop floor, the simulation program must be recompiled. A system that can download self-contained \gls{AASX} files from a repository at runtime and assemble meshes, joints, and network links in memory would remove this bottleneck.
+    In most game engine setups \cite{Alexopoulos2025,Pajpach2022,Garcia2025}, scenes must be manually compiled ahead of time, requiring software rebuilds whenever factory equipment changes. A runtime loader that ingests self-contained \gls{AASX} packages directly into memory eliminates this dependency.
     
     \item \textbf{Gap 4: Offline Simulation vs. Live Closed-Loop Synchronization.}
-    Virtual commissioning tools \cite{Striffler2023,Schaper2025} work well for offline logic testing, but rarely support continuous online synchronization with physical equipment due to network timing issues. Conversely, \gls{IOT} monitoring tools display live data but lack physics simulation. A unified framework should support both modes using the same asset description.
+    Virtual commissioning tools \cite{Striffler2023,Schaper2025} support offline logic testing but lack online hardware synchronization, whereas \gls{IOT} dashboards stream telemetry without physics simulation. A unified framework should support both modes using the same asset description.
 \end{enumerate}
 
 To synthesize these gaps, \Cref{tab:sota_comparison} compares the proposed framework against leading approaches in the literature across key architectural capabilities.

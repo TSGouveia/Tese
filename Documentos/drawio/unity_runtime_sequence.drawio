@@ -1,6 +1,6 @@
 <mxfile host="Electron" agent="5.0">
   <diagram id="unity_runtime_sequence" name="Unity 3D Runtime Sequence">
-    <mxGraphModel dx="1414" dy="889" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1400" math="0" shadow="0">
+    <mxGraphModel dx="2828" dy="1778" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1400" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -179,7 +179,7 @@
             <mxPoint x="1245" y="930" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="m15" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#F57C00;fontSize=13;fontStyle=0;" value="Execute Actuator Action -&amp;gt; Drive Belt / Pneumatic Stopper">
+        <mxCell id="m15" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#F57C00;fontSize=13;fontStyle=0;" value="Execute Actuator Action">
           <mxGeometry relative="1" as="geometry">
             <mxPoint x="1245" y="970" as="sourcePoint" />
             <mxPoint x="1020" y="970" as="targetPoint" />

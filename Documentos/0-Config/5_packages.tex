@@ -50,6 +50,7 @@
 \usepackage{etoolbox}
 \usepackage[section]{placeins}
 \pretocmd{\subsection}{\FloatBarrier}{}{}
+\usepackage{flafter} % Ensures figures never float backwards before their definition/reference
 
 \usepackage[dvipsnames]{xcolor}
 \definecolor{novablue}{RGB}{0, 101, 189}
