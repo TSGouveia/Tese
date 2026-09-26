@@ -286,14 +286,7 @@ Because numerical physics calculations and network timing introduce small variat
 \label{sec:impl_firmware}
 \label{subsec:firmware_architecture}
 
-The physical testbed is a modular closed-loop conveyor system controlled by an Industrial Shields M-DUINO 57R+ \gls{PLC} (\Cref{fig:physical_hardware_photo}), powered by an Arduino Mega 2560 microcontroller and a W5500 Ethernet controller. The \gls{UML} Sequence Diagram in \Cref{fig:arduino_freertos_schema} illustrates the embedded FreeRTOS firmware execution across hardware setup, sensor scanning, event queues, \gls{TCP} telemetry streaming, and \gls{HTTP} actuation channels.
-
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.65\linewidth,height=0.45\textheight,keepaspectratio]{5-Figures/fms_mduino_plc.jpg}
-    \caption{Industrial Shields M-Duino 57R+ \gls{PLC} with \gls{DIN}-rail mount, field \gls{IO} terminal blocks, and Ethernet and USB interfaces.}
-    \label{fig:physical_hardware_photo}
-\end{figure}
+The physical testbed is a modular closed-loop conveyor system controlled by an Industrial Shields M-DUINO 57R+ \gls{PLC}, powered by an Arduino Mega 2560 microcontroller and a W5500 Ethernet controller. The \gls{UML} Sequence Diagram in \Cref{fig:arduino_freertos_schema} illustrates the embedded FreeRTOS firmware execution across hardware setup, sensor scanning, event queues, \gls{TCP} telemetry streaming, and \gls{HTTP} actuation channels.
 
 \begin{figure}[htbp]
     \centering

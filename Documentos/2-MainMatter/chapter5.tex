@@ -86,7 +86,7 @@ The serialized submodel definitions and the binary \gls{GLB} mesh are packed int
 \subsection{Zero-Touch Procedural Instantiation and Live Telemetry}
 In the final stage, the Unity 3D simulation environment is launched without pre-baked assets. Upon initialization, the Unity runtime queries the BaSyx registry over \gls{REST}, retrieves active Asset IDs, and downloads the associated \gls{GLB} binary files and submodel manifests into transient memory.
 
-The runtime procedural builder parses the \textit{VisualStructure} and instantiates the mesh hierarchy, inspecting component meshes dynamically to attach optimized physics colliders and configure physical rigidbodies. The builder then parses \textit{VirtualPins} and \textit{BehaviorMapping} to instantiate trigger zones at the exact coordinates recorded during raycasting, binding them to internal signal dispatchers, while configuring surface velocities, rotation axes, and constraints onto designated mobile parts. If present, \textit{ControlLogic} rules are loaded by the local rule interpreter.
+The runtime procedural builder parses the \textit{VisualStructure} and instantiates the mesh hierarchy, inspecting component meshes dynamically to attach optimized physics colliders and configure physical rigidbodies. The builder then parses \textit{VirtualPins} and \textit{BehaviorMapping} to instantiate trigger zones at the exact coordinates recorded during raycasting, binding them to internal signal dispatchers, while configuring surface velocities, rotation axes, and constraints onto designated mobile parts. If present, \textit{ControlLogic} rules are loaded by the local rule interpreter, completing the procedural assembly of the simulation scene (\Cref{fig:case_study_step4}).
 
 Finally, the simulation engine connects to the physical controller via \gls{TCP} telemetry. When a workpiece on the physical workbench crosses an optical sensor, the physical \gls{PLC} sets register \texttt{I0\_0} to HIGH. The telemetry listener receives the frame, trips the corresponding virtual sensor indicator, and immediately executes kinematic position snapping to reconcile any cumulative micro-slip, maintaining sub-millimeter positional fidelity throughout production cycles.
 
@@ -137,6 +137,8 @@ An automated test harness conducted 100 independent cold executions of the compl
 
 As shown in \Cref{tab:fms_results}, procedural reconstitution of the pilot bench requires an average of only $2.79\,$s ($\sigma = 0.04\,$s), demonstrating high determinism and repeatability across cold boots. Once initialized, the physics simulation runs at an average of $489.91\,$\gls{FPS}, corresponding to a frame render latency of $2.36\,$ms. Even under transient workpiece transfer loads, the 1\% low frame rate remains at $272.43\,$\gls{FPS}, safely above standard interactive visualization rates.
 
+\Cref{fig:fms_distributions} illustrates the statistical dispersion of these metrics. The startup time exhibits a narrow interquartile range ($2.76\,$s to $2.80\,$s), confirming that semantic archive decompression and mesh generation do not suffer from filesystem blocking. In addition, the rendering rate remains stable around $490\,$\gls{FPS}, exceeding real-time requirements, while the 99th percentile (P99) tail latency stays below $9.94\,$ms across all test runs (\Cref{tab:fms_results}).
+
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.88\linewidth,height=0.32\textheight,keepaspectratio]{5-Figures/fms_metrics_distributions.pdf}
@@ -144,7 +146,7 @@ As shown in \Cref{tab:fms_results}, procedural reconstitution of the pilot bench
     \label{fig:fms_distributions}
 \end{figure}
 
-\Cref{fig:fms_distributions} illustrates the statistical dispersion of these metrics. The startup time exhibits a narrow interquartile range ($2.76\,$s to $2.80\,$s), confirming that semantic archive decompression and mesh generation do not suffer from filesystem blocking. In addition, the rendering rate remains stable around $490\,$\gls{FPS}, exceeding real-time requirements, while the 99th percentile (P99) tail latency stays below $9.94\,$ms across all test runs (\Cref{tab:fms_results}).
+\Cref{fig:fms_timeseries} plots the temporal execution profile during runtime. During the startup window ($t < 2.79\,$s), frame times show transient fluctuations while colliders and textures are bound. As soon as procedural initialization concludes, the system immediately transitions into a flat steady state, confirming that the \gls{DT} operates without frame pacing stutter or cumulative jitter during pallet routing.
 
 \begin{figure}[htbp]
     \centering
@@ -152,8 +154,6 @@ As shown in \Cref{tab:fms_results}, procedural reconstitution of the pilot bench
     \caption{Dynamic execution timeline of the modular \gls{FMS} bench, contrasting frame rate with frame latency over simulation time.}
     \label{fig:fms_timeseries}
 \end{figure}
-
-\Cref{fig:fms_timeseries} plots the temporal execution profile during runtime. During the startup window ($t < 2.79\,$s), frame times show transient fluctuations while colliders and textures are bound. As soon as procedural initialization concludes, the system immediately transitions into a flat steady state, confirming that the \gls{DT} operates without frame pacing stutter or cumulative jitter during pallet routing.
 
 % =============================================================================
 % SECTION: SCALABILITY AND STRESS BENCHMARK
@@ -238,21 +238,10 @@ At $N=500$ modules, the mean frame rate drops to $93.16\,$\gls{FPS} ($\sigma = 2
 
 At $N=1000$ modules, the system experiences severe bottlenecking, averaging $13.96\,$\gls{FPS} ($\sigma = 43.28\,$\gls{FPS}) with 1\% low values approaching zero. At this scale, the single-threaded PhysX physics update saturates the \gls{CPU}, exceeding the real-time threshold and proving that unconstrained 1000-module facilities require spatial culling or multi-threaded physics sub-stepping. The high sample standard deviation relative to the mean reflects this non-normal, heavily skewed behavior, where the engine alternates between long freeze intervals (single-digit frame rates) and brief, transient frame bursts when physics contacts temporarily settle.
 
-\subsection{Frame Render Latency, Tail Latency, and Computational Cost}
+\subsection{Unit Computational Processing Cost}
 \label{sec:eval_frametime_latency}
 
-Real-time synchronization between physical automation hardware and a \gls{DT} requires consistent and bounded frame execution times. \Cref{fig:eval_frametime_percentiles} displays the scaling of mean frame latency against the 95th (P95) and 99th (P99) tail latency percentiles. \Cref{fig:eval_unit_frame_cost} presents the unit computational cost required to process each conveyor module per frame.
-
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.88\linewidth,height=0.40\textheight,keepaspectratio]{5-Figures/eval_frametime_percentiles.pdf}
-    \caption{Frame render latency and tail percentiles (P95 and P99) as a function of active conveyor count.}
-    \label{fig:eval_frametime_percentiles}
-\end{figure}
-
-The latency benchmarks show that from 5 to 100 conveyor modules, mean frame times remain well below 4\,ms: $2.49\,$ms at $N=5$, $3.30\,$ms at $N=50$, and $3.73\,$ms at $N=100$. Tail latencies are similarly well-controlled, with the P99 latency reaching only $4.8\,$ms at 100 modules and $8.2\,$ms at 250 modules, safely within the 16.7\,ms frame budget.
-
-At $N=500$, the mean frame time rises to $14.96\,$ms, while the P99 tail latency reaches $34.2\,$ms.
+Real-time synchronization between physical automation hardware and a \gls{DT} requires bounded computational execution times. \Cref{fig:eval_unit_frame_cost} presents the unit computational cost required to process each conveyor module per frame.
 
 \begin{figure}[htbp]
     \centering
