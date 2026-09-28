@@ -31,21 +31,19 @@
 
 %—————————————————————————————————————————————————————————————————
 
-
-
-\GAIsetStrings{preamble={the\ use\ of\ Generative\ AI\ in\ the\ research\ work\ and\ writing\ process\ of\ this\ document.\ The\ following\ tasks\ were\ partially\ delegated\ to\ Generative\ AI\ tools\ under\ full\ human\ supervision:},}
-
 % 1 — Conceptualization  
 % --- GAIDeT Disclosure Configuration ---
 
-\GAItoolsUsed{Gemini 3 Pro}
+\AIDtoolsUsed{Gemini 3.6 Flash}
 
-% Delegated Tasks
-\GAIactivate{l_sum}
-\GAIactivate{l_trans}
-\GAIactivate{v_edit}
-\GAIactivate{w_draft}
-\GAIactivate{w_tra}
+% Content for 7_aidisclose.tex
+% The package import and rendering command are handled by the main template.
 
-% --- Render Declaration ---
-% \GAIrenderDeclaration[3]{Tiago Daniel Santos Gouveia}
+% Taxonomy Activation
+\AIDactivate{l:sum}
+\AIDactivate{m:proto}
+\AIDactivate{s:gen}
+\AIDactivate{s:debug}
+\AIDactivate{w:poly}
+
+% Note: The rendering command \AIDrenderDeclaration is executed automatically by novathesis.
