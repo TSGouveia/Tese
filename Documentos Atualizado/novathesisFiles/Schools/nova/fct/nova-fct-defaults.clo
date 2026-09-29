@@ -282,7 +282,7 @@
     \fontsize{17}{17}\selectfont%
     \GetDocAuthor(degree,\@LANG@COVER)%
   }{%
-    \fontsize{20}{21}\selectfont%
+    \fontsize{22}{21}\selectfont%
     \textbf{\MakeUppercase{\GetDocTitle(\@LANG@COVER,main)}}%
     \IfMemVoidF{DocTitle}{\@LANG@COVER,sub}{%
       \\[4mm]%
