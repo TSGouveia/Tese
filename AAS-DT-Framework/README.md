@@ -50,12 +50,6 @@ AAS-DT-Framework/
 │   ├── basyx/                # BaSyx configuration properties & YAMLs
 │   ├── mosquitto/            # MQTT broker configuration
 │   └── influxdb/             # InfluxDB database configuration
-├── Documents/                # MSc Thesis LaTeX Source & PDF
-│   ├── 0-Config/             # Document metadata & cover configuration
-│   ├── 1-FrontMatter/        # Abstracts (EN, PT), acknowledgements, acronyms, glossary
-│   ├── 2-MainMatter/         # Thesis chapters
-│   ├── 5-Figures/            # Figures & diagrams
-│   └── thesis.pdf            # Compiled Master's Thesis document
 ├── DT Unity/                 # Layer 3: Unity 3D Simulation & Telemetry Engine
 │   ├── Assets/               # C# scripts, prefabs, materials, and AAS procedural generation logic
 │   ├── Packages/             # Unity project dependency manifests
