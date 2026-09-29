@@ -55,7 +55,7 @@ AAS-DT-Framework/
 │   ├── Packages/             # Unity project dependency manifests
 │   └── ProjectSettings/      # Unity project physics, tag, and layer settings
 └── FMS DT/                   # Hardware Firmware
-    └── FMS_DT.ino            # ESP32 / Arduino C++ code for physical FMS bench PLC control & telemetry
+    └── FMS_DT.ino            # FreeRTOS C++ code for Industrial Shields M-DUINO PLC control & TCP/HTTP telemetry
 ```
 
 ---
@@ -79,13 +79,13 @@ python conveyor_wizard.py
 ```
 
 ### 3. Open the Simulation Engine (Layer 3)
-1. Launch **Unity 2022.3 LTS** (or compatible version).
+1. Launch **Unity 6 (6000.3.10f1)** (or compatible version).
 2. Open the project folder `DT Unity`.
 3. Open the main scene in `Assets/Scenes`.
 4. Press **Play** to trigger procedural scene assembly automatically fetched from the running BaSyx AAS Server.
 
 ### 4. Physical Bench Controller (Optional Hardware Setup)
-Flash `FMS_DT/FMS_DT.ino` onto your ESP32 / Industrial PLC bench controller using Arduino IDE or PlatformIO. The controller will publish I/O state changes over MQTT to sync the Unity Digital Twin in real-time.
+Flash `FMS_DT/FMS_DT.ino` onto your **Industrial Shields M-DUINO 57R+ PLC** (powered by Arduino Mega 2560 & W5500 Ethernet) running FreeRTOS. The controller streams real-time sensor events via low-latency **TCP sockets** (port 8888) and accepts actuation commands via **HTTP REST** (port 80) to sync the Unity Digital Twin with physical hardware.
 
 ---
 
