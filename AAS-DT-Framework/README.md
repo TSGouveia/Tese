@@ -41,7 +41,7 @@ The architecture spans four decoupled tiers:
 ## <div align="center">Repository Structure</div>
 
 ```
-git/
+AAS-DT-Framework/
 ├── AAS Client/               # Layer 1: Python AAS Authoring Studio & URDF Robot Importers
 │   ├── conveyor_wizard.py    # Main GUI Studio for AAS layout generation & submodel creation
 │   ├── create_robotic_arm.py # URDF to AASconverter & robot kinematic packager
@@ -61,12 +61,8 @@ git/
 │   ├── Assets/               # C# scripts, prefabs, materials, and AAS procedural generation logic
 │   ├── Packages/             # Unity project dependency manifests
 │   └── ProjectSettings/      # Unity project physics, tag, and layer settings
-├── FMS DT/                   # Hardware Firmware
-│   └── FMS_DT.ino            # ESP32 / Arduino C++ code for physical FMS bench PLC control & telemetry
-├── docs/                     # Development specifications, plans, and guides
-│   ├── superpowers/          # Implementation plans and design specs
-│   └── GUIDE_MOVEMENTS.md    # Robot movement and kinematics guide
-└── spawn_conveyors.py        # Utility script for automated conveyor grid layout testing
+└── FMS DT/                   # Hardware Firmware
+    └── FMS_DT.ino            # ESP32 / Arduino C++ code for physical FMS bench PLC control & telemetry
 ```
 
 ---
