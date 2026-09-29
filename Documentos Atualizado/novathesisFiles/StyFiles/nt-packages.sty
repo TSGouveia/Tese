@@ -166,24 +166,8 @@
   \RequirePackage[T1]{fontenc}  % 256-glyph output encoding (pdfLaTeX)
 \fi
 
-% Preferred sans-serif stack: Inter → Helvet → Gillius2 → LaTeX default
-\ExplSyntaxOn
-% The ClassWarning text uses "~" instead of literal spaces: under
-% ExplSyntaxOn, space (catcode 9) is ignored, but "~" is catcode 10
-% (an ordinary interword space), so it survives untouched.
-\IfFileExists { inter.sty }
-  { \RequirePackage[scaled=0.95]{inter} }
-  % { \RequirePackage[scaled=MatchLowercase]{inter} }
-  {
-    \IfFileExists { helvet.sty }
-      { \RequirePackage[scaled=0.95]{helvet} }
-      {
-        \IfFileExists { gillius2.sty }
-          { \RequirePackage[scaled=0.95]{gillius2} }
-          { \ClassWarning{novathesis}{Could~not~find~a~suitable~Sans~Serif~font…~using~the~default!} }
-      }
-  }
-\ExplSyntaxOff
+% Preferred sans-serif font: Gillius2
+\RequirePackage{gillius2}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% LANGUAGE & LOCALIZATION
