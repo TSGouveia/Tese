@@ -1,0 +1,120 @@
+%!TEX root = ../template.tex
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% chapter3.tex
+%% NOVA thesis document file
+%%
+%% Chapter with Preliminary Work and Work Plan
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\typeout{NT FILE chapter3.tex}%
+
+\chapter{Preliminary Work and Work Plan}
+\label{cha:preliminary_work}
+
+This chapter bridges the gap between the theoretical analysis conducted in \Cref{cha:stateoftheart} and the practical execution planned for the dissertation. It details the conceptual architecture designed during the preliminary phase and outlines the work plan for the implementation and validation stages.
+
+\section{Proposed System Architecture}
+\label{sec:proposed_architecture}
+
+%The objective of this section is to present the high-level diagram of the solution, illustrating the data flow from the engineering design to the dynamic virtual environment.
+
+\subsection{Conceptual Overview: From Static Files to Dynamic Services}
+The fundamental shift proposed in this thesis is moving from the "static parsing" approach found in the literature to a "live data" approach. Traditional approaches often result in "data islands" where the \gls{DT} works within a specific tool but cannot share its state. The proposed architecture transforms static engineering files (\gls{AML}) into dynamic services that allow for real-time updates and bi-directional communication.
+
+\subsection{The Role of Asset Administration Shell (AAS) as Middleware}
+The \gls{AAS} is selected as the central "brain" or middleware of the system. While \gls{AML} is inherently file-based and static, used primarily for the engineering phase, the \gls{AAS} is \gls{API}-based and dynamic, making it the correct standard for ensuring interoperability during operations. The \gls{AAS} acts as the standardized digital representation, exposing structured data to higher layers and ensuring that the \gls{DT} is not locked inside a proprietary visualization engine.
+
+\subsection{Architecture Modules: Engineering, Interoperability, and Visualization}
+The system comprises three main blocks:
+\begin{itemize}
+    \item \textbf{Input:} The source is the factory layout and hierarchy described in vendor-neutral \gls{AML} files.
+    \item \textbf{Middleware:} A custom translation service serves as a bridge. It parses the engineering structure and automatically generates the \gls{AAS}, transforming static attributes into dynamic properties accessible via standard \glspl{API}.
+    \item \textbf{Output:} The visualization client dynamically instantiates the 3D environment. Instead of manually importing assets, the client builds the scene at runtime by querying the \gls{AAS} data structure.
+\end{itemize}
+
+\section{Preliminary Work Performed}
+\label{sec:preliminary_work}
+
+During the first semester, the work focused on the theoretical validation of the proposed approach and the design of the system's communication logic. Instead of rushing into implementation, a thorough analysis of the interoperability requirements was conducted to define a technology-agnostic architecture.
+
+\subsection{Definition of Communication Logic}
+A key outcome of the preliminary work was the definition of the interaction flow between the heterogeneous systems. To ensure the solution is not tightly coupled to specific proprietary tools, a generic communication sequence was designed. \Cref{fig:uml_sequence} illustrates this three-phase process:
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{5-Figures/UML_Sequence.pdf}
+    \caption{Technology-agnostic UML Sequence Diagram illustrating the data flow of the system.}
+    \label{fig:uml_sequence}
+\end{figure}
+
+\begin{enumerate}
+    \item \textbf{Engineering and Translation:} The process begins with the export of the system configuration. An interoperability service reads this configuration and maps the attributes to the standardized \gls{AAS} model, deploying the digital twin instance to a middleware server.
+    \item \textbf{Visualization Initialization:} The visualization client does not store the factory layout locally. Instead, upon startup, it requests the twin structure and hierarchy from the middleware, dynamically generating the 3D scene based on the received metadata.
+    \item \textbf{Runtime Loop:} During operation, the client enters a synchronization cycle, periodically requesting state variables to update the visual representation. Crucially, the architecture supports operator control, allowing commands from the virtual environment to be sent back to the middleware, updating the state of the twin.
+\end{enumerate}
+
+
+
+\subsection{Analysis of Standardization Gaps}
+The theoretical analysis revealed that while \gls{AML} is effective for describing static topology, it lacks the runtime capabilities required for a dynamic \gls{DT}. Conversely, while \gls{AAS} provides the runtime environment, the manual creation of \gls{AAS} models is time-consuming. This validated the need for the proposed parser component (Phase 1 in \Cref{fig:uml_sequence}) to automate the transition between these two standards.
+
+\section{Work Plan}
+\label{sec:work_plan}
+
+This section outlines the schedule and methodology for the research and development work to be conducted in the upcoming semester.
+
+\subsection{Research Objectives and Methodology}
+To achieve the proposed objectives, this dissertation follows the \gls{DSR} methodology. The process will focus on the iterative development of the artifacts defined in the architectural design.
+
+\subsection{Task Breakdown}
+The development work is divided into the following specific tasks:
+
+\begin{description}
+    \item[Task 1: Technology Selection and Environment Setup] Final selection of the specific tools (e.g., Python for the backend, Unity for the frontend) and setup of the development environment, including the \gls{AAS} server (e.g., Eclipse BaSyx).
+    \item[Task 2: Development of the Interoperability Service] Implementation of the logic defined in Phase 1 of the architecture. This involves coding the parser for \gls{AML} files and the mapping engine to generate \gls{AAS} submodels.
+    \item[Task 3: Implementation of the Visualization Client] Development of the dynamic generation scripts in the game engine (Phase 2). This task focuses on consuming the \gls{API} exposed by the middleware to instantiate 3D assets at runtime.
+    \item[Task 4: System Integration and Sync Loop] connecting the backend and frontend to establish the bidirectional communication loop (Phase 3), enabling real-time state updates.
+    \item[Task 5: Validation and Case Study] Deployment of the full framework on a demonstrator use case to evaluate performance and engineering efficiency compared to manual methods.
+    \item[Task 6: Dissertation Writing] Continuous documentation of the development process, results, and conclusions.
+\end{description}
+
+\subsection{Timeline}
+The project timeline is structured to ensure the completion of the prototype by May, leaving June and July for validation and August and September for final writing. The schedule is illustrated in the Gantt chart in \Cref{fig:gantt_chart}.
+
+\begin{figure}[htbp]
+    \centering
+    \resizebox{\textwidth}{!}{
+        \begin{ganttchart}[
+            vgrid={*1{draw=black!30, solid}}, 
+            hgrid={*1{draw=black!30, solid}},
+            time slot format=isodate,
+            time slot unit=month,
+            x unit=2.5cm,
+            y unit chart=0.9cm,
+            title label font=\bfseries\small, 
+            bar/.append style={fill=novablue!60, draw=novablue, rounded corners=2pt},
+            bar height=0.5,
+            bar label font=\bfseries\small,
+            bar label node/.append style={left=0.2cm},
+            group right shift=0,
+            group top shift=.6,
+            group height=.2,
+            group/.append style={fill=black!70, draw=none}
+        ]{2026-02-01}{2026-09-30}
+        
+        \gantttitlecalendar{year, month=name} \\
+        
+        \ganttbar[name=t1]{Task 1: Tech Stack Setup}{2026-02-01}{2026-02-28} \\
+        \ganttbar[name=t2]{Task 2: Interop. Service}{2026-02-01}{2026-03-31} \\
+        \ganttbar[name=t3]{Task 3: Visualization Client}{2026-03-01}{2026-04-30} \\
+        \ganttbar[name=t4]{Task 4: Integration Loop}{2026-04-01}{2026-05-31} \\
+        
+        \ganttbar[name=t5]{Task 5: Case Study \& Tests}{2026-06-01}{2026-07-30} \\
+        
+        \ganttbar[name=t6]{Task 6: Dissertation Writing}{2026-03-01}{2026-09-30}
+        
+        \end{ganttchart}
+    }
+    \caption{Project Gantt Chart for the 2nd Semester.}
+    \label{fig:gantt_chart}
+\end{figure}

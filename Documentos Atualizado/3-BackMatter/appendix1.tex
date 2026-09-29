@@ -1,0 +1,103 @@
+\chapter{Physical \texorpdfstring{\gls{FMS}}{FMS} Controller Specifications and \texorpdfstring{\gls{IO}}{I/O} Pin Mapping}
+\label{app:fms_io_mapping}
+
+This appendix presents the hardware specifications and \gls{IO} pin mapping for the Industrial Shields M-DUINO 57R+ \gls{PLC} used in the \gls{FMS} testbed.
+
+\section{M-DUINO 57R+ Controller Technical Specifications}
+
+\Cref{tab:mduino_57r_specs} summarizes the main hardware specifications and operating parameters of the M-DUINO 57R+ controller.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Hardware specifications of the Industrial Shields M-DUINO 57R+ \gls{PLC} controller.}
+    \label{tab:mduino_57r_specs}
+    \begin{tabularx}{\textwidth}{@{}l X@{}}
+        \toprule
+        \textbf{Specification Parameter} & \textbf{Value / Feature} \\
+        \midrule
+        Base Microcontroller Board & Arduino Mega 2560 (ATmega2560 @ 16\,MHz) \\
+        Memory (Flash / SRAM / EEPROM) & 256\,KB (8\,KB bootloader) / 8\,KB / 4\,KB \\
+        Operating Input Voltage & 12 to 24\,V~DC (Rated: 24\,V~DC, Fuse protection: 2.5\,A) \\
+        Max Rated Power / Max Current & 10.20\,W / 1.5\,A \\
+        Integrated Network Interfaces & W5500 Ethernet, RS-485, RS-232, SPI, I2C, Serial TTL, USB 2.0 \\
+        Storage Expansion & MicroSD card slot ($\mu$SD), Real-Time Clock (RTC) \\
+        Total \gls{IO} Capacity & 18 Inputs / 31 Outputs (49 channels total) \\
+        Digital Optoisolated Inputs & 6 channels (supporting hardware interrupts) \\
+        Analog / Digital Inputs & 12 channels (0 to 10\,V~DC / 0 to 24\,V~DC, 10-bit ADC) \\
+        Optoisolated Relay Outputs & 23 channels (24\,V~DC @ 2\,A / 230\,V~AC @ 4\,A max) \\
+        Analog / Digital / PWM Outputs & 8 channels (0 to 10\,V~DC / 0 to 24\,V~DC, 8-bit PWM) \\
+        Operating Temperature / Humidity & 0\,\text{\textdegree}C to 60\,\text{\textdegree}C / 10\% to 90\% (non-condensing) \\
+        Enclosure Dimensions & 119.5\,\text{mm} $\times$ 119.3\,\text{mm} $\times$ 101\,\text{mm} (Weight: 598\,\text{g}) \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\section{Digital Sensor Inputs (I-Registers)}
+
+\Cref{tab:fms_sensor_inputs} details the digital input pin mapping (I-Registers) for the optical and proximity sensors across the three controller modules.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Digital sensor input pin mapping on the Industrial Shields M-DUINO 57R+ controller.}
+    \label{tab:fms_sensor_inputs}
+    \begin{tabular}{cccc}
+        \toprule
+        \textbf{Module Number} & \textbf{Register Index} & \textbf{Function} & \textbf{Active Logic} \\
+        \midrule
+        0 & 0 & Conveyor B & High \\
+        0 & 1 & Conveyor A & High \\
+        0 & 2 & Punch Down & Low \\
+        0 & 3 & Punch Up & Low \\
+        0 & 4 & Punch Forward & High \\
+        0 & 5 & Punch Backward & High \\
+        \midrule
+        1 & 0 & Conveyor C & High \\
+        1 & 1 & Conveyor D & High \\
+        1 & 2 & Rotate E Give & Low \\
+        1 & 3 & Rotate E Receive & Low \\
+        1 & 4 & Rotate C Give & Low \\
+        1 & 5 & Rotate C Receive & Low \\
+        \midrule
+        2 & 0 & Conveyor E & High \\
+        2 & 1 & Conveyor F & High \\
+        2 & 2 & Conveyor A Left & Low \\
+        2 & 3 & Conveyor A Right & Low \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{Relay Actuator Outputs (R-Registers)}
+
+\Cref{tab:fms_actuator_outputs} details the relay output pin mapping (R-Registers) used to control conveyor motors and pneumatic actuators across the three controller modules.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Relay actuator output pin mapping on the Industrial Shields M-DUINO 57R+ controller.}
+    \label{tab:fms_actuator_outputs}
+    \begin{tabular}{ccc}
+        \toprule
+        \textbf{Module Number} & \textbf{Register Index} & \textbf{Function} \\
+        \midrule
+        0 & 2 & Punch Up \\
+        0 & 3 & Punch Backward \\
+        0 & 4 & Conveyor E \\
+        0 & 5 & Conveyor E Receive \\
+        0 & 6 & Conveyor C Give \\
+        0 & 7 & Conveyor A Backwards \\
+        0 & 8 & Conveyor A Right \\
+        \midrule
+        1 & 3 & Punch Down \\
+        1 & 4 & Conveyor F \\
+        1 & 5 & Rotate E Give \\
+        1 & 6 & Conveyor C \\
+        1 & 7 & Conveyor B \\
+        1 & 8 & Conveyor A Left \\
+        \midrule
+        2 & 3 & Punch Spin \\
+        2 & 4 & Punch Forward \\
+        2 & 6 & Conveyor D \\
+        2 & 7 & Conveyor C Receive \\
+        2 & 8 & Conveyor A Forward \\
+        \bottomrule
+    \end{tabular}
+\end{table}
