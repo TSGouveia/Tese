@@ -1,0 +1,22 @@
+﻿flowchart LR
+    Eng(["🧍 Automation Engineer"]):::actor
+    BaSyxRepo(["BaSyx AAS Repository :8081"]):::sysactor
+
+    subgraph SAUX["Auxiliary Operations"]
+        direction TB
+        UCA1(["Manage Deployed AAS CRUD List"]):::ucaux
+        UCA2(["Preview Deployed Layout 3D Scene"]):::ucaux
+        UCA3(["Program Deployed AAS Rules"]):::ucaux
+    end
+
+    Eng --> UCA1
+    Eng --> UCA2
+    Eng --> UCA3
+    UCA1 -->|"GET / DELETE /shells"| BaSyxRepo
+    UCA3 -->|"GET & PUT /submodels"| BaSyxRepo
+
+    classDef actor    fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#1c1917,font-weight:bold
+    classDef sysactor fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#1c1917,font-weight:bold
+    classDef ucaux    fill:#fce7f3,stroke:#db2777,stroke-width:1.5px,color:#500724
+    style SAUX fill:#f1f5f9,stroke:#94a3b8,stroke-width:1.5px,stroke-dasharray:4 4
+

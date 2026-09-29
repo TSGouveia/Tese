@@ -1,0 +1,41 @@
+﻿flowchart TB
+%% =========================================================================
+%% AAS METAMODEL & CUSTOM SUBMODELS â€” HIGH LEGIBILITY COMPACT EDITION
+%% =========================================================================
+
+    subgraph AAS_ROOT["<b>AssetAdministrationShell</b> (Digital Twin Root)"]
+        direction LR
+        AAS_ID["<b>AAS Identifier:</b> https://acplt.org/AAS_&lt;KitName&gt;<br/><b>AssetInformation:</b> Kind = INSTANCE • GlobalAssetId = http://acplt.org/Assets/&lt;KitName&gt;"]:::root
+    end
+
+    subgraph SUBMODELS["<b>Custom Industrial Submodels Collection</b>"]
+        direction TB
+
+        subgraph ROW1["Geometric, Spatial & Communication Submodels"]
+            direction LR
+            SM_AID["<b>AssetInterfacesDescription</b><br/>• Protocol: TCP | HTTP | REST<br/>• EndpointIP: '192.168.10.1'<br/>• EndpointPort: 8888 | 80"]:::sm
+            
+            SM_VIS["<b>VisualStructure</b> (GeometryData)<br/>• ComponentCollection: Mesh Path (.glb)<br/>• Kinematic Parent & DynamicObject flag<br/>• Transform: Pos(X,Y,Z), Rot(X,Y,Z), Scale"]:::sm
+        end
+
+        subgraph ROW2["Electrical I/O, Behavior & Control Submodels"]
+            direction LR
+            SM_VP["<b>VirtualPins</b> (Electrical I/O)<br/>• Inputs: Sensor Pins (I0_0 .. I2_5)<br/>• Outputs: Actuator Relays (R0_2 .. R2_8)<br/>• Type: Boolean Live State Properties"]:::sm
+
+            SM_BM["<b>BehaviorMapping</b> (Kinematics)<br/>• PinID & Target Component Node<br/>• Behavior: conveyor_surface | rotate | proximity<br/>• Parameters: Speed, Axis, RealPortID, ActiveLow"]:::sm
+
+            SM_CL["<b>ControlLogic</b> (Rules Table)<br/>• SourceAAS & SourcePin<br/>• Condition (==, !=) & Threshold<br/>• TargetAAS, TargetPin, Action, DelayMs"]:::sm
+        end
+    end
+
+    AAS_ROOT ==>|"Contains Submodel References"| SUBMODELS
+
+    %% Styling
+    classDef root fill:#1e293b,stroke:#0f172a,stroke-width:2px,color:#f8fafc,font-size:16px
+    classDef sm   fill:#f0f9ff,stroke:#0284c7,stroke-width:2px,color:#0c4a6e,font-size:15px
+
+    style AAS_ROOT fill:#f8fafc,stroke:#334155,stroke-width:2.5px
+    style SUBMODELS fill:#ffffff,stroke:#0284c7,stroke-width:2px
+    style ROW1 fill:#f8fafc,stroke:#cbd5e1,stroke-width:1px
+    style ROW2 fill:#f8fafc,stroke:#cbd5e1,stroke-width:1px
+

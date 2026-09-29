@@ -1,0 +1,44 @@
+﻿flowchart LR
+%% =========================================================================
+%% USE CASE: STEP 5 â€” HIGH LEGIBILITY COMPACT EDITION
+%% =========================================================================
+
+    Eng["<b>Automation<br/>Engineer</b>"]:::actor
+    Repo["<b>BaSyx Repository<br/>(:8081)</b>"]:::sys
+    Reg["<b>BaSyx Registry<br/>(:8082)</b>"]:::sys
+
+    subgraph S5["<b>Step 5 Â· Review, Build & Deploy Pipeline</b>"]
+        direction TB
+
+        subgraph S5_BUILD["1. Review & Package Assembly"]
+            direction TB
+            UC1(["<b>1. Validate Model Data</b><br/>Verify I/O Pins & Transforms"]):::uc
+            UC2(["<b>2. Generate AAS Submodels</b><br/>Visual, Pins, Behavior, Interfaces"]):::uc
+            UC3(["<b>3. Package .aasx Archive</b><br/>Bundle GLB / URDF Meshes"]):::uc
+            UC1 -.->|"include"| UC2 -.->|"include"| UC3
+        end
+
+        subgraph S5_DEPLOY["2. Server Deployment & Registration"]
+            direction TB
+            UC4(["<b>4. Check ID Conflicts</b><br/>Query /shells & Overwrite Dialog"]):::uc
+            UC5(["<b>5. Upload AASX Package</b><br/>POST /upload to BaSyx"]):::uc
+            UC6(["<b>6. Register Descriptors</b><br/>POST /shell-descriptors"]):::uc
+            UC3 ==>|"Ready"| UC4
+            UC4 -.->|"include"| UC5 -.->|"include"| UC6
+        end
+    end
+
+    Eng ==> UC1
+    UC4 <-->|"Conflict Probe"| Repo
+    UC5 ==>|"Deploy AASX"| Repo
+    UC6 ==>|"Register AAS"| Reg
+
+    %% Styling with massive font and bold borders
+    classDef actor fill:#fef08a,stroke:#ca8a04,stroke-width:3px,color:#0f172a,font-size:18px
+    classDef sys   fill:#ede9fe,stroke:#6d28d9,stroke-width:3px,color:#0f172a,font-size:18px
+    classDef uc    fill:#dbeafe,stroke:#1d4ed8,stroke-width:2.5px,color:#0f172a,font-size:17px
+
+    style S5 fill:#f8fafc,stroke:#dc2626,stroke-width:3px
+    style S5_BUILD fill:#ffffff,stroke:#94a3b8,stroke-width:1.5px
+    style S5_DEPLOY fill:#ffffff,stroke:#94a3b8,stroke-width:1.5px
+

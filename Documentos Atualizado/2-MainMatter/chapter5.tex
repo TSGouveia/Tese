@@ -30,7 +30,7 @@ All benchmark tests were executed on a Lenovo laptop equipped with a 13th Genera
 \section{Demonstrative Case Study: End-to-End Asset Onboarding}
 \label{sec:eval_case_study}
 
-To validate the practical usability and operational workflow of the framework (addressing objective \textbf{SO2} and requirement \textbf{NFR4}), this section presents an end-to-end walkthrough demonstrating the onboarding of a new mechatronic asset: introducing an additional modular conveyor unit, designated as \textbf{Conveyor~G} (Asset ID: \texttt{Conveyor\_G}), into the production line. The case study demonstrates how this new equipment is designed, semantically enriched, packaged into a standardized \gls{AAS}, and procedurally executed as an active \gls{DT} without modifying or recompiling the simulation scene.
+To validate the practical usability and operational workflow of the framework (addressing the visual modeling objective and requirement \textbf{NFR4}), this section presents an end-to-end walkthrough demonstrating the onboarding of a new mechatronic asset: introducing an additional modular conveyor unit, designated as \textbf{Conveyor~G} (Asset ID: \texttt{Conveyor\_G}), into the production line. The case study demonstrates how this new equipment is designed, semantically enriched, packaged into a standardized \gls{AAS}, and procedurally executed as an active \gls{DT} without modifying or recompiling the simulation scene.
 
 The onboarding lifecycle spans five sequential stages, progressing from initial 3D mesh modeling to operational \gls{DT} execution:
 
@@ -292,14 +292,14 @@ The experimental results validate that the proposed framework can procedurally g
     \item \textbf{Geometric Optimization Trade-Offs:} The fast loading times and low resource overhead observed in the benchmarks rely on the low-polygon geometric models generated in Layer~0. While these simplified meshes represent kinematic envelopes and sensor triggers accurately, they omit internal manufacturing details.
 \end{enumerate}
 
-\subsection{Systematic Verification of Research Hypotheses}
+\subsection{Systematic Verification of Research Objectives}
 
-The empirical findings from both evaluation tracks directly validate the three core research hypotheses formulated in \Cref{cha:introduction}:
+The empirical findings from both evaluation tracks directly validate the core research objectives formulated in \Cref{cha:introduction}:
 
 \begin{itemize}
-    \item \textbf{Validation of H1 (Semantic Integration):} Confirmed. The modular \gls{AAS} submodel schema successfully united 3D visual geometry, kinematic bounds, virtual \gls{IO} pins, and declarative control rules. The exact same \gls{AASX} packages drove both standalone \gls{VC} in Unity and live physical hardware telemetry without modifying asset manifests.
-    \item \textbf{Validation of H2 (Procedural Generation):} Confirmed. The runtime engine dynamically assembled all visual meshes, physical colliders, and telemetry bindings entirely in memory at launch (cold-boot initialization in $2.79 \pm 0.04\,$s for the pilot bench and $5.22 \pm 0.09\,$s for a 50-conveyor layout), fully eliminating pre-compiled scenes.
-    \item \textbf{Validation of H3 (Real-Time Synchronization and Scalability):} Confirmed. Decoupling the asynchronous \gls{TCP} telemetry stream from the fixed physics loop alongside sensor-triggered kinematic snapping maintained continuous physical-digital alignment without drift. Parametric stress testing mapped the deterministic operational ceiling up to 500 modules ($93\,$\gls{FPS}) and isolated the single-threaded \gls{CPU} physics saturation at $N=1000$.
+    \item \textbf{Semantic Asset Integration:} Confirmed. The modular \gls{AAS} submodel schema successfully united 3D visual geometry, kinematic bounds, virtual \gls{IO} pins, and declarative control rules. The exact same \gls{AASX} packages drove both standalone \gls{VC} in Unity and live physical hardware telemetry without modifying asset manifests.
+    \item \textbf{Procedural Scene Assembly:} Confirmed. The runtime engine dynamically assembled all visual meshes, physical colliders, and telemetry bindings entirely in memory at launch (cold-boot initialization in $2.79 \pm 0.04\,$s for the pilot bench and $5.22 \pm 0.09\,$s for a 50-conveyor layout), fully eliminating pre-compiled scenes.
+    \item \textbf{Real-Time Synchronization and Scalability:} Confirmed. Decoupling the asynchronous \gls{TCP} telemetry stream from the fixed physics loop alongside sensor-triggered kinematic snapping maintained continuous physical-digital alignment without drift. Parametric stress testing mapped the deterministic operational ceiling up to 500 modules ($93\,$\gls{FPS}) and isolated the single-threaded \gls{CPU} physics saturation at $N=1000$.
 \end{itemize}
 
 Overall, the evaluation demonstrates that the framework provides responsive, bounded real-time performance for modular production lines containing up to 250 modules, while maintaining valid operational fidelity up to 500 modules, confirming the feasibility of procedural \gls{DT} generation in smart manufacturing.

@@ -1,0 +1,50 @@
+<mxfile host="Electron" modified="2026-09-12T02:02:00.000Z" agent="5.0" version="21.0.0" type="device">
+  <diagram id="workflow_5steps" name="Layer 1 UI Workflow">
+    <mxGraphModel dx="1000" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="300" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Step 1 -->
+        <mxCell id="s1" value="STEP 1: 3D Model Ingestion&#10;- Import GLB file&#10;- Verify mesh &amp; bounding box&#10;- Inspect node hierarchy tree" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="210" height="120" as="geometry" />
+        </mxCell>
+        
+        <!-- Step 2 -->
+        <mxCell id="s2" value="STEP 2: Kinematic Setup&#10;- Select moving components&#10;- Set motion type (rot/trans)&#10;- Define pivots &amp; limits" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="290" y="80" width="210" height="120" as="geometry" />
+        </mxCell>
+        
+        <!-- Step 3 -->
+        <mxCell id="s3" value="STEP 3: Pin &amp; Sensor Mapping&#10;- Click mesh via 3D Raycaster&#10;- Extract position &amp; normal&#10;- Bind I/O pins to PLC addresses" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="540" y="80" width="220" height="120" as="geometry" />
+        </mxCell>
+        
+        <!-- Step 4 -->
+        <mxCell id="s4" value="STEP 4: Control Logic / Rule Editor&#10;- Open IF-THEN Rule Editor&#10;- Link sensor triggers to actuators&#10;- Define closed-loop testing rules" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="800" y="80" width="220" height="120" as="geometry" />
+        </mxCell>
+        
+        <!-- Step 5 -->
+        <mxCell id="s5" value="STEP 5: AASX Build &amp; Upload&#10;- Generate 5 AAS Submodels&#10;- Pack OPC .aasx bundle&#10;- Push to BaSyx Layer 2 via REST" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="80" width="220" height="120" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrows -->
+        <mxCell id="e1" edge="1" parent="1" source="s1" target="s2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="s2" target="s3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="s3" target="s4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="s4" target="s5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
