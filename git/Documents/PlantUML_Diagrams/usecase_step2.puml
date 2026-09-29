@@ -1,0 +1,62 @@
+@startuml
+top to bottom direction
+scale 2.0
+skinparam dpi 300
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 17
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam padding 10
+skinparam nodesep 30
+skinparam ranksep 40
+
+skinparam usecase {
+    BackgroundColor #E0F2FE
+    BorderColor #0284C7
+    FontColor #0C4A6E
+    FontSize 17
+    FontStyle bold
+}
+
+skinparam actor {
+    BackgroundColor #FEF9C3
+    BorderColor #CA8A04
+    FontColor #713F12
+    FontSize 17
+    FontStyle bold
+}
+
+skinparam rectangle {
+    BackgroundColor #F8FAFC
+    BorderColor #64748B
+    FontColor #1E293B
+    FontSize 19
+    FontStyle bold
+}
+
+actor "Automation Engineer" as Eng
+
+rectangle "Step 2: System Info, Comm and Transform" {
+    usecase "Set Kit Name & AAS ID" as UC2A
+    usecase "Set Description & Dynamic Flag" as UC2B
+    usecase "Configure Communication Protocol" as UC2C
+    usecase "Set Endpoint Address" as UC2D
+    usecase "Define 3D Transformation" as UC2E
+
+    UC2A -[hidden]down-> UC2B
+    UC2B -[hidden]down-> UC2C
+    UC2C -[hidden]down-> UC2D
+    UC2D -[hidden]down-> UC2E
+
+    UC2C ..> UC2D : <<include>>
+}
+
+Eng --> UC2A
+Eng --> UC2B
+Eng --> UC2C
+Eng --> UC2E
+@enduml
+
+
+
+

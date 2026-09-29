@@ -1,0 +1,33 @@
+%!TEX root = ../template.tex
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% chapter4.tex
+%% NOVA thesis document file
+%%
+%% Chapter with Conclusions and Future Work
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{Conclusions and Future Work}
+\label{cha:conclusions}
+
+This document establishes the groundwork for the dissertation "A Model-Driven Framework for the Automated Generation of Dynamic Digital Twins in Manufacturing". The main goal is to address interoperability barriers hindering \gls{DT} adoption in Industry 4.0, namely the gap between static engineering data and dynamic runtime environments.
+
+\section{Summary of Contributions}
+This preparation phase yielded three key contributions:
+
+\begin{enumerate}
+    \item \textbf{State of the Art Analysis:} Literature review confirmed that despite \gls{AML} and \gls{AAS} dominance in their domains, automated bridging solutions remain scarce. Existing methods often depend on unscalable manual mapping.
+    \item \textbf{System Architecture Design:} A technology-agnostic architecture was proposed. Positioning \gls{AAS} as middleware ensures the \gls{DT} becomes an interoperable service rather than a mere visual replica. Automating \gls{AML} to \gls{AAS} translation targets the identified gap.
+    \item \textbf{Implementation Roadmap:} A work plan was defined, segmenting development from the backend interoperability service to the frontend visualization client.
+\end{enumerate}
+
+\section{Future Work}
+Future work shifts from design to implementation and validation. As detailed in \Cref{cha:preliminary_work}, immediate steps include:
+
+\begin{itemize}
+    \item \textbf{Development of the \gls{AML}-to-\gls{AAS} Parser:} Implementing logic to extract hierarchy and attributes from engineering files for \gls{AAS} instantiation.
+    \item \textbf{Construction of the Visualization Client:} Creating game engine scripts to dynamically spawn 3D assets using live \gls{AAS} data.
+    \item \textbf{Closing the Loop:} Enabling bidirectional communication via \gls{MQTT} or \gls{HTTP}/\gls{REST} so the virtual environment reflects the physical asset's real-time state.
+\end{itemize}
+
+\section{Final Remarks}
+The preparation phase validated the approach's feasibility. The selected technologies and architecture form a basis for a framework reducing the engineering effort for dynamic \glspl{DT}. Successful execution will support Industry 4.0 standardization, showing how distinct standards can synergize for autonomous systems.

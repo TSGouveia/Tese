@@ -1,0 +1,55 @@
+﻿flowchart LR
+%% =========================================================================
+%% FMS PHYSICAL BENCH â€” ULTRA-LEGIBLE EDITION
+%% =========================================================================
+
+    subgraph LOOP["<b>Modular Flexible Manufacturing System (Closed-Loop Testbed)</b>"]
+        direction TB
+
+        subgraph SEC1["Infeed & Quality Inspection Section"]
+            direction LR
+            STA_A["<b>Station A (Infeed)</b><br/>Sensor I0_0 • Motor R0_2"]:::f_sta
+            CONV_AB["<b>Conveyor AB</b><br/>Motor R0_3"]:::f_conv
+            STA_B["<b>Station B (Inspection)</b><br/>Sensor I0_3 • Stopper R0_4"]:::f_sta
+            STA_A ==> CONV_AB ==> STA_B
+        end
+
+        subgraph SEC2["Machining & Assembly Section"]
+            direction LR
+            STA_C["<b>Station C (Drilling)</b><br/>Sensor I0_5 • Spindle R0_7 • Z-Axis R0_8"]:::f_sta
+            CONV_CD["<b>Conveyor CD</b><br/>Motor R1_2"]:::f_conv
+            STA_D["<b>Station D (Screwing)</b><br/>Sensor I1_2 • Tool R1_3 • Feed R1_4"]:::f_sta
+            STA_B ==> STA_C ==> CONV_CD ==> STA_D
+        end
+
+        subgraph SEC3["Buffer & Return Loop Section"]
+            direction LR
+            STA_E["<b>Station E (Buffer)</b><br/>Sensor I1_5 • Stopper R1_6"]:::f_sta
+            STA_F["<b>Station F (Discharge)</b><br/>Sensor I2_2"]:::f_sta
+            CONV_RET["<b>Return Conveyors (EF / FA)</b><br/>Motors R1_8 & R2_3 • Sensors I2_1 & I2_4"]:::f_conv
+            STA_D ==> STA_E ==> STA_F ==> CONV_RET ==> STA_A
+        end
+    end
+
+    subgraph CAB["<b>Central Control Cabinet</b>"]
+        direction TB
+        MCU["<b>Arduino Mega 2560</b><br/>FreeRTOS Real-Time Kernel"]:::f_cab
+        ETH["<b>W5100 Ethernet Shield</b><br/>IP: 192.168.10.1 (:8888/:80)"]:::f_cab
+        TERM["<b>Optocoupled Terminal Boards</b><br/>Inputs: I0_0..I2_5 • Outputs: R0_2..R2_8"]:::f_cab
+        MCU <--> ETH
+        MCU <--> TERM
+    end
+
+    TERM <===>|"Field Sensor & Actuator Lines"| LOOP
+
+    %% Styling with massive font and bold borders
+    classDef f_sta  fill:#eff6ff,stroke:#1d4ed8,stroke-width:2.5px,color:#0f172a,font-size:18px
+    classDef f_conv fill:#f0fdf4,stroke:#15803d,stroke-width:2px,color:#0f172a,font-size:17px
+    classDef f_cab  fill:#fef3c7,stroke:#b45309,stroke-width:2.5px,color:#0f172a,font-size:18px
+
+    style LOOP fill:#f8fafc,stroke:#334155,stroke-width:3px
+    style CAB fill:#fffbeb,stroke:#b45309,stroke-width:2.5px
+    style SEC1 fill:#ffffff,stroke:#cbd5e1,stroke-width:1.5px
+    style SEC2 fill:#ffffff,stroke:#cbd5e1,stroke-width:1.5px
+    style SEC3 fill:#ffffff,stroke:#cbd5e1,stroke-width:1.5px
+

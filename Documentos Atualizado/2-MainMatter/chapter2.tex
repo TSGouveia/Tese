@@ -192,11 +192,14 @@ In line with these concepts, this dissertation organizes the digital twin workfl
 \label{sec:semantic_interoperability}
 %=============================================================================
 
-Building \glspl{DT} automatically requires standard, machine-readable formats. Without standard descriptions for geometry, kinematics, electrical pins, and logic rules, each tool requires custom translation scripts \cite{Ahvanouee2025,Barnard2024}.
+To operationalize the \gls{RAMI} reference architecture (\Cref{sec:rami}) and enable automated \gls{DT} generation, industrial assets must be transformed into \textit{Industry 4.0 Components} equipped with standardized digital representations and machine-readable interfaces. In heterogeneous manufacturing environments, achieving seamless semantic interoperability requires a structured stack of open standards \cite{Barnard2024,Ahvanouee2025}:
+\begin{itemize}
+    \item \textbf{\gls{AML} (\gls{IEC}~62714):} An \gls{XML}-based neutral format focused on modeling plant topology, equipment hierarchies, and \gls{CAD} references during the offline engineering phase \cite{Drath2008,Barnard2024}.
+    \item \textbf{\gls{OPCUA} (\gls{IEC}~62541):} A service-oriented communication architecture providing real-time data transport, \gls{PubSub} messaging, and information model browsing across shop-floor devices \cite{Pajpach2023,Barnard2024}.
+    \item \textbf{\gls{ECLASS} (\gls{ISO}~13584):} An international classification system and dictionary providing globally unique identifiers for industrial product properties and technical specifications.
+\end{itemize}
 
-Earlier efforts often used \gls{AML} (\gls{IEC}~62714) to share plant structure and 3D files during the engineering phase \cite{Drath2008}. However, \gls{AML} was designed as an offline file format for project handover. It does not provide network \glspl{API} or standard servers for live shop-floor communication \cite{Barnard2024,Ahvanouee2025}.
-
-To provide a standard digital wrapper that works during both design and runtime, Plattform Industrie 4.0 created the \gls{AAS} (\gls{IEC}~63278) \cite{Pajpach2025,Abdel-Aty2022}.
+While formats like \gls{AML} handle offline engineering data and \gls{OPCUA} manages network transport, neither provides a complete digital lifecycle wrapper. To unify these domain-specific standards into a single accessible model, Plattform Industrie 4.0 introduced the \gls{AAS} (\gls{IEC}~63278) \cite{Abdel-Aty2022,Pajpach2025}. The \gls{AAS} acts as the standardized digital wrapper for Industry 4.0 components, encapsulating properties, 3D assets, communication endpoints, and behavioral logic into a unified container accessible via standard \gls{REST} \glspl{API} across the entire asset lifecycle.
 
 \subsection{\texorpdfstring{\gls{AAS}}{AAS} Architecture and Metamodel}
 \label{subsec:aas_deep_dive}
@@ -235,7 +238,7 @@ The main benefit of the \gls{AAS} is that different systems can read and interpr
     \item \textbf{Contact Information:} Standardizes manufacturer and service contact details for maintenance and lifecycle support.
 \end{itemize}
 
-While these templates cover general information, templates for real-time physics, kinematics, and control logic are still emerging in the literature \cite{Pajpach2025,Perez2025}. This is one of the main areas where this dissertation defines and tests custom submodel structures.
+While these templates cover static administrative metadata, official submodel specifications for real-time physics dynamics, kinematic joint constraints, and executable control logic remain absent or fragmented in current standards \cite{Pajpach2025,Perez2025}. Consequently, integrating behavioral, spatial, and geometric aspects into standardized semantic containers represents a significant open research gap in Industry 4.0 literature.
 
 \subsection{Portable Packaging: The \texorpdfstring{\gls{AASX}}{AASX} Container}
 
@@ -352,7 +355,9 @@ To ensure smooth runtime performance, industrial game engine architectures decou
 \label{sec:automated_dt_generation}
 %=============================================================================
 
-While \glspl{DT} offer clear benefits, the engineering effort required to build and maintain them remains high, especially for smaller manufacturers \cite{Alexopoulos2025,Schaper2025}.
+Although \glspl{DT} offer significant advantages for smart manufacturing \cite{Tao2019,Jones2020}, the high engineering overhead required to build, configure, and maintain them remains a primary barrier to widespread industrial adoption \cite{Kritzinger2018,Moyne2020,Khan2025}. In traditional development lifecycles, constructing a functional \gls{DT} requires manual aggregation of multi-disciplinary assets, including 3D geometric meshes, kinematic joint definitions, electrical sensor mappings, and communication driver configurations \cite{Alexopoulos2025,Schaper2025}. For \glspl{SME} and agile production lines with frequent product revisions and layout changes, this manual modeling process creates a major operational bottleneck \cite{Semeraro2021,Khan2025}.
+
+To transition \glspl{DT} from static, offline prototypes into dynamic, self-configuring virtual assets, recent research emphasizes automated \gls{DT} generation. The goal of automated generation is to eliminate manual engineering steps by programmatically transforming raw design artifacts, semantic standards, or operational logs into fully functional, synchronized digital twins \cite{Luder2020,Garcia2023,Ahvanouee2025}. Achieving this vision requires overcoming toolchain fragmentation, establishing unified metamodels, and automating both static scene synthesis and dynamic execution loops.
 
 \subsection{Bottlenecks in Manual Workflows}
 
@@ -410,29 +415,36 @@ Data-driven methods work well when engineering files are missing, but they produ
 
 \subsection{Generative \texorpdfstring{\gls{AI}}{AI} and Large Language Models}
 
-Recent work explores using \glspl{LLM} and generative \gls{AI} to assist in creating \glspl{DT} \cite{Dong2024,Alexopoulos2025}.
+Recent research explores using \glspl{LLM} and generative \gls{AI} to automate \gls{DT} creation, code generation, and semantic asset modeling \cite{Dong2024,Alexopoulos2025,Xia2024,Reichardt2024}.
 
-As shown in \Cref{fig:llm_nvidia_omniverse}, \textcite{Dong2024} use an \gls{LLM} that translates natural language prompts into Python scripts that build 3D scenes in NVIDIA Omniverse. \textcite{Alexopoulos2025} use \glspl{LLM} to generate simulation test scenarios as \gls{BPMN} process charts.
+As illustrated in \Cref{fig:llm_nvidia_omniverse}, \textcite{Dong2024} present a framework using \glspl{LLM} to translate natural language prompts into Python script \glspl{API} that procedurally assemble 3D scenes within NVIDIA Omniverse. \textcite{Alexopoulos2025} leverage generative \gls{AI} to produce simulation test scenarios represented as \gls{BPMN} process flows. 
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.88\textwidth]{5-Figures/nvidia_llm.pdf} 
-    \caption{Digital twin code generation process for NVIDIA Omniverse using \glspl{LLM} \cite{Dong2024}.}
+    \caption{\gls{DT} code generation process for NVIDIA Omniverse using \glspl{LLM} \cite{Dong2024}.}
     \label{fig:llm_nvidia_omniverse}
 \end{figure}
 
-While \glspl{LLM} are flexible, their outputs can vary and sometimes contain errors. In industrial automation, deterministic behavior is essential for machine safety, meaning \gls{AI} tools are better suited as assistants for testing rather than for generating core machine structures.
+Beyond 3D scene drafting and scenario generation, recent contributions focus on bridging unstructured text, machine learning, and standardized semantic models. As shown in \Cref{fig:xia_llm_aas}, \textcite{Xia2024} introduce an autonomous multi-agent \gls{LLM} framework that ingests unstructured technical documentation (such as component \gls{PDF} datasheets) and extracts metadata to generate standardized \gls{AAS} submodels automatically, using \gls{RAG} to enforce schema compliance. Concurrently, \textcite{Reichardt2024} conceptualize the "\gls{AI} Asset Administration Shell", embedding machine learning models and \gls{AI} pipeline metadata directly into standardized \gls{AAS} submodel templates to enable \gls{AI}-driven operational monitoring within \glspl{CPPS}.
 
-\subsection{Synthesis of State-of-the-Art Approaches}
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.88\textwidth]{5-Figures/xia_llm_aas_framework.png} 
+    \caption{Framework for automated \gls{AAS} submodel generation from technical documentation using \gls{LLM} agents \cite{Xia2024}.}
+    \label{fig:xia_llm_aas}
+\end{figure}
 
-Comparing these methods highlights clear trade-offs. Model-driven methods \cite{Alexopoulos2025,Schaper2025} provide reliable structures, but usually end in pre-built scenes that cannot adapt dynamically at runtime. Data-driven methods \cite{Lugaresi2021,Garcia2023} are useful for legacy equipment, but lack detailed 3D geometry and kinematics. Generative \gls{AI} methods \cite{Dong2024} make initial scene drafting fast, but lack the consistency needed for control systems. Most importantly, nearly all existing solutions still require an engineer to manually assemble 3D assets in the simulation editor before compilation, making rapid reconfiguration on the factory floor difficult.
+Despite their high flexibility and rapid prototyping capabilities, \glspl{LLM} inherently present stochastic behavior and hallucination risks \cite{Dong2024,Xia2024}. In industrial automation, deterministic behavior and strict schema validation are essential for machine safety, meaning generative \gls{AI} tools currently serve best as conversational query interfaces or initial drafting assistants rather than deterministic generators for physical control logic \cite{Dong2024,Xia2024,Alexopoulos2025}.
 
 %=============================================================================
 \section{Identified Research Gaps and Opportunities}
 \label{sec:sota_gaps}
 %=============================================================================
 
-Reviewing the literature shows that while individual pieces of the \gls{DT} have progressed, integrating them into an automated procedural system remains an open challenge. Four main gaps stand out:
+Comparing the state-of-the-art approaches across model-driven, data-driven, and generative \gls{AI} paradigms highlights clear trade-offs. Model-driven methods \cite{Alexopoulos2025,Schaper2025} provide reliable structures, but usually result in pre-built scenes that cannot adapt dynamically at runtime. Data-driven methods \cite{Lugaresi2021,Garcia2023} are useful for legacy equipment, but lack detailed 3D geometry and kinematics. Generative \gls{AI} methods \cite{Dong2024,Xia2024,Reichardt2024} make initial scene drafting and datasheet parsing fast, but lack the deterministic consistency needed for machine control systems. Most importantly, nearly all existing solutions still require an engineer to manually assemble 3D assets in the simulation editor before compilation, making rapid reconfiguration on the factory floor difficult.
+
+Reviewing this literature shows that while individual pieces of the \gls{DT} have progressed, integrating them into an automated procedural system remains an open challenge. Four main gaps stand out:
 
 \begin{enumerate}
     \item \textbf{Gap 1: Fragmented Aspects vs. Unified Semantic Metamodel.}

@@ -1,0 +1,77 @@
+﻿flowchart TB
+%% =========================================================================
+%% CONCEPTUAL 3-LAYER ARCHITECTURE — COMPACT & LEGIBLE (NO "MIDDLEWARE")
+%% Technology-Agnostic • Large Typography • High-Contrast
+%% =========================================================================
+
+    subgraph L1["<b>Layer 1 · Asset Authoring & Modeling Client</b>"]
+        direction LR
+        WIZ["<b>Authoring GUI Suite</b><br/>Visual Parameterization"]:::c_l1
+        PARSER["<b>3D & Kinematic Parser</b><br/>Mesh Bounds & Invariants"]:::c_l1
+        PKG["<b>Metamodel Packager</b><br/>Standardized Asset Container"]:::c_l1
+        WIZ --> PARSER --> PKG
+    end
+
+    subgraph L2["<b>Layer 2 · Semantic Services & Data Layer</b>"]
+        direction TB
+        subgraph L2_TOP["Directory & Repository Services"]
+            direction LR
+            REP["<b>Asset Model Repository</b><br/>Standardized Facets & Submodels"]:::c_l2
+            DIR["<b>Registry & Discovery</b><br/>Identity & URI Directory"]:::c_l2
+        end
+        subgraph L2_BOT["Events, Persistence & Supervisory View"]
+            direction LR
+            BUS["<b>Real-Time Event Broker</b><br/>Pub/Sub State Notification Bus"]:::c_l2
+            DB[("<b>Metadata Database</b><br/>Persistent Configuration")]:::c_db
+            UI["<b>Semantic Catalog UI</b><br/>Supervisory Dashboard"]:::c_ui
+        end
+        REP <--> DIR
+        DIR --> DB
+        REP <--> BUS
+        REP --> UI
+    end
+
+    subgraph L3["<b>Layer 3 · Execution & Physical Synchronization</b>"]
+        direction LR
+        subgraph SIM["<b>Simulation & Digital Twin Runtime</b>"]
+            direction TB
+            PROC["<b>Procedural Ingestion</b><br/>Dynamic Asset Assembly"]:::c_u
+            PHYS["<b>Physics & Surface Advection</b><br/>Rigid-Body Contact Solver"]:::c_u
+            DMC["<b>Dual-Mode Orchestrator</b><br/>Virtual Comm. & Rule Engine"]:::c_u
+            SNAP["<b>Pose Snapping & Lerp</b><br/>Anti-Drift State Alignment"]:::c_u
+            PROC --> PHYS --> DMC --> SNAP
+        end
+
+        subgraph FIELD["<b>Physical Automation & Field Instrumentation</b>"]
+            direction TB
+            EDGE["<b>Embedded Edge Controller</b><br/>Preemptive Deterministic Tasks"]:::c_h
+            SENS["<b>Industrial Sensor Array</b><br/>Optical Breakbeams & Inductive"]:::c_h
+            ACTS["<b>Actuator Drives</b><br/>Motorized Conveyors & Diverters"]:::c_h
+            EDGE --> SENS
+            EDGE --> ACTS
+        end
+    end
+
+    %% High-level interaction flows with clear thick arrows
+    PKG ==>|"Publish Asset Definition"| REP
+    REP <==>|"Query Metamodel & Endpoints"| PROC
+    BUS -.->|"Asynchronous Telemetry"| DMC
+    EDGE <===>|"Deterministic Real-Time Stream (Low Latency)"| SIM
+    REP -.->|"Field Configuration"| EDGE
+
+    %% Styling with massive high-contrast font and thick borders
+    classDef c_l1 fill:#dbeafe,stroke:#1d4ed8,stroke-width:3px,color:#0f172a,font-size:22px
+    classDef c_l2 fill:#fef3c7,stroke:#b45309,stroke-width:3px,color:#0f172a,font-size:22px
+    classDef c_db  fill:#fed7aa,stroke:#c2410c,stroke-width:3px,color:#0f172a,font-size:22px
+    classDef c_ui  fill:#f3e8ff,stroke:#7e22ce,stroke-width:3px,color:#0f172a,font-size:22px
+    classDef c_u   fill:#ede9fe,stroke:#6d28d9,stroke-width:3px,color:#0f172a,font-size:22px
+    classDef c_h   fill:#fee2e2,stroke:#b91c1c,stroke-width:3px,color:#0f172a,font-size:22px
+
+    style L1 fill:#f8fafc,stroke:#1d4ed8,stroke-width:3px
+    style L2 fill:#fffbeb,stroke:#b45309,stroke-width:3px
+    style L3 fill:#faf5ff,stroke:#6d28d9,stroke-width:3px
+    style L2_TOP fill:#ffffff,stroke:#86efac,stroke-width:1.5px
+    style L2_BOT fill:#ffffff,stroke:#86efac,stroke-width:1.5px
+    style SIM fill:#ffffff,stroke:#c084fc,stroke-width:2px
+    style FIELD fill:#ffffff,stroke:#fca5a5,stroke-width:2px
+

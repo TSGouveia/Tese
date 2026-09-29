@@ -307,24 +307,35 @@ The embedded firmware runs on the FreeRTOS real-time operating system to guarant
 \section{Implementation Traceability and Requirement Coverage}
 \label{sec:impl_traceability}
 
-To verify how the technical implementation fulfills the design requirements from \Cref{sec:design_requirements}, \Cref{tab:impl_traceability_matrix} maps each layer, tool, and protocol to its corresponding functional and non-functional requirement.
+\Cref{tab:impl_traceability_matrix} maps each operational tier, core technology, and requirement to verify how the technical implementation fulfills the design criteria established in \Cref{sec:design_requirements}.
 
+\Cref{sec:impl_layer0} and \Cref{sec:impl_wizard} address asset preparation and onboarding. By utilizing Blender 5.2 LTS to enforce a 1:1 metric scale, aligned pivot points, and low-polygon geometries, Layer~0 satisfies \textbf{FR2} (Graphical and Kinematic Fidelity). Layer~1 builds upon this foundation via a PyQt6/PyVista desktop application, leveraging 3D surface raycasting, a visual rule editor, and automated \gls{AASX} packaging to fulfill \textbf{FR1} (Modular Asset Specification), \textbf{FR2}, and \textbf{NFR4} (No-Code Configuration).
+
+At the repository level (\Cref{sec:impl_basyx}), Layer~2 relies on containerized Eclipse BaSyx~v2 microservices deployed via Docker and backed by MongoDB. By maintaining decoupled \gls{AAS} and submodel registries accessible through standard \gls{REST} \gls{API} endpoints, Layer~2 satisfies \textbf{FR1}, \textbf{FR3} (Dynamic Scene Assembly), \textbf{NFR2} (Interoperability), and \textbf{NFR3} (Extensibility and Scalability). 
+
+Finally, the execution loop is closed across Layer~3 and the physical hardware (\Cref{sec:impl_unity}, \Cref{sec:impl_firmware}). Unity 3D queries BaSyx registries at startup to perform procedural scene assembly, satisfying \textbf{FR1}, \textbf{FR3}, and \textbf{NFR3}. During runtime, PhysX contact mechanics and kinematic position snapping enforce \textbf{FR4} (Physical-Virtual Synchronization) by eliminating spatial drift between physical workpieces and virtual models. On the physical bench, the Industrial Shields \gls{PLC} running FreeRTOS delivers 5\,ms input scanning with software debouncing and dedicated \gls{TCP}/\gls{HTTP} socket streaming, directly fulfilling \textbf{NFR1} (Low-Latency Telemetry) and \textbf{FR4}.
+
+\begin{landscape}
+\vspace*{\fill}
 \begin{table}[htbp]
     \centering
     \caption{Traceability matrix mapping architectural layers and technical components to design requirements.}
     \label{tab:impl_traceability_matrix}
     \small
-    \renewcommand{\arraystretch}{1.3}
-    \begin{tabularx}{\textwidth}{@{}p{3.0cm} p{3.4cm} p{1.9cm} X@{}}
+    \renewcommand{\arraystretch}{1.4}
+    \setlength{\tabcolsep}{8pt}
+    \begin{tabularx}{\linewidth}{@{}p{4.0cm} p{5.5cm} p{2.8cm} X@{}}
         \toprule
         \textbf{Layer / Component} & \textbf{Core Technologies} & \textbf{Requirements} & \textbf{Functional Role} \\ \midrule
-        \textbf{Layer 0: Digitization} & Blender 5.2 LTS, \gls{glTF}/\gls{GLB} & FR2 & 1:1 metric modeling, pivot alignment, low-poly geometry \\
-        \textbf{Layer 1: Modeling App} & Python, PyQt6, PyVista, basyx-python-sdk & FR1, FR2, NFR4 & 3D raycasting sensor mapping, rule editor, \gls{AASX} packaging \\
-        \textbf{Layer 2: Storage \& Reg.} & Eclipse BaSyx v2, Docker, MongoDB, \gls{REST} & FR1, FR3, NFR2, NFR3 & Decoupled \gls{AAS} and submodel registries, dynamic asset discovery \\
-        \textbf{Layer 3: Unity Runtime} & Unity 3D, C\#, glTFast, PhysX & FR1, FR3, FR4, NFR3 & Procedural scene assembly, contact physics, dual-mode execution, drift correction \\
+        \textbf{Layer 0: Digitization} & Blender 5.2 LTS, \gls{glTF}/\gls{GLB} & FR2 & 1:1 metric modeling, pivot alignment, low-poly geometry \\ \addlinespace[4pt]
+        \textbf{Layer 1: Modeling App} & Python, PyQt6, PyVista, basyx-python-sdk & FR1, FR2, NFR4 & 3D raycasting sensor mapping, rule editor, \gls{AASX} packaging \\ \addlinespace[4pt]
+        \textbf{Layer 2: Storage \& Reg.} & Eclipse BaSyx v2, Docker, MongoDB, \gls{REST} & FR1, FR3, NFR2, NFR3 & Decoupled \gls{AAS} and submodel registries, dynamic asset discovery \\ \addlinespace[4pt]
+        \textbf{Layer 3: Unity Runtime} & Unity 3D, C\#, glTFast, PhysX & FR1, FR3, FR4, NFR3 & Procedural scene assembly, contact physics, dual-mode execution, drift correction \\ \addlinespace[4pt]
         \textbf{Hardware \& Firmware} & Industrial Shields \gls{PLC}, FreeRTOS, \gls{TCP}/\gls{IP} & FR4, NFR1 & Fast 5\,ms input scanning, optocoupled isolation, dual-channel communication \\ \bottomrule
     \end{tabularx}
 \end{table}
+\vspace*{\fill}
+\end{landscape}
 
 \section{Chapter Summary}
 \label{sec:impl_summary}

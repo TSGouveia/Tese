@@ -11,14 +11,21 @@
 \chapter{Introduction}
 \label{cha:introduction}
 
-\prependtographicspath{{5-Figures/Covers/}}
+This chapter introduces the research context, motivation, and core objectives of this dissertation. As industrial automation transitions toward flexible Cyber-Physical Production Systems (\glspl{CPPS}), automated creation and synchronization of interactive Digital Twins (\glspl{DT}) becomes essential for rapid factory reconfiguration.
 
-% epigraph configuration
-\epigraphfontsize{\small\itshape}
-\setlength\epigraphwidth{12.5cm}
-\setlength\epigraphrule{0pt}
+The chapter is organized as follows:
+\begin{itemize}
+    \item \Cref{sec:background} outlines the industrial background, smart manufacturing paradigms, and standard reference architectures.
+    \item \Cref{sec:motivation} presents the engineering bottlenecks in traditional simulation workflows and formulates the problem statement.
+    \item \Cref{sec:rqs} details the main research question and decomposes the problem into three investigative sub-problems.
+    \item \Cref{sec:objectives} outlines the primary research objective and the specific goals guiding this work.
+    \item \Cref{sec:approach} describes the proposed four-layer framework architecture and summarizes the main technical contributions.
+    \item \Cref{sec:methodology} presents the Design Science Research (\gls{DSR}) methodology followed in this work.
+    \item \Cref{sec:structure} describes the overall structure of the remaining chapters in this dissertation.
+\end{itemize}
 
 \section{Background and Contextualization}
+\label{sec:background}
 
 Modern factories need to adapt quickly to changing market demands. In traditional manufacturing, production lines were built to make large volumes of a single product with dedicated machinery. However, today's industrial systems must be modular and reconfigurable, allowing machines to be added, moved, or swapped to produce smaller batches of customized items \cite{Khan2025}. This flexibility is made possible by \glspl{CPS} and \glspl{CPPS}, which connect physical shop-floor equipment with computers, sensors, and real-time networks \cite{Abdel-Aty2022,Rocha2024}.
 
@@ -27,6 +34,7 @@ In this context, the \gls{DT} has become an important tool for \gls{VC}, operati
 To help equipment from different vendors share data, the Plattform Industrie 4.0 community established the \gls{RAMI} reference architecture. Within \gls{RAMI}, the \gls{AAS} (\gls{IEC}~63278), maintained by the \gls{IDTA}, serves as the standard digital representation for physical assets \cite{Lu2025}. An \gls{AAS} organizes mechanical properties, operational variables, and communication settings into standardized submodels, providing a common format to access machine data.
 
 \section{Motivation and Problem Statement}
+\label{sec:motivation}
 
 Even though \glspl{DT} offer clear benefits, building and maintaining them in practice is still difficult, especially for \glspl{SME} \cite{Schaper2025}. Traditional development pipelines face three main bottlenecks:
 
@@ -38,48 +46,44 @@ Third, simulation tools are often decoupled from control hardware. Standard mode
 
 These limitations explain why commercial simulation platforms struggle in agile, reconfigurable production lines \cite{Rocha2024}. Because proprietary tools depend on pre-compiled scenes, static component catalogs, and manual address mapping, even minor adjustments to physical equipment require time-consuming manual intervention. To overcome these barriers, this research explores how open, standardized information models can replace manual workflows and drive automated simulation pipelines \cite{Luder2020}.
 
-\section{Research Questions and Hypotheses}
+\section{Research Question and Problem Breakdown}
+\label{sec:rqs}
 
-This dissertation investigates how standardized \glspl{AAS} can be used to generate and synchronize interactive \glspl{DT} automatically. The main research question guiding this work is:
+This dissertation investigates how standardized \glspl{AAS} can be used to generate and synchronize interactive \glspl{DT} automatically. The core research question guiding this work is:
 
 \begin{quote}
-    \textbf{Main Research Question:} \textit{How can standardized \glspl{AAS} be used to procedurally assemble and synchronize interactive, physics-enabled \glspl{DT} at runtime?}
+    \textbf{Research Question:} \textit{How can standardized \glspl{AAS} be used to procedurally assemble and synchronize interactive, simulation-based \glspl{DT} at runtime?}
 \end{quote}
 
-To address this question, three research sub-questions and their working hypotheses are defined:
+To address this central question, the overall research problem is decomposed into three focused sub-problems:
 
 \begin{itemize}
-    \item \textbf{RQ1 (Semantic Integration):} \textit{How can 3D geometry, kinematic constraints, electrical pins, and control logic be structured within a standardized semantic model?}
-    \begin{itemize}
-        \item[\textbf{H1:}] A modular \gls{AAS} submodel schema that links low-polygon 3D meshes, kinematic limits, \gls{IO} pin mappings, and declarative control rules provides a vendor-neutral representation capable of supporting both \gls{VC} and an operational \gls{DT}.
-    \end{itemize}
+    \item \textbf{Semantic Asset Integration:} Structuring 3D geometry, kinematic motion bounds, electrical \gls{IO} pins, and declarative control logic rules within a unified, vendor-neutral \gls{AAS} submodel schema.
 
-    \item \textbf{RQ2 (Procedural Generation):} \textit{Can an interactive 3D simulation scene be assembled at runtime directly from \gls{AAS} packages without pre-compiled scene files?}
-    \begin{itemize}
-        \item[\textbf{H2:}] A runtime loader can download and unpack containerized \gls{AAS} archives, build 3D visual hierarchies, configure physical colliders, and connect telemetry bindings in memory at startup, removing the need for manual scene composition.
-    \end{itemize}
+    \item \textbf{Procedural Scene Assembly:} Ingesting containerized \gls{AAS} packages at runtime, dynamically constructing 3D visual hierarchies, setting up physical colliders, and configuring network endpoints in memory without pre-compiled scenes.
 
-    \item \textbf{RQ3 (Real-Time Performance and Scalability):} \textit{What are the performance limits of procedurally generated digital twins during live physical synchronization?}
-    \begin{itemize}
-        \item[\textbf{H3:}] Separating network communication loops from the fixed physics timestep and applying kinematic drift correction maintains stable synchronization with physical \glspl{PLC}, while parametric scaling tests show clear computational boundaries as module counts increase.
-    \end{itemize}
+    \item \textbf{Real-Time Performance and Scalability:} Decoupling asynchronous network telemetry streams from the fixed physics loop and compensating for kinematic spatial drift to maintain bounded real-time performance as layout module counts scale.
 \end{itemize}
 
 \section{Research Objectives}
+\label{sec:objectives}
 
 The primary objective of this dissertation is to design, build, and test an open framework that procedurally generates and synchronizes industrial \glspl{DT} using standardized \gls{AAS} packages.
 
-To reach this goal, four specific objectives were defined:
+To achieve this goal, four specific objectives were defined:
 
-First, \textbf{SO1 (Semantic Asset Metamodel)} defines an open data model using \gls{AAS} submodels. This model captures 3D visual structures, kinematic motion limits, virtual \gls{IO} pins, declarative control rules, and network addresses inside portable \gls{AASX} files.
+\begin{enumerate}
+    \item \textbf{Definition of a Semantic Asset Metamodel:} Establish an open data model using \gls{AAS} submodels to capture 3D visual structures, kinematic motion limits, virtual \gls{IO} pins, declarative control rules, and network addresses inside portable \gls{AASX} files.
 
-Second, \textbf{SO2 (Visual Asset Modeling Pipeline)} develops a desktop authoring tool that lets engineers configure 3D assets, place virtual sensors on model surfaces using mouse clicks, and export valid \gls{AASX} packages without writing software code.
+    \item \textbf{Development of a Visual Asset Modeling Pipeline:} Build a desktop authoring application that allows engineers to configure 3D assets, place virtual sensors on model surfaces interactively, and export valid \gls{AASX} packages without writing software code.
 
-Third, \textbf{SO3 (Procedural Simulation Runtime)} creates a real-time runtime engine in Unity 3D that queries the semantic repository, instantiates 3D meshes and colliders in memory, and operates in both virtual commissioning and operational \gls{DT} modes.
+    \item \textbf{Implementation of a Procedural Simulation Runtime:} Create a real-time runtime engine in Unity 3D that queries the semantic repository, instantiates 3D meshes and colliders in memory, and operates in both virtual commissioning and operational \gls{DT} modes.
 
-Fourth, \textbf{SO4 (Empirical Validation and Scalability Evaluation)} evaluates the framework on a physical modular conveyor testbed, followed by automated stress tests scaling from 5 to 1000 modules to measure startup times, frame rates, and latency limits.
+    \item \textbf{Empirical Validation and Scalability Evaluation:} Validate the framework on a physical modular conveyor testbed, followed by automated stress tests scaling from 5 to 1000 modules to measure startup times, frame rates, and latency limits.
+\end{enumerate}
 
 \section{Approach and Contributions}
+\label{sec:approach}
 
 This work uses a four-layer architecture to connect physical factory equipment with real-time virtual simulation:
 
@@ -93,13 +97,14 @@ In Layer~3 (Runtime Simulation), a Unity 3D engine downloads the models from BaS
 
 The main contributions of this dissertation are:
 \begin{enumerate}
-    \item An open pipeline that replaces static, pre-compiled simulation files by generating interactive virtual environments dynamically from \gls{AAS} packages.
-    \item A unified \gls{AAS} submodel schema that links 3D meshes, joint limits, electrical pins, and IF-THEN control rules in a single portable format.
-    \item An interactive authoring tool that allows engineers to configure sensors visually and export valid \gls{AASX} archives without custom programming.
-    \item Quantitative experimental benchmarks on physical mechatronic hardware and large-scale synthetic layouts, providing realistic latency and frame rate limits for procedurally assembled \glspl{DT}.
+    \item \textbf{An Open Model-Driven Framework and Procedural Pipeline:} A four-layer architecture that replaces static, pre-compiled simulation files by procedurally generating interactive virtual environments directly from \gls{AAS} packages at runtime.
+    \item \textbf{A Unified \gls{AAS} Submodel Schema:} A portable metamodel specification linking 3D meshes, kinematic joint limits, virtual \gls{IO} pins, and IF-THEN control logic rules into standardized submodel structures.
+    \item \textbf{An Interactive No-Code Authoring Tool:} A desktop application incorporating 3D surface raycasting for visual sensor placement and automated \gls{AASX} bundle generation without manual programming.
+    \item \textbf{Empirical Evaluation and Performance Benchmarks:} Quantitative experimental validation on physical mechatronic hardware and parametric stress tests up to 1000 conveyor modules, establishing realistic latency, startup time, and frame rate bounds for procedurally assembled \glspl{DT}.
 \end{enumerate}
 
 \section{Research Methodology}
+\label{sec:methodology}
 
 To achieve the research objectives, this dissertation follows the \gls{DSR} methodology \cite{Peffers2007}, an established framework for solving engineering problems by designing, developing, and evaluating practical software artifacts. The work was divided into four main phases:
 
