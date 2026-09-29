@@ -1,0 +1,37 @@
+﻿flowchart TB
+%% =========================================================================
+%% CONVEYOR WIZARD UI & WORKFLOW â€” HIGH LEGIBILITY COMPACT EDITION
+%% =========================================================================
+
+    subgraph PIPELINE["<b>Conveyor Wizard Interactive 5-Step Pipeline (conveyor_wizard.py)</b>"]
+        direction LR
+
+        S1["<b>Step 1 Â· 3D Model</b><br/>• GLB / URDF Selection<br/>• PyVista 3D Viewer<br/>• Hierarchy Tree"]:::step
+        
+        S2["<b>Step 2 Â· Transform</b><br/>• Pos / Rot / Scale<br/>• Comm Protocol (TCP)<br/>• Target IP & Port"]:::step
+
+        S3["<b>Step 3 Â· Sensors</b><br/>• Optical & Proximity<br/>• ActiveLow & Filter<br/>• Port I0_0 .. I2_5"]:::step
+
+        S4["<b>Step 4 Â· Actuators</b><br/>• Belt Speed & Vector<br/>• Stopper Interlocks<br/>• Port R0_2 .. R2_8"]:::step
+
+        S5["<b>Step 5 Â· Deploy</b><br/>• AASX Packaging<br/>• POST /upload<br/>• Duplicate Check"]:::step
+
+        S1 ==> S2 ==> S3 ==> S4 ==> S5
+    end
+
+    subgraph AUX["<b>Integrated Engineering Tools</b>"]
+        direction LR
+        RULES["<b>Rule Programming Studio (AASRulesEditorDialog)</b><br/>IF (SourceAAS.Pin == True) \u27F6 THEN (TargetAAS.Pin = Command, Delay = 500ms)"]:::dialog
+        LAYOUT["<b>3D Plant Layout Preview</b><br/>Multi-Asset Scene Assembly & Relative Snapping"]:::dialog
+    end
+
+    S5 -.->|"Launch Rule Studio"| RULES
+    S5 -.->|"Inspect Plant"| LAYOUT
+
+    %% Styling
+    classDef step   fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0c4a6e,font-size:15px
+    classDef dialog fill:#faf5ff,stroke:#9333ea,stroke-width:2px,color:#581c87,font-size:15px
+
+    style PIPELINE fill:#ffffff,stroke:#0284c7,stroke-width:2.5px
+    style AUX fill:#f8fafc,stroke:#a855f7,stroke-width:2px
+

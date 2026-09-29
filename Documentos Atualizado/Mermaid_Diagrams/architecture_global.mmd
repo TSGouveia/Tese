@@ -1,0 +1,86 @@
+flowchart TB
+%% =========================================================================
+%% ARCHITECTURE GLOBAL — Complete 4-Layer Implementation Architecture
+%% Layers: (0) Blender, (1) Wizard, (2) BaSyx v2, (3) Unity 3D & Arduino
+%% =========================================================================
+
+    subgraph L0["<b>Layer 0 · Physical Asset Digitization</b> (Blender 5.2.0 LTS)"]
+        direction LR
+        PHYS_SRV["<b>Physical FMS Survey</b><br/>Manual 1:1 Metric Caliper"]:::b_l0
+        BLENDER["<b>Polygonal 3D Modeling</b><br/>Hierarchy, Pivots & Normals"]:::b_l0
+        GLB_EXP["<b>GLB Asset Exporter</b><br/>Binary glTF 2.0 (Meshes & PBR)"]:::b_l0
+        PHYS_SRV --> BLENDER --> GLB_EXP
+    end
+
+    subgraph L1["<b>Layer 1 · Setup & Modeling Client</b> (Python / PyQt6)"]
+        direction LR
+        WIZ["<b>Conveyor Wizard GUI</b><br/>PyQt6 Desktop Client"]:::b_l1
+        PARSER["<b>3D & Kinematic Parser</b><br/>PyVista · Trimesh Raycasting"]:::b_l1
+        SDK["<b>BaSyx Python SDK</b><br/>AASX Package Generator"]:::b_l1
+        WIZ --> PARSER --> SDK
+    end
+
+    subgraph L2["<b>Layer 2 · Industrial Semantic Middleware</b> (Eclipse BaSyx Docker)"]
+        direction TB
+        subgraph L2_TOP["Core AAS Microservices"]
+            direction LR
+            ENV["<b>AAS Environment (:8081)</b><br/>AASX /upload · Shells & Submodels"]:::b_l2
+            REG["<b>AAS & SM Registries (:8082/:8083)</b><br/>Shell & Submodel Directory"]:::b_l2
+        end
+        subgraph L2_BOT["Events, Persistence & UI"]
+            direction LR
+            MQTT["<b>Mosquitto MQTT (:1883)</b><br/>Real-Time Telemetry Broker"]:::b_l2
+            DB[("<b>MongoDB (:27017)</b><br/>Metadata Store")]:::b_db
+            UI["<b>BaSyx Web UI (:3000)</b><br/>Supervisory Dashboard"]:::b_ui
+        end
+        ENV <--> REG
+        REG --> DB
+        ENV <--> MQTT
+        ENV --> UI
+    end
+
+    subgraph L3["<b>Layer 3 · Execution & Physical Synchronization</b>"]
+        direction LR
+        subgraph U3D["<b>Unity 3D Simulation</b>"]
+            direction TB
+            BM["<b>BaSyxManager.cs</b><br/>Runtime AAS Loader"]:::b_u
+            RE["<b>AASRuleEngine.cs</b><br/>Virtual Commissioning"]:::b_u
+            DP["<b>Dynamic Products</b><br/>PhysX Workpieces & Lerp"]:::b_u
+            BM --> RE --> DP
+        end
+
+        subgraph FMS["<b>Physical Modular FMS Bench</b>"]
+            direction TB
+            ARD["<b>Arduino Mega 2560</b><br/>FreeRTOS Firmware"]:::b_h
+            SENS["<b>Sensor Array (Port I)</b><br/>Breakbeam & Inductive"]:::b_h
+            ACTS["<b>Actuators (Port R)</b><br/>Motors & Diverters"]:::b_h
+            ARD --> SENS
+            ARD --> ACTS
+        end
+    end
+
+    %% Inter-layer pipelines and communication channels
+    GLB_EXP ==>|"GLB 3D Files (.glb)"| WIZ
+    SDK ==>|"HTTP POST /upload"| ENV
+    ENV <==>|"HTTP REST & VirtualPins"| BM
+    MQTT -.->|"MQTT Telemetry"| BM
+    ARD <===>|"TCP Stream :8888 (Low Latency)"| U3D
+    ENV -.->|"REST Skills :80"| ARD
+
+    %% Styling
+    classDef b_l0 fill:#f1f5f9,stroke:#475569,stroke-width:3px,color:#0f172a,font-size:22px
+    classDef b_l1 fill:#dbeafe,stroke:#1d4ed8,stroke-width:3px,color:#0f172a,font-size:22px
+    classDef b_l2 fill:#fef3c7,stroke:#b45309,stroke-width:3px,color:#0f172a,font-size:22px
+    classDef b_db fill:#fed7aa,stroke:#c2410c,stroke-width:3px,color:#0f172a,font-size:22px
+    classDef b_ui fill:#f3e8ff,stroke:#7e22ce,stroke-width:3px,color:#0f172a,font-size:22px
+    classDef b_u  fill:#ede9fe,stroke:#6d28d9,stroke-width:3px,color:#0f172a,font-size:22px
+    classDef b_h  fill:#fee2e2,stroke:#b91c1c,stroke-width:3px,color:#0f172a,font-size:22px
+
+    style L0 fill:#f8fafc,stroke:#475569,stroke-width:3px
+    style L1 fill:#eff6ff,stroke:#1d4ed8,stroke-width:3px
+    style L2 fill:#f0fdf4,stroke:#15803d,stroke-width:3px
+    style L3 fill:#faf5ff,stroke:#6d28d9,stroke-width:3px
+    style L2_TOP fill:#ffffff,stroke:#86efac,stroke-width:1.5px
+    style L2_BOT fill:#ffffff,stroke:#86efac,stroke-width:1.5px
+    style U3D fill:#ffffff,stroke:#c084fc,stroke-width:2px
+    style FMS fill:#ffffff,stroke:#fca5a5,stroke-width:2px

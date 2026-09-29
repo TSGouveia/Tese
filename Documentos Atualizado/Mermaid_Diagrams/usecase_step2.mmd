@@ -1,0 +1,22 @@
+﻿flowchart LR
+    Eng(["🧍 Automation Engineer"]):::actor
+
+    subgraph S2["Step 2 · System Info, Communication & Transform"]
+        direction TB
+        UC2A(["Set Kit Name & AAS ID"]):::uc
+        UC2B(["Set Description & Dynamic Flag"]):::uc
+        UC2C(["Configure Comm Protocol None or Sockets"]):::uc
+        UC2D(["Set Endpoint IP & Port"]):::uc
+        UC2E(["Define 3D Transform Pos / Rot / Scale"]):::uc
+        UC2C -.->|"include"| UC2D
+    end
+
+    Eng --> UC2A
+    Eng --> UC2B
+    Eng --> UC2C
+    Eng --> UC2E
+
+    classDef actor fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#1c1917,font-weight:bold
+    classDef uc    fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0c4a6e
+    style S2 fill:#eff6ff,stroke:#3b82f6,stroke-width:1.5px
+

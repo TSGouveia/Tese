@@ -1,0 +1,127 @@
+<mxfile host="Electron">
+  <diagram name="Docker-Topology" id="basyx_docker_topology_diagram">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Layer 2 Outer Group Container -->
+        <mxCell id="l2_group" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBEEA8;strokeColor=#27591B;strokeWidth=2;fontSize=15;fontFamily=Helvetica;dashed=1;arcSize=4;" value="" vertex="1">
+          <mxGeometry x="80" y="80" width="1000" height="640" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_title" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=16;fontFamily=Helvetica;fontStyle=1;fontColor=#27591B;" value="Layer 2 - Storage &amp; Registry (Eclipse BaSyx v2 on Docker)" vertex="1">
+          <mxGeometry x="100" y="95" width="500" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Top External Devices (Simplified) -->
+        <!-- Authoring Station -->
+        <mxCell id="dev_authoring" parent="1" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;fillColor=#CAE1F3;strokeColor=#375996;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontStyle=1;align=center;" value="«device»&#xa;Authoring Station&#xa;(conveyor_wizard.py)" vertex="1">
+          <mxGeometry x="100" y="160" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Simulation Host -->
+        <mxCell id="dev_sim" parent="1" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;fillColor=#CAE1F3;strokeColor=#375996;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontStyle=1;align=center;" value="«device»&#xa;Simulation Host&#xa;(Unity3D DT)" vertex="1">
+          <mxGeometry x="470" y="160" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Operator Workstation -->
+        <mxCell id="dev_op" parent="1" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;fillColor=#EEB3E2;strokeColor=#D65CB8;strokeWidth=2;fontSize=14;fontFamily=Helvetica;fontStyle=1;align=center;" value="«device»&#xa;Operator Workstation&#xa;(Web Browser)" vertex="1">
+          <mxGeometry x="840" y="160" width="210" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Industrial Server / Docker Container Node -->
+        <mxCell id="dev_server" parent="1" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;fillColor=#F8FAFC;strokeColor=#334155;strokeWidth=2;fontSize=14;fontFamily=Helvetica;fontStyle=1;" value="«device» IndustrialServer: LinuxHost" vertex="1">
+          <mxGeometry x="100" y="320" width="950" height="370" as="geometry" />
+        </mxCell>
+
+        <mxCell id="env_docker" parent="dev_server" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0284C7;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontStyle=1;align=left;verticalAlign=top;spacingLeft=15;spacingTop=10;" value="«executionEnvironment» Docker Engine (basyx-net: 172.20.0.0/16)" vertex="1">
+          <mxGeometry x="15" y="40" width="920" height="315" as="geometry" />
+        </mxCell>
+
+        <!-- Container Components Inside Docker Engine -->
+        <!-- Row 1: Core BaSyx Microservices -->
+        <mxCell id="cont_aas_env" parent="env_docker" style="html=1;dropTarget=0;whiteSpace=wrap;rounded=1;fontSize=13;fontFamily=Helvetica;fillColor=#A5CEEB;strokeColor=#5C99D6;strokeWidth=2;fontStyle=1;" value="«container»&#xa;aas-env&#xa;(Port: 8081)" vertex="1">
+          <mxGeometry x="25" y="45" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="mod_aas_env" parent="cont_aas_env" style="shape=module;jettyWidth=8;jettyHeight=4;fontFamily=Helvetica;strokeWidth=1.5;fontStyle=1;strokeColor=#5C99D6;fontSize=13;" value="" vertex="1">
+          <mxGeometry x="1" width="18" height="18" relative="1" as="geometry">
+            <mxPoint x="-24" y="6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="cont_aas_reg" parent="env_docker" style="html=1;dropTarget=0;whiteSpace=wrap;rounded=1;fontSize=13;fontFamily=Helvetica;fillColor=#A5CEEB;strokeColor=#5C99D6;strokeWidth=2;fontStyle=1;" value="«container»&#xa;aas-registry&#xa;(Port: 8082)" vertex="1">
+          <mxGeometry x="250" y="45" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="mod_aas_reg" parent="cont_aas_reg" style="shape=module;jettyWidth=8;jettyHeight=4;fontFamily=Helvetica;strokeWidth=1.5;fontStyle=1;strokeColor=#5C99D6;fontSize=13;" value="" vertex="1">
+          <mxGeometry x="1" width="18" height="18" relative="1" as="geometry">
+            <mxPoint x="-24" y="6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="cont_sm_reg" parent="env_docker" style="html=1;dropTarget=0;whiteSpace=wrap;rounded=1;fontSize=13;fontFamily=Helvetica;fillColor=#A5CEEB;strokeColor=#5C99D6;strokeWidth=2;fontStyle=1;" value="«container»&#xa;sm-registry&#xa;(Port: 8083)" vertex="1">
+          <mxGeometry x="475" y="45" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="mod_sm_reg" parent="cont_sm_reg" style="shape=module;jettyWidth=8;jettyHeight=4;fontFamily=Helvetica;strokeWidth=1.5;fontStyle=1;strokeColor=#5C99D6;fontSize=13;" value="" vertex="1">
+          <mxGeometry x="1" width="18" height="18" relative="1" as="geometry">
+            <mxPoint x="-24" y="6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="cont_aas_ui" parent="env_docker" style="html=1;dropTarget=0;whiteSpace=wrap;rounded=1;fontSize=13;fontFamily=Helvetica;fillColor=#EEB3E2;strokeColor=#D65CB8;strokeWidth=2;fontStyle=1;" value="«container»&#xa;aas-ui&#xa;(Port: 3000)" vertex="1">
+          <mxGeometry x="700" y="45" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="mod_aas_ui" parent="cont_aas_ui" style="shape=module;jettyWidth=8;jettyHeight=4;fontFamily=Helvetica;strokeWidth=1.5;fontStyle=1;strokeColor=#EC49C6;fontSize=13;" value="" vertex="1">
+          <mxGeometry x="1" width="18" height="18" relative="1" as="geometry">
+            <mxPoint x="-24" y="6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Row 2: Shared Persistence & Optional Services -->
+        <mxCell id="cont_mongo" parent="env_docker" style="html=1;dropTarget=0;whiteSpace=wrap;rounded=1;fontSize=13;fontFamily=Helvetica;fillColor=#FFE0B2;strokeColor=#F57C00;strokeWidth=2;fontStyle=1;" value="«container»&#xa;mongodb&#xa;(Port: 27017)" vertex="1">
+          <mxGeometry x="135" y="180" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="mod_mongo" parent="cont_mongo" style="shape=module;jettyWidth=8;jettyHeight=4;fontFamily=Helvetica;strokeWidth=1.5;fontStyle=1;strokeColor=#F57C00;fontSize=13;" value="" vertex="1">
+          <mxGeometry x="1" width="18" height="18" relative="1" as="geometry">
+            <mxPoint x="-24" y="6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="cont_mosq" parent="env_docker" style="html=1;dropTarget=0;whiteSpace=wrap;rounded=1;fontSize=13;fontFamily=Helvetica;fillColor=#E2E8F0;strokeColor=#64748B;strokeWidth=1.5;dashed=1;fontStyle=1;" value="«container»&#xa;mosquitto (MQTT)&#xa;(Port: 1883)" vertex="1">
+          <mxGeometry x="365" y="180" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="mod_mosq" parent="cont_mosq" style="shape=module;jettyWidth=8;jettyHeight=4;fontFamily=Helvetica;strokeWidth=1.5;fontStyle=1;strokeColor=#64748B;fontSize=13;" value="" vertex="1">
+          <mxGeometry x="1" width="18" height="18" relative="1" as="geometry">
+            <mxPoint x="-24" y="6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="cont_influx" parent="env_docker" style="html=1;dropTarget=0;whiteSpace=wrap;rounded=1;fontSize=13;fontFamily=Helvetica;fillColor=#E2E8F0;strokeColor=#64748B;strokeWidth=1.5;dashed=1;fontStyle=1;" value="«container»&#xa;influxdb&#xa;(Port: 8086)" vertex="1">
+          <mxGeometry x="595" y="180" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="mod_influx" parent="cont_influx" style="shape=module;jettyWidth=8;jettyHeight=4;fontFamily=Helvetica;strokeWidth=1.5;fontStyle=1;strokeColor=#64748B;fontSize=13;" value="" vertex="1">
+          <mxGeometry x="1" width="18" height="18" relative="1" as="geometry">
+            <mxPoint x="-24" y="6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Network Connections / Communication Paths -->
+        <mxCell id="edge_post" edge="1" parent="1" source="dev_authoring" target="cont_aas_env" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#375996;fontSize=12;fontStyle=1;" value="«HTTP POST» :8081">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge_get" edge="1" parent="1" source="dev_sim" target="cont_aas_reg" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#375996;fontSize=12;fontStyle=1;" value="«HTTP GET» :8082 / :8081">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge_ui" edge="1" parent="1" source="dev_op" target="cont_aas_ui" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#D65CB8;fontSize=12;fontStyle=1;" value="«HTTP» :3000">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge_mongo" edge="1" parent="env_docker" source="cont_aas_reg" target="cont_mongo" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#F57C00;dashed=1;fontSize=11;fontStyle=1;" value="«TCP» :27017">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
