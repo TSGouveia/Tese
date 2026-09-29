@@ -32,7 +32,7 @@ NOVA University Lisbon, 2829-516 Caparica, Portugal
 The architecture spans four decoupled tiers:
 
 1. **Layer 0 - Low-Polygon Asset Digitization (Blender):** Modeling lightweight 3D assets with proper origin points and kinematic hierarchy.
-2. **Layer 1 - No-Code Semantic Authoring (AAS Client / Python):** Studio GUI (`conveyor_wizard.py`, `create_robotic_arm.py`) for 3D raycasting asset placement, I/O pin mapping, and packaging into standardized `.aasx` containers.
+2. **Layer 1 - No-Code Semantic Authoring (AAS Client / Python):** Studio GUI (`conveyor_wizard.py`) for 3D raycasting asset placement, I/O pin mapping, and packaging into standardized `.aasx` containers.
 3. **Layer 2 - Containerized AAS Storage & Discovery (Docker & BaSyx v2):** Eclipse BaSyx microservices hosting Submodel Registries, AAS Servers, MQTT Broker (Mosquitto), and Time-Series DB (InfluxDB).
 4. **Layer 3 - Procedural Simulation & Live Sync (Unity 3D Engine):** Procedural scene assembly from BaSyx AAS models, physics-based kinematic simulation, dual-mode execution (Virtual Commissioning / Live Telemetry Sync), and sensor drift correction.
 
@@ -42,10 +42,9 @@ The architecture spans four decoupled tiers:
 
 ```
 AAS-DT-Framework/
-├── AAS Client/               # Layer 1: Python AAS Authoring Studio & URDF Robot Importers
+├── AAS Client/               # Layer 1: Python AAS Authoring Studio
 │   ├── conveyor_wizard.py    # Main GUI Studio for AAS layout generation & submodel creation
-│   ├── create_robotic_arm.py # URDF to AASconverter & robot kinematic packager
-│   └── robots_tested/        # URDF and 3D models (UR3e, KUKA iiwa, KMR iiwa, TIAGo)
+│   └── requirements.txt      # Python dependencies for the authoring studio
 ├── AAS Docker/               # Layer 2: Docker Compose infrastructure
 │   ├── docker-compose.yml    # Eclipse BaSyx v2 (AAS Registry, Submodel Registry, AAS Server), Mosquitto MQTT & InfluxDB
 │   ├── basyx/                # BaSyx configuration properties & YAMLs
