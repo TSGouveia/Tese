@@ -717,7 +717,9 @@
 %
 % Opt out with \ntsetup{cite/template=false}.
 \newcommand*{\@ntcitetemplate}{%
-  \nocite{novathesis-manual}%
+  \iftoggle{/novathesis/cite/template}{%
+    \nocite{novathesis-manual}%
+  }{}%
 }
 
 % Tell the author, once per build, that the reference was added and how to

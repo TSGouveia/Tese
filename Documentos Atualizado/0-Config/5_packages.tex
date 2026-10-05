@@ -96,3 +96,6 @@
 % }
 % Suppress NOVAthesis template credits notice and invisible citation block
 \renewcommand{\ntprintacknowledgementsblock}[1]{}
+
+% Reset acronym first-use flags at the start of main matter
+\NTAddToHook{mainmatter/pre}{\glsresetall}
