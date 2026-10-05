@@ -16,6 +16,7 @@ import run_batch1
 import batch2
 import batch3
 import generate_thesis_plots
+import generate_chapter5_eval_plots
 
 def main():
     print("==========================================================")
@@ -51,6 +52,7 @@ def main():
     generate_thesis_plots.plot_manual_vs_wizard_time()
     generate_thesis_plots.plot_sync_latency_boxplot()
     generate_thesis_plots.plot_traffic_overhead_analysis()
+    generate_chapter5_eval_plots.main()
 
     print("\n==========================================================")
     print("  ALL THESIS FIGURES & PLOTS GENERATED SUCCESSFULLY!      ")

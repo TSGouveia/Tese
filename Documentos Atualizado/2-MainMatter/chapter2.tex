@@ -299,7 +299,7 @@ Platforms like NVIDIA Omniverse (based on the \gls{USD} format) are also growing
 
 A common problem identified in the literature is that mechanical \gls{CAD} models are not designed for real-time simulation engines \cite{Chowdhury2025,Striffler2023,Zheng2024}.
 
-\gls{CAD} files use mathematical shapes (\glspl{BRep}) to store exact production details, like screw threads and internal components. In contrast, game engines need lightweight triangle meshes to keep high frame rates. Preparing \gls{CAD} models for real-time simulation typically involves three main steps \cite{Chowdhury2025,Striffler2023}:
+\gls{CAD} files use \glspl{BRep} to store exact production details, like screw threads and internal components. In contrast, game engines need lightweight triangle meshes to keep high frame rates. Preparing \gls{CAD} models for real-time simulation typically involves three main steps \cite{Chowdhury2025,Striffler2023}:
 \begin{itemize}
     \item \textbf{Tessellation and Simplification:} Converting curved surfaces into triangles and reducing polygon counts while keeping the visual shape.
     \item \textbf{Removing Internal Parts:} Deleting hidden parts, like screws and bolts, that are not needed for motion or collisions.
