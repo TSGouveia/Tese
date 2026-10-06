@@ -32,6 +32,10 @@ and Associated Lab of Intelligent Systems (LASI), NOVA University Lisbon, 2829-5
 
 The architecture spans four decoupled tiers, bridging low-polygon geometric asset modeling to live physical shop-floor synchronization:
 
+<p align="center">
+  <img src="imgs/architecture_implementation.png" alt="Framework Implementation Architecture (Thesis Figure 4.2)" width="780"/>
+</p>
+
 1. **Layer 0 - Physical Asset Digitization (Blender):** Modeling lightweight 3D assets with proper origin points, metric scale, and kinematic hierarchy.
 2. **Layer 1 - No-Code Semantic Authoring (AAS Client / Python):** Studio GUI (`conveyor_wizard.py`) for 3D raycasting asset placement, I/O pin mapping, visual control logic authoring, and packaging into standardized `.aasx` containers.
 3. **Layer 2 - Containerized AAS Storage & Discovery (Docker & BaSyx v2):** Eclipse BaSyx microservices hosting Submodel Registries, AAS Servers, MQTT Broker (Mosquitto), and Time-Series DB (InfluxDB).
