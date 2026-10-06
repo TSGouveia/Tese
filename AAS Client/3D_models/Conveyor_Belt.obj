@@ -1,6 +1,6 @@
 # Blender 5.1.2
 # www.blender.org
-mtllib Conveyor.mtl
+mtllib Conveyor_Belt.mtl
 o Conveyor_Structure
 v -1.801359 0.516000 -0.953532
 v -1.801359 0.472992 -0.953532
