@@ -76,22 +76,22 @@ AAS-DT-Framework/
 
 ## <div align="center">Get Started</div>
 
-Follow these steps to start the middleware services, author or deploy digital twin packages, and run the procedural simulation:
+Follow these steps to start the middleware services, author or deploy digital twin packages, and run the simulation:
 
 1. **Start the AAS Middleware (Layer 2)**
    - Ensure Docker Desktop is running on your machine.
-   - Start the containerized services located in the `Layer 2 - AAS Docker` directory (e.g., using Docker Compose up).
+   - Start the containerized services located in the `Layer 2 - AAS Docker` directory.
    - This launches the Eclipse BaSyx v2 microservices (AAS Registry, Submodel Registry, and AAS Environment Server) alongside Mosquitto MQTT and InfluxDB for telemetry storage.
 
 2. **Launch the Authoring Studio & Deploy Digital Twin Models (Layer 1)**
-   - Navigate to the `Layer 1 - AAS Client` folder and install the Python dependencies listed in `requirements.txt`.
+   - Open the `Layer 1 - AAS Client` folder and install the Python dependencies listed in `requirements.txt`.
    - Launch the authoring studio by running `conveyor_wizard.py`.
    - **Deploy Benchmark Testbed:** In the GUI toolbar, click **"Restore AAS"**, select the pre-configured `.json` files from `Backup_models/`, and confirm upload. All conveyor modules (`Conveyor_A` through `Conveyor_F`), the punch station (`Punch_FMS`), workpiece (`Product1`), and coordination logic (`FMS`) will be registered and populated into the BaSyx repository.
 
 3. **Run the Simulation Engine (Layer 3)**
    - Open the `Layer 3 - DT Unity` project folder in **Unity 6 (6000.3.10f1)** or compatible version.
    - Open the main scene located at `Assets/Scenes/SampleScene.unity`.
-   - Press **Play** in the editor. Unity will query the running BaSyx server, download the 3D meshes and submodels, and assemble the entire simulation scene procedurally at runtime.
+   - Press **Play** in the editor to start the procedural simulation and connect to the running BaSyx server.
 
 4. **Connect the Physical Hardware Controller (Optional)**
    - To link with the physical testbed, flash the firmware from `Hardware - FMS DT/FMS_DT.ino` onto the **Industrial Shields M-DUINO 57R+ PLC** using Arduino IDE or PlatformIO.
