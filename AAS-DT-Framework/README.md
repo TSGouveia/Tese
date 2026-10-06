@@ -1,24 +1,25 @@
 <div align="center"> 
 
 # Automatic Generation of Simulation-Based Digital Twins from Asset Administration Shells
-
-[![NOVA SST: Thesis](https://img.shields.io/badge/NOVA_SST-MSc_Thesis-blue)](https://run.unl.pt)
 [![License: MIT](https://img.shields.io/badge/License-MIT-red.svg)](https://opensource.org/licenses/MIT)
+[![NOVA SST: MSc Thesis](https://img.shields.io/badge/NOVA_SST-MSc_Thesis-blue)](https://run.unl.pt)
+[![Status: Under Review](https://img.shields.io/badge/Status-Thesis_Under_Review-orange)](https://run.unl.pt)
 
-**Tiago Daniel Santos Gouveia**<sup>1</sup>  
-*Advisers:* **Prof. Dr. André Dionisio Rocha**<sup>1</sup>, **Nelson Nascimento de Freitas**<sup>1</sup>
+[Tiago Gouveia](https://pt.linkedin.com/)<sup>1</sup>, 
+[André Dionisio Rocha](https://scholar.google.pt/citations?user=k1GIyqcAAAAJ&hl=pt-PT)<sup>1</sup>,
+[Nelson Freitas](https://scholar.google.com/)<sup>1</sup>
 
-<sup>1</sup> **NOVA School of Science and Technology (NOVA FCT)**,  
-Department of Electrical and Computer Engineering,  
-NOVA University Lisbon, 2829-516 Caparica, Portugal
-
----
+<sup>1</sup> **NOVA School of Science and Technology, Center of Technology and Systems (UNINOVA-CTS)**,
+and Associated Lab of Intelligent Systems (LASI), NOVA University Lisbon, 2829-516 Caparica, Portugal
 
 <table>
   <tr>
-    <td style="vertical-align: middle;">
+    <td style="vertical-align: top;">
       The Industry 4.0 paradigm relies on Cyber-Physical Systems (CPS) to achieve agile and resilient production. Digital Twins (DT) provide virtual representations capable of mirroring physical assets through real-time bidirectional telemetry. However, traditional development relies on proprietary simulation software, fragmented 3D CAD files lacking kinematics, and tedious manual matching of I/O addresses.<br/><br/>
       To overcome these barriers, this repository presents an open, modular, model-driven framework for automated procedural generation and live synchronization of industrial Digital Twins from Asset Administration Shells (AAS).
+    </td>
+    <td style="vertical-align: top;">
+      <img style="width: 1100px" src="imgs/unity_runtime_screenshot.png" alt="Digital Twin Procedural Runtime" width="340"/>
     </td>
   </tr>
 </table>
@@ -29,12 +30,17 @@ NOVA University Lisbon, 2829-516 Caparica, Portugal
 
 ## <div align="center">Framework Architecture</div>
 
-The architecture spans four decoupled tiers:
+The architecture spans four decoupled tiers, bridging low-polygon geometric asset modeling to live physical shop-floor synchronization:
 
-1. **Layer 0 - Low-Polygon Asset Digitization (Blender):** Modeling lightweight 3D assets with proper origin points and kinematic hierarchy.
-2. **Layer 1 - No-Code Semantic Authoring (AAS Client / Python):** Studio GUI (`conveyor_wizard.py`) for 3D raycasting asset placement, I/O pin mapping, and packaging into standardized `.aasx` containers.
+<p align="center">
+  <img src="imgs/architecture_global.png" alt="Global Multi-Layer Architecture" width="850"/>
+</p>
+
+1. **Layer 0 - Physical Asset Digitization (Blender):** Modeling lightweight 3D assets with proper origin points, metric scale, and kinematic hierarchy.
+2. **Layer 1 - No-Code Semantic Authoring (AAS Client / Python):** Studio GUI (`conveyor_wizard.py`) for 3D raycasting asset placement, I/O pin mapping, visual control logic authoring, and packaging into standardized `.aasx` containers.
 3. **Layer 2 - Containerized AAS Storage & Discovery (Docker & BaSyx v2):** Eclipse BaSyx microservices hosting Submodel Registries, AAS Servers, MQTT Broker (Mosquitto), and Time-Series DB (InfluxDB).
 4. **Layer 3 - Procedural Simulation & Live Sync (Unity 3D Engine):** Procedural scene assembly from BaSyx AAS models, physics-based kinematic simulation, dual-mode execution (Virtual Commissioning / Live Telemetry Sync), and sensor drift correction.
+5. **Physical Hardware & Firmware (M-DUINO PLC):** Industrial Shields PLC running FreeRTOS for low-latency 5 ms input scanning, optocoupled galvanic isolation, dual-channel TCP telemetry socket, and HTTP actuation.
 
 ---
 
@@ -47,7 +53,8 @@ AAS-DT-Framework/
 │   ├── Conveyor_Horizontal.glb # Translating conveyor diverter module
 │   ├── Conveyor_Rotary.glb   # Rotating conveyor turntable module
 │   ├── Punch_Station.glb     # Workpiece punch / machining station
-│   └── Workpiece.glb         # Dynamic industrial workpiece / puck
+│   ├── Workpiece.glb         # Dynamic industrial workpiece / puck
+│   └── README.md             # Technical catalog & modeling conventions
 ├── Layer 1 - AAS Client/     # Layer 1: Python AAS Authoring Studio
 │   ├── conveyor_wizard.py    # Main GUI Studio for AAS layout generation & submodel creation
 │   ├── Backup_models/        # Complete pre-configured AAS backups for the modular FMS pilot testbed
@@ -61,13 +68,16 @@ AAS-DT-Framework/
 │   ├── Assets/               # C# scripts, prefabs, materials, and AAS procedural generation logic
 │   ├── Packages/             # Unity project dependency manifests
 │   └── ProjectSettings/      # Unity project physics, tag, and layer settings
-└── Hardware - FMS DT/        # Hardware Firmware
-    └── FMS_DT.ino            # FreeRTOS C++ code for Industrial Shields M-DUINO PLC control & TCP/HTTP telemetry
+├── Hardware - FMS DT/        # Hardware Firmware
+│   └── FMS_DT.ino            # FreeRTOS C++ code for Industrial Shields M-DUINO PLC control & TCP/HTTP telemetry
+└── imgs/                     # Visual assets, architecture diagrams, and runtime screenshots
 ```
 
 ---
 
 ## <div align="center">Get Started</div>
+
+Follow these steps to launch the entire middleware stack, author/restore asset packages, and run the procedural Digital Twin:
 
 ### 1. Launch the AAS Containerized Middleware (Layer 2)
 Ensure Docker Desktop is running, then start the BaSyx v2 microservices:
@@ -102,18 +112,54 @@ Flash `Hardware - FMS DT/FMS_DT.ino` onto your **Industrial Shields M-DUINO 57R+
 
 ---
 
+## <div align="center">Usage Instructions & Physical Testbed</div>
+
+<p align="center">
+  <img src="imgs/fms_pilot_bench.jpg" alt="Modular FMS Physical Bench" width="650"/>
+</p>
+
+Once the containers and simulation runtime are active, the platform supports two operational modes:
+
+- **Virtual Commissioning (VC):** Operates entirely disconnected from physical hardware. Machine actuation, routing sequences, and sensor responses are driven by the local rule engine evaluating the `ControlLogic` submodel abstract syntax trees.
+- **Live Telemetry Synchronization:** In operational mode, the Unity runtime establishes a dedicated TCP connection to the M-DUINO PLC (port 8888). Real-time optical and inductive sensor events update the virtual state.
+- **Sensor Drift Correction:** When physical workpieces trigger physical track sensors, the simulation automatically snaps the nearest virtual workpiece to calibrated coordinates, eliminating accumulated PhysX numerical drift.
+
+---
+
+## <div align="center">Documentation</div>
+
+Detailed documentation and resource specifications can be found within each layer:
+
+- **[Layer 0 - 3D Models](Layer%200%20-%203D%20Models/):** Geometry guidelines, 1:1 metric scale conventions, pivot alignment standards, and low-polygon GLB asset catalog.
+- **[Layer 1 - AAS Client](Layer%201%20-%20AAS%20Client/):** Technical specifications of the PyQt6/PyVista desktop application, 3D raycasting sensor instrumentation, and JSON backup definitions.
+- **[Layer 2 - AAS Docker](Layer%202%20-%20AAS%20Docker/):** Microservice port allocation (`8081` Environment, `8082` AAS Registry, `8083` Submodel Registry, `1883` MQTT, `8086` InfluxDB), Docker Compose configuration, and persistent volume paths.
+- **[Layer 3 - DT Unity](Layer%203%20-%20DT%20Unity/):** Architecture of procedural scene generation scripts, glTFast asset ingestion, PhysX contact simulation, and TCP socket stream handlers.
+- **[Hardware - FMS DT](Hardware%20-%20FMS%20DT/):** FreeRTOS task prioritization, optocoupled I/O mapping, and dual-channel networking (TCP server + HTTP REST).
+
+---
+
 ## <div align="center">Key Results & Performance</div>
 
-Empirical evaluation on a physical modular FMS bench and 800 parametric stress-testing runs revealed:
+Empirical evaluation on the physical modular FMS bench and 800 parametric stress-testing runs revealed:
 - **Cold-boot instantiation** of the physical pilot bench in under **2.8s**.
 - **Steady-state rendering rates** exceeding **480 FPS** for small to medium layouts.
 - **Scalability:** Near-linear scaling up to 250 modules and stable real-time execution up to 500 modules (>90 FPS).
 
 ---
 
+## <div align="center">Contribution Guidelines</div>
+
+This project is open-source under the MIT license, and contributions from the community and research partners are welcome! For questions, bug reports, and feature requests:
+- Open an issue on [GitHub Issues](https://github.com/NOVA-RICS-Open-Lab/AAS-DT-Framework/issues).
+- Refer to development workflows within the NOVA RICS Open Lab research collective.
+
+---
+
 ## <div align="center">Citation</div>
 
-If you use or reference this work in your research, please cite:
+> ℹ️ **Publication Note:** This Master's dissertation is currently undergoing academic defense and review at NOVA School of Science and Technology (NOVA FCT). The official publication link and permanent handle in the **RUN (Repositório da Universidade NOVA)** repository will be made available here upon public indexing.
+>
+> In the meantime, if you use or build upon this framework in your research, please cite:
 
 ```bibtex
 @mastersthesis{gouveia2026digitaltwins,
@@ -121,7 +167,8 @@ If you use or reference this work in your research, please cite:
   title        = {Automatic Generation of Simulation-Based Digital Twins from Asset Administration Shells},
   school       = {NOVA School of Science and Technology, NOVA University Lisbon},
   year         = {2026},
-  type         = {Master's Thesis}
+  type         = {Master's Thesis},
+  note         = {MSc Dissertation (Under Review / Forthcoming in RUN - Repositório da Universidade NOVA)}
 }
 ```
 
@@ -129,4 +176,12 @@ If you use or reference this work in your research, please cite:
 
 ## <div align="center">License</div>
 
-This project is licensed under the [MIT License](LICENSE).
+This repository is released under the [MIT License](LICENSE).
+
+---
+
+## <div align="center">Contacts</div>
+
+For academic inquiries, collaborations, or questions regarding this framework, please contact:
+- **NOVA RICS Open Lab:** [novaricsopenlab@gmail.com](mailto:novaricsopenlab@gmail.com)
+- **UNINOVA-CTS / LASI:** NOVA School of Science and Technology, NOVA University Lisbon, Portugal
