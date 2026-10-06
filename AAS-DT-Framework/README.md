@@ -44,6 +44,8 @@ The architecture spans four decoupled tiers:
 AAS-DT-Framework/
 ├── AAS Client/               # Layer 1: Python AAS Authoring Studio
 │   ├── conveyor_wizard.py    # Main GUI Studio for AAS layout generation & submodel creation
+│   ├── 3D_models/            # Low-polygon 3D CAD assets (GLB) for authoring new AAS units
+│   ├── Backup_models/        # Complete pre-configured AAS backups for the modular FMS pilot testbed
 │   └── requirements.txt      # Python dependencies for the authoring studio
 ├── AAS Docker/               # Layer 2: Docker Compose infrastructure
 │   ├── docker-compose.yml    # Eclipse BaSyx v2 (AAS Registry, Submodel Registry, AAS Server), Mosquitto MQTT & InfluxDB
@@ -70,18 +72,24 @@ docker-compose up -d
 ```
 This starts the AAS Registry, Submodel Registry, AAS Environment Server, Mosquitto MQTT Broker, and InfluxDB telemetry store.
 
-### 2. Run the AAS Authoring Studio (Layer 1)
-Install dependencies and launch the Python GUI to generate AAS packages or model industrial layouts:
+### 2. Run the AAS Authoring Studio & Deploy Digital Twin (Layer 1)
+Install dependencies and launch the Python GUI to author new AAS packages or deploy the benchmark FMS testbed:
 ```bash
 cd "../AAS Client"
 pip install -r requirements.txt
 python conveyor_wizard.py
 ```
 
+> **Quick Start (Deploy Benchmark FMS Digital Twin):**
+> 1. In the Conveyor Wizard GUI, click **"Restore AAS"** in the top-right toolbar.
+> 2. Select all `.json` files inside the `Backup_models/` folder.
+> 3. Click **Yes** when prompted to deploy them directly to the BaSyx server.
+> 4. All conveyor modules (`Conveyor_A` through `Conveyor_F`), the punch station (`Punch_FMS`), workpiece (`Product1`), and coordination logic (`FMS`) will be registered and populated in BaSyx.
+
 ### 3. Open the Simulation Engine (Layer 3)
 1. Launch **Unity 6 (6000.3.10f1)** (or compatible version).
 2. Open the project folder `DT Unity`.
-3. Open the main scene in `Assets/Scenes`.
+3. Open the main scene in `Assets/Scenes/SampleScene.unity`.
 4. Press **Play** to trigger procedural scene assembly automatically fetched from the running BaSyx AAS Server.
 
 ### 4. Physical Bench Controller (Optional Hardware Setup)
