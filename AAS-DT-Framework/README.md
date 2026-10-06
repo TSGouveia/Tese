@@ -52,8 +52,7 @@ AAS-DT-Framework/
 │   ├── Conveyor_Horizontal.glb # Translating conveyor diverter module
 │   ├── Conveyor_Rotary.glb   # Rotating conveyor turntable module
 │   ├── Punch_Station.glb     # Workpiece punch / machining station
-│   ├── Workpiece.glb         # Dynamic industrial workpiece / puck
-│   └── README.md             # Technical catalog & modeling conventions
+│   └── Workpiece.glb         # Dynamic industrial workpiece / puck
 ├── Layer 1 - AAS Client/     # Layer 1: Python AAS Authoring Studio
 │   ├── conveyor_wizard.py    # Main GUI Studio for AAS layout generation & submodel creation
 │   ├── Backup_models/        # Complete pre-configured AAS backups for the modular FMS pilot testbed
@@ -110,17 +109,6 @@ Once the containers and simulation runtime are active, the platform supports two
 - **Live Telemetry Synchronization:** In operational mode, the Unity runtime establishes a dedicated TCP connection to the M-DUINO PLC (port 8888). Real-time optical and inductive sensor events update the virtual state.
 - **Sensor Drift Correction:** When physical workpieces trigger physical track sensors, the simulation automatically snaps the nearest virtual workpiece to calibrated coordinates, eliminating accumulated PhysX numerical drift.
 
----
-
-## <div align="center">Documentation</div>
-
-Detailed documentation and resource specifications can be found within each layer:
-
-- **[Layer 0 - 3D Models](Layer%200%20-%203D%20Models/):** Geometry guidelines, 1:1 metric scale conventions, pivot alignment standards, and low-polygon GLB asset catalog.
-- **[Layer 1 - AAS Client](Layer%201%20-%20AAS%20Client/):** Technical specifications of the PyQt6/PyVista desktop application, 3D raycasting sensor instrumentation, and JSON backup definitions.
-- **[Layer 2 - AAS Docker](Layer%202%20-%20AAS%20Docker/):** Microservice port allocation (`8081` Environment, `8082` AAS Registry, `8083` Submodel Registry, `1883` MQTT, `8086` InfluxDB), Docker Compose configuration, and persistent volume paths.
-- **[Layer 3 - DT Unity](Layer%203%20-%20DT%20Unity/):** Architecture of procedural scene generation scripts, glTFast asset ingestion, PhysX contact simulation, and TCP socket stream handlers.
-- **[Hardware - FMS DT](Hardware%20-%20FMS%20DT/):** FreeRTOS task prioritization, optocoupled I/O mapping, and dual-channel networking (TCP server + HTTP REST).
 
 ---
 
