@@ -1,8 +1,0 @@
-{
-  "title": "Estrutura do Chão de Fábrica (RAMI 4.0)",
-  "html_path": "factory-structure.html",
-  "options": [
-    { "label": "Aprovar Estrutura Híbrida", "choice": "approve_structure" },
-    { "label": "Mudar para Sensores Independentes", "choice": "independent_sensors" }
-  ]
-}
