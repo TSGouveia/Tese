@@ -472,9 +472,12 @@ class ActuatorWidget(QGroupBox):
         ])
         
         axis_layout = QHBoxLayout()
-        self.spin_x = QDoubleSpinBox(); self.spin_x.setRange(-10, 10); self.spin_x.setSingleStep(0.1); self.spin_x.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
-        self.spin_y = QDoubleSpinBox(); self.spin_y.setRange(-10, 10); self.spin_y.setSingleStep(0.1); self.spin_y.setValue(1.0); self.spin_y.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
-        self.spin_z = QDoubleSpinBox(); self.spin_z.setRange(-10, 10); self.spin_z.setSingleStep(0.1); self.spin_z.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+        self.spin_x = QDoubleSpinBox(); self.spin_x.setRange(-10, 10); self.spin_x.setSingleStep(0.1); self.spin_x.setValue(0.0); self.spin_x.setPrefix("X: "); self.spin_x.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+        self.spin_y = QDoubleSpinBox(); self.spin_y.setRange(-10, 10); self.spin_y.setSingleStep(0.1); self.spin_y.setValue(1.0); self.spin_y.setPrefix("Y: "); self.spin_y.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+        self.spin_z = QDoubleSpinBox(); self.spin_z.setRange(-10, 10); self.spin_z.setSingleStep(0.1); self.spin_z.setValue(0.0); self.spin_z.setPrefix("Z: "); self.spin_z.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+        self.spin_x.setToolTip("X-axis (Lateral in 3D viewer)")
+        self.spin_y.setToolTip("Y-axis (Forward in Unity / Z in 3D viewer)")
+        self.spin_z.setToolTip("Z-axis (Vertical in Unity / Y in 3D viewer)")
         axis_layout.addWidget(self.spin_x); axis_layout.addWidget(self.spin_y); axis_layout.addWidget(self.spin_z)
         
         self.spin_speed = QDoubleSpinBox(); self.spin_speed.setRange(-100, 100); self.spin_speed.setValue(1.0); self.spin_speed.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
@@ -514,6 +517,9 @@ class ActuatorWidget(QGroupBox):
         self.spin_x.valueChanged.connect(self.update_visuals)
         self.spin_y.valueChanged.connect(self.update_visuals)
         self.spin_z.valueChanged.connect(self.update_visuals)
+        self.spin_speed.valueChanged.connect(self.update_visuals)
+        self.edit_node.textChanged.connect(self.update_visuals)
+        self.combo_behavior.currentTextChanged.connect(self.update_visuals)
         self.arrow = None; self.update_visuals(); self.validate()
 
     def validate(self):
@@ -550,24 +556,124 @@ class ActuatorWidget(QGroupBox):
         self.update_visuals()
 
     def hide_visuals(self):
-        if self.arrow: self.wizard.plotter.remove_actor(self.arrow); self.arrow = None
+        if self.arrow:
+            try:
+                self.wizard.plotter.remove_actor(self.arrow)
+            except Exception:
+                pass
+            self.arrow = None
+            if hasattr(self.wizard, 'plotter') and self.wizard.plotter:
+                self.wizard.plotter.render()
 
-    def update_visuals(self):
+    def update_visuals(self, force=False):
         self.hide_visuals()
-        if self.property("active") != "true": return
-        raw_axis = [self.spin_x.value(), self.spin_y.value(), self.spin_z.value()]
-        # Adjust visual axis to match Unity's coordinate swap (Y and Z swapped)
-        vis_axis = [raw_axis[0], raw_axis[2], raw_axis[1]]
-        if any(raw_axis):
-            scale = 1.0; node = self.edit_node.text(); pos = [0,0,0]
-            if node in self.wizard.meshes:
-                family = self.wizard.get_node_family(node)
-                all_meshes = [self.wizard.meshes[n] for n in family if n in self.wizard.meshes]
-                if all_meshes:
-                    b = np.array([m.bounds for m in all_meshes])
-                    min_b = np.min(b[:, [0, 2, 4]], axis=0); max_b = np.max(b[:, [1, 3, 5]], axis=0)
-                    scale = max(max_b - min_b) * 1.5; pos = (min_b + max_b) / 2.0
-            self.arrow = self.wizard.plotter.add_arrows(np.array([pos]), np.array([vis_axis]), mag=scale, color="yellow")
+        if not force and self.property("active") != "true":
+            return
+        if not hasattr(self.wizard, 'plotter') or not self.wizard.plotter:
+            return
+
+        raw_axis = np.array([self.spin_x.value(), self.spin_y.value(), self.spin_z.value()], dtype=float)
+        # Flip direction if speed is negative
+        speed_val = self.spin_speed.value()
+        effective_axis = -raw_axis if speed_val < 0 else raw_axis
+
+        # Map Unity/AAS coordinate conventions:
+        # Input X -> 3D X
+        # Input Y -> 3D Z (forward along belt)
+        # Input Z -> 3D Y (vertical / up)
+        vis_axis = np.array([effective_axis[0], effective_axis[2], effective_axis[1]], dtype=float)
+
+        axis_norm = np.linalg.norm(vis_axis)
+        if axis_norm < 1e-6:
+            return
+
+        norm_dir = vis_axis / axis_norm
+
+        node = self.edit_node.text().strip()
+        all_meshes = []
+        if node:
+            family = self.wizard.get_node_family(node)
+            all_meshes = [self.wizard.meshes[n] for n in family if n in self.wizard.meshes]
+            if not all_meshes and node in self.wizard.meshes:
+                all_meshes = [self.wizard.meshes[node]]
+            if not all_meshes:
+                node_lower = node.lower()
+                for k, m in self.wizard.meshes.items():
+                    if k.lower() == node_lower or node_lower in k.lower() or k.lower() in node_lower:
+                        all_meshes.append(m)
+
+        # Fallback to all meshes if node meshes not identified
+        if not all_meshes and self.wizard.meshes:
+            all_meshes = list(self.wizard.meshes.values())
+
+        if all_meshes:
+            b = np.array([m.bounds for m in all_meshes])
+            min_b = np.min(b[:, [0, 2, 4]], axis=0) # [xmin, ymin, zmin]
+            max_b = np.max(b[:, [1, 3, 5]], axis=0) # [xmax, ymax, zmax]
+            center = (min_b + max_b) / 2.0
+            extents = np.maximum(max_b - min_b, 1e-4)
+
+            up_axis_idx = 2 if self.wizard.model_type == "URDF" else 1
+
+            # Determine arrow length based on the dimension of the body along the direction
+            dim_along_dir = abs(norm_dir[0]) * extents[0] + abs(norm_dir[1]) * extents[1] + abs(norm_dir[2]) * extents[2]
+            max_dim = np.max(extents)
+
+            if dim_along_dir > 0.1 * max_dim:
+                arrow_len = dim_along_dir * 0.75
+            else:
+                arrow_len = max_dim * 0.5
+            arrow_len = max(arrow_len, 0.05)
+
+            # Compute arrow center
+            arrow_center = center.copy()
+            tip_rad = max(0.07 * arrow_len, 0.015)
+            shaft_rad = max(0.03 * arrow_len, 0.007)
+
+            # If movement is horizontal (not primarily along the UP axis) and behavior is Conveyor or linear movement,
+            # position arrow on the top surface of the body so it sits visibly on top of the belt
+            is_horizontal_motion = abs(norm_dir[up_axis_idx]) < 0.7
+            behavior = self.combo_behavior.currentText()
+            if is_horizontal_motion and behavior in ["Conveyor", "TranslateContinuous", "Linear", "Piston"]:
+                arrow_center[up_axis_idx] = max_b[up_axis_idx] + shaft_rad * 1.5
+            else:
+                # Vertical or rotational motion: keep centered in the body
+                arrow_center[up_axis_idx] = center[up_axis_idx]
+
+            # Start point so that arrow_center is the EXACT midpoint of the arrow
+            start_point = arrow_center - norm_dir * (arrow_len / 2.0)
+
+            try:
+                arrow_mesh = pv.Arrow(
+                    start=start_point,
+                    direction=norm_dir,
+                    tip_length=0.25,
+                    tip_radius=tip_rad,
+                    shaft_radius=shaft_rad,
+                    scale=arrow_len
+                )
+                self.arrow = self.wizard.plotter.add_mesh(
+                    arrow_mesh,
+                    color="#FFD700",
+                    smooth_shading=True,
+                    ambient=0.4,
+                    diffuse=0.8,
+                    name=f"actuator_arrow_{id(self)}"
+                )
+
+                # Match the system transform (position, rotation, scale) of the current model
+                M = getattr(self.wizard, 'current_system_matrix', None)
+                if M is None and self.wizard.actors:
+                    for a in self.wizard.actors.values():
+                        if hasattr(a, 'user_matrix') and a.user_matrix is not None:
+                            M = a.user_matrix
+                            break
+                if M is not None and self.arrow:
+                    self.arrow.user_matrix = M
+                self.wizard.plotter.render()
+            except Exception as e:
+                print(f"[WIZARD] Error adding arrow: {e}")
+                traceback.print_exc()
             
         # Install event filter on ALL child widgets to auto-select/activate this ActuatorWidget on click or focus
         for child in self.findChildren(QWidget):
@@ -972,6 +1078,7 @@ class ConveyorWizard(QMainWindow):
         self.logic_rules = {"start": [], "sequences": []}
         self.glb_path = None; self.meshes = {}; self.actors = {}; self.layout_actor_names = []; self.actuator_widgets = []; self.sensor_widgets = []; 
         self.current_config_widget = None
+        self.current_system_matrix = None
         self.model_type = "GLB"
         self.robot = None
         self.current_urdf_xml = ""
@@ -3255,7 +3362,7 @@ class ConveyorWizard(QMainWindow):
     def add_actuator(self):
         w = ActuatorWidget(self); self.actuator_widgets.append(w); self.act_layout.addWidget(w); w.activate()
     def remove_actuator(self, w):
-        if w.arrow: self.plotter.remove_actor(w.arrow)
+        w.hide_visuals()
         self.actuator_widgets.remove(w); w.deleteLater(); self.current_config_widget = None; self.update_validation_ui()
     def add_sensor(self):
         w = SensorWidget(self); self.sensor_widgets.append(w); self.sens_layout.addWidget(w); self.update_all_actuator_dropdowns(); w.activate()
@@ -3269,13 +3376,27 @@ class ConveyorWizard(QMainWindow):
         for n, m in self.meshes.items():
             if m == mesh:
                 self.select_node(n)
-                if self.current_config_widget: self.current_config_widget.set_node(n)
+                target_w = self.current_config_widget
+                if target_w is None and self.stack.currentIndex() == 3 and self.actuator_widgets:
+                    target_w = self.actuator_widgets[0]
+                    target_w.activate()
+                elif target_w is None and self.stack.currentIndex() == 2 and self.sensor_widgets:
+                    target_w = self.sensor_widgets[0]
+                    target_w.activate()
+                if target_w: target_w.set_node(n)
                 break
 
     def on_tree_item_clicked(self, it, col):
         name = it.text(0)
         self.select_node(name)
-        if self.current_config_widget: self.current_config_widget.set_node(name)
+        target_w = self.current_config_widget
+        if target_w is None and self.stack.currentIndex() == 3 and self.actuator_widgets:
+            target_w = self.actuator_widgets[0]
+            target_w.activate()
+        elif target_w is None and self.stack.currentIndex() == 2 and self.sensor_widgets:
+            target_w = self.sensor_widgets[0]
+            target_w.activate()
+        if target_w: target_w.set_node(name)
 
     def select_node(self, n):
         family = self.get_node_family(n)
@@ -3711,10 +3832,18 @@ class ConveyorWizard(QMainWindow):
             S = np.diag([scale[0], scale[1], scale[2], 1.0])
             M = tf.concatenate_matrices(T, R, S)
             
+        self.current_system_matrix = M
         for name, actor in self.actors.items():
             if name.startswith("layout_"):
                 continue
             actor.user_matrix = M
+            
+        for w in getattr(self, 'actuator_widgets', []):
+            if getattr(w, 'arrow', None):
+                try:
+                    w.arrow.user_matrix = M
+                except Exception:
+                    pass
             
         # Center camera on the newly positioned object bounds if NOT in global layout preview
         if not is_preview:
@@ -4127,11 +4256,22 @@ class ConveyorWizard(QMainWindow):
             titles = ["Model Selection", "Basic Info & Transform", "Configure Sensors", "Configure Actuators", "Review & Deploy"]
             self.step_label.setText(f"Step {idx+1} of 5: {titles[idx]}")
             
-        if idx != 4:
+        if idx == 3:
+            active_found = False
             for w in self.actuator_widgets:
-                if w.arrow: self.plotter.remove_actor(w.arrow); w.arrow = None
+                if w.property("active") == "true":
+                    w.update_visuals()
+                    active_found = True
+                else:
+                    w.hide_visuals()
+            if not active_found and self.actuator_widgets:
+                self.actuator_widgets[0].activate()
         elif idx == 4:
-            for w in self.actuator_widgets: w.update_visuals()
+            for w in self.actuator_widgets:
+                w.update_visuals(force=True)
+        else:
+            for w in self.actuator_widgets:
+                w.hide_visuals()
             
         self.btn_next.setText("Deploy to AAS" if idx == self.stack.count() - 1 else "Next →"); self.update_json_preview()
             
