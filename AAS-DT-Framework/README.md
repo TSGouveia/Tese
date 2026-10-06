@@ -1,9 +1,8 @@
 <div align="center"> 
 
 # Automatic Generation of Simulation-Based Digital Twins from Asset Administration Shells
-[![License: MIT](https://img.shields.io/badge/License-MIT-red.svg)](https://opensource.org/licenses/MIT)
-[![NOVA SST: MSc Thesis](https://img.shields.io/badge/NOVA_SST-MSc_Thesis-blue)](https://run.unl.pt)
-[![Status: Under Review](https://img.shields.io/badge/Status-Thesis_Under_Review-orange)](https://run.unl.pt)
+![NOVA SST: MSc Thesis](https://img.shields.io/badge/NOVA_SST-MSc_Thesis-blue)
+![Status: Under Review](https://img.shields.io/badge/Status-Thesis_Under_Review-orange)
 
 **Author:** [Tiago Daniel Santos Gouveia](https://pt.linkedin.com/)<sup>1</sup>  
 *Advisor:* [Prof. Dr. André Dionisio Rocha](https://scholar.google.pt/citations?user=k1GIyqcAAAAJ&hl=pt-PT)<sup>1</sup> &nbsp;&nbsp;|&nbsp;&nbsp; *Co-Advisor:* [Nelson Nascimento de Freitas](https://scholar.google.com/)<sup>1</sup>
@@ -121,23 +120,9 @@ Empirical evaluation on the physical modular FMS bench and 800 parametric stress
 
 ---
 
-## <div align="center">Contribution Guidelines</div>
-
-This project is open-source under the MIT license, and contributions from the community and research partners are welcome! For questions, bug reports, and feature requests:
-- Open an issue on [GitHub Issues](https://github.com/NOVA-RICS-Open-Lab/AAS-DT-Framework/issues).
-- Refer to development workflows within the NOVA RICS Open Lab research collective.
-
----
-
 ## <div align="center">Citation</div>
 
 > ℹ️ **Publication Note:** This Master's dissertation is currently undergoing academic defense and review at NOVA School of Science and Technology (NOVA FCT). The official publication link, permanent handle, and BibTeX citation from **RUN (Repositório da Universidade NOVA)** will be made available here upon public release.
-
----
-
-## <div align="center">License</div>
-
-This repository is released under the [MIT License](LICENSE).
 
 ---
 
