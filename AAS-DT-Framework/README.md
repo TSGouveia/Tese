@@ -83,10 +83,9 @@ Follow these steps to start the middleware services, author or deploy digital tw
    - Start the containerized services located in the `Layer 2 - AAS Docker` directory.
    - This launches the Eclipse BaSyx v2 microservices (AAS Registry, Submodel Registry, and AAS Environment Server) alongside Mosquitto MQTT and InfluxDB for telemetry storage.
 
-2. **Launch the Authoring Studio & Deploy Digital Twin Models (Layer 1)**
+2. **Launch the Authoring Studio (Layer 1)**
    - Open the `Layer 1 - AAS Client` folder and install the Python dependencies listed in `requirements.txt`.
-   - Launch the authoring studio by running `conveyor_wizard.py`.
-   - **Deploy Benchmark Testbed:** In the GUI toolbar, click **"Restore AAS"**, select the pre-configured `.json` files from `Backup_models/`, and confirm upload. All conveyor modules (`Conveyor_A` through `Conveyor_F`), the punch station (`Punch_FMS`), workpiece (`Product1`), and coordination logic (`FMS`) will be registered and populated into the BaSyx repository.
+   - Run `conveyor_wizard.py` to author, configure, or deploy AAS packages to the BaSyx repository.
 
 3. **Run the Simulation Engine (Layer 3)**
    - Open the `Layer 3 - DT Unity` project folder in **Unity 6 (6000.3.10f1)** or compatible version.
