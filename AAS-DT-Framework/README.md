@@ -5,11 +5,10 @@
 [![NOVA SST: MSc Thesis](https://img.shields.io/badge/NOVA_SST-MSc_Thesis-blue)](https://run.unl.pt)
 [![Status: Under Review](https://img.shields.io/badge/Status-Thesis_Under_Review-orange)](https://run.unl.pt)
 
-[Tiago Gouveia](https://pt.linkedin.com/)<sup>1</sup>, 
-[André Dionisio Rocha](https://scholar.google.pt/citations?user=k1GIyqcAAAAJ&hl=pt-PT)<sup>1</sup>,
-[Nelson Freitas](https://scholar.google.com/)<sup>1</sup>
+**Author:** [Tiago Daniel Santos Gouveia](https://pt.linkedin.com/)<sup>1</sup>  
+*Advisor:* [Prof. Dr. André Dionisio Rocha](https://scholar.google.pt/citations?user=k1GIyqcAAAAJ&hl=pt-PT)<sup>1</sup> &nbsp;&nbsp;|&nbsp;&nbsp; *Co-Advisor:* [Nelson Nascimento de Freitas](https://scholar.google.com/)<sup>1</sup>
 
-<sup>1</sup> **NOVA School of Science and Technology, Center of Technology and Systems (UNINOVA-CTS)**,
+<sup>1</sup> **NOVA School of Science and Technology, Center of Technology and Systems (UNINOVA-CTS)**,  
 and Associated Lab of Intelligent Systems (LASI), NOVA University Lisbon, 2829-516 Caparica, Portugal
 
 <table>
@@ -28,7 +27,7 @@ and Associated Lab of Intelligent Systems (LASI), NOVA University Lisbon, 2829-5
 
 ---
 
-## <div align="center">Framework Architecture</div>
+## <div align="center">Implementation Architecture</div>
 
 The architecture spans four decoupled tiers, bridging low-polygon geometric asset modeling to live physical shop-floor synchronization:
 
@@ -157,20 +156,7 @@ This project is open-source under the MIT license, and contributions from the co
 
 ## <div align="center">Citation</div>
 
-> ℹ️ **Publication Note:** This Master's dissertation is currently undergoing academic defense and review at NOVA School of Science and Technology (NOVA FCT). The official publication link and permanent handle in the **RUN (Repositório da Universidade NOVA)** repository will be made available here upon public indexing.
->
-> In the meantime, if you use or build upon this framework in your research, please cite:
-
-```bibtex
-@mastersthesis{gouveia2026digitaltwins,
-  author       = {Tiago Daniel Santos Gouveia},
-  title        = {Automatic Generation of Simulation-Based Digital Twins from Asset Administration Shells},
-  school       = {NOVA School of Science and Technology, NOVA University Lisbon},
-  year         = {2026},
-  type         = {Master's Thesis},
-  note         = {MSc Dissertation (Under Review / Forthcoming in RUN - Repositório da Universidade NOVA)}
-}
-```
+> ℹ️ **Publication Note:** This Master's dissertation is currently undergoing academic defense and review at NOVA School of Science and Technology (NOVA FCT). The official publication link, permanent handle, and BibTeX citation from **RUN (Repositório da Universidade NOVA)** will be made available here upon public release.
 
 ---
 
