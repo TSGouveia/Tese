@@ -1,7 +1,7 @@
 <div align="center"> 
 
 # Automatic Generation of Simulation-Based Digital Twins from Asset Administration Shells
-![NOVA SST: MSc Thesis](https://img.shields.io/badge/NOVA_SST-MSc_Thesis-blue)
+[![NOVA SST: MSc Thesis](https://img.shields.io/badge/NOVA_SST-MSc_Thesis-blue)](docs/thesis.pdf)
 ![Status: Under Review](https://img.shields.io/badge/Status-Thesis_Under_Review-orange)
 
 **Author:** [Tiago Daniel Santos Gouveia](https://pt.linkedin.com/)<sup>1</sup>  
@@ -46,6 +46,8 @@ The architecture spans four decoupled tiers, bridging low-polygon geometric asse
 
 ```
 AAS-DT-Framework/
+├── docs/                     # Master's Thesis document
+│   └── thesis.pdf            # Full MSc Dissertation (NOVA FCT, 2026)
 ├── Layer 0 - 3D Models/      # Layer 0: Low-polygon 3D CAD assets (GLB) for authoring new AAS units
 │   ├── Conveyor_Belt.glb     # Linear conveyor module
 │   ├── Conveyor_Horizontal.glb # Translating conveyor diverter module
