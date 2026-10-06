@@ -119,8 +119,7 @@ class XacroResolver:
         if p_lower in self.file_map: 
             return self.file_map[p_lower]
         
-        # 2. Normalize (remove package:// and $(find ...))
-        # If it's JUST a $(find pkg), we want to find the package directory
+        # Normalize and resolve package directory
         if re.match(r'^\$\(find [^)]+\)$', path):
             pkg_name = re.search(r'\$\(find ([^)]+)\)', path).group(1).lower()
             # Try to find a directory with this name
@@ -615,7 +614,6 @@ class ActuatorWidget(QGroupBox):
 
             up_axis_idx = 2 if self.wizard.model_type == "URDF" else 1
 
-            # Determine arrow length based on the dimension of the body along the direction
             dim_along_dir = abs(norm_dir[0]) * extents[0] + abs(norm_dir[1]) * extents[1] + abs(norm_dir[2]) * extents[2]
             max_dim = np.max(extents)
 
@@ -625,22 +623,17 @@ class ActuatorWidget(QGroupBox):
                 arrow_len = max_dim * 0.5
             arrow_len = max(arrow_len, 0.05)
 
-            # Compute arrow center
             arrow_center = center.copy()
             tip_rad = max(0.07 * arrow_len, 0.015)
             shaft_rad = max(0.03 * arrow_len, 0.007)
 
-            # If movement is horizontal (not primarily along the UP axis) and behavior is Conveyor or linear movement,
-            # position arrow on the top surface of the body so it sits visibly on top of the belt
             is_horizontal_motion = abs(norm_dir[up_axis_idx]) < 0.7
             behavior = self.combo_behavior.currentText()
             if is_horizontal_motion and behavior in ["Conveyor", "TranslateContinuous", "Linear", "Piston"]:
                 arrow_center[up_axis_idx] = max_b[up_axis_idx] + shaft_rad * 1.5
             else:
-                # Vertical or rotational motion: keep centered in the body
                 arrow_center[up_axis_idx] = center[up_axis_idx]
 
-            # Start point so that arrow_center is the EXACT midpoint of the arrow
             start_point = arrow_center - norm_dir * (arrow_len / 2.0)
 
             try:
@@ -1127,7 +1120,6 @@ class ConveyorWizard(QMainWindow):
         self.viewer_container = QWidget(); viewer_layout = QVBoxLayout(self.viewer_container); viewer_layout.setContentsMargins(0, 0, 0, 0)
         self.plotter = BackgroundPlotter(show=False); self.plotter.set_background("#161616"); self.plotter.add_axes()
         
-        # NUCLEAR OPTION FOR HELP TEXT
         self.plotter.enable_mesh_picking(callback=self.on_mesh_picked, show=False, show_message=False, left_clicking=True)
         self.cleanup_timer = QTimer(); self.cleanup_timer.timeout.connect(self.kill_overlays); self.cleanup_timer.start(200)
         
@@ -2971,7 +2963,7 @@ class ConveyorWizard(QMainWindow):
                     self.load_sequences()
                 
             else:
-                # We don't rely on 'GeometryData' strictly; we look for anything that looks like VisualStructure
+                # Extract visual structure and behavior submodels
                 vis_data = next((v for k,v in submodels_data.items() if "VisualStructure" in k or "Visual" in k), None)
                 beh_data = next((v for k,v in submodels_data.items() if "BehaviorMapping" in k or "Behavior" in k), None)
                 aid_data = next((v for k,v in submodels_data.items() if "AssetInterfacesDescription" in k), None)
@@ -3914,7 +3906,7 @@ class ConveyorWizard(QMainWindow):
         import numpy as np
         loaded_count = 0
 
-        # We want to exclude the current AAS we are editing
+        # Exclude current AAS being edited
         current_aas_id = self.edit_aas_id.text().strip()
 
         try:
@@ -3966,9 +3958,7 @@ class ConveyorWizard(QMainWindow):
                                     elif id_s == "Scale_Z": scale_val[2] = v
                                 except:
                                     pass
-                        # For URDF, the geometry is in GeometryData. In preview layout, we can load the base link geometry
-                        # or we can load the whole robot, but since robot has multiple meshes, loading it can be slow.
-                        # However, let's load it if it has GeometryData!
+                        # Load URDF geometry if GeometryData is present
                         if "GeometryData" in submodels_data:
                             geo_data = submodels_data["GeometryData"]
                             geo_id = geo_data.get("id")
