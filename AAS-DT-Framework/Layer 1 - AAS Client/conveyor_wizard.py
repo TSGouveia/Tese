@@ -3167,6 +3167,10 @@ class ConveyorWizard(QMainWindow):
                     candidate = os.path.join(config_dir, mesh_name)
                     if os.path.exists(candidate):
                         self.glb_path = candidate
+                if not self.glb_path:
+                    layer0_candidate = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Layer 0 - 3D Models", mesh_name)
+                    if os.path.exists(layer0_candidate):
+                        self.glb_path = layer0_candidate
                 if not self.glb_path and os.path.exists(mesh_name):
                     self.glb_path = os.path.abspath(mesh_name)
         else:
@@ -3417,7 +3421,9 @@ class ConveyorWizard(QMainWindow):
             for c in self.scene_graph.transforms.children.get(name, []): f.update(self.get_node_family(c))
         return f
     def browse_glb(self):
-        p, _ = QFileDialog.getOpenFileName(self, "Select GLB", "", "GLB Files (*.glb)")
+        default_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Layer 0 - 3D Models")
+        initial_path = default_dir if os.path.exists(default_dir) else ""
+        p, _ = QFileDialog.getOpenFileName(self, "Select GLB", initial_path, "GLB Files (*.glb)")
         if p: 
             self.glb_path = p; self.lbl_glb_path.setText(os.path.basename(p)); self.load_model(p)
             
