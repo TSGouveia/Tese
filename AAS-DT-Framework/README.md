@@ -76,38 +76,26 @@ AAS-DT-Framework/
 
 ## <div align="center">Get Started</div>
 
-Follow these steps to launch the entire middleware stack, author/restore asset packages, and run the procedural Digital Twin:
+Follow these steps to start the middleware services, author or deploy digital twin packages, and run the procedural simulation:
 
-### 1. Launch the AAS Containerized Middleware (Layer 2)
-Ensure Docker Desktop is running, then start the BaSyx v2 microservices:
-```bash
-cd "Layer 2 - AAS Docker"
-docker-compose up -d
-```
-This starts the AAS Registry, Submodel Registry, AAS Environment Server, Mosquitto MQTT Broker, and InfluxDB telemetry store.
+1. **Start the AAS Middleware (Layer 2)**
+   - Ensure Docker Desktop is running on your machine.
+   - Start the containerized services located in the `Layer 2 - AAS Docker` directory (e.g., using Docker Compose up).
+   - This launches the Eclipse BaSyx v2 microservices (AAS Registry, Submodel Registry, and AAS Environment Server) alongside Mosquitto MQTT and InfluxDB for telemetry storage.
 
-### 2. Run the AAS Authoring Studio & Deploy Digital Twin (Layer 1)
-Install dependencies and launch the Python GUI to author new AAS packages or deploy the benchmark FMS testbed:
-```bash
-cd "../Layer 1 - AAS Client"
-pip install -r requirements.txt
-python conveyor_wizard.py
-```
+2. **Launch the Authoring Studio & Deploy Digital Twin Models (Layer 1)**
+   - Navigate to the `Layer 1 - AAS Client` folder and install the Python dependencies listed in `requirements.txt`.
+   - Launch the authoring studio by running `conveyor_wizard.py`.
+   - **Deploy Benchmark Testbed:** In the GUI toolbar, click **"Restore AAS"**, select the pre-configured `.json` files from `Backup_models/`, and confirm upload. All conveyor modules (`Conveyor_A` through `Conveyor_F`), the punch station (`Punch_FMS`), workpiece (`Product1`), and coordination logic (`FMS`) will be registered and populated into the BaSyx repository.
 
-> **Quick Start (Deploy Benchmark FMS Digital Twin):**
-> 1. In the Conveyor Wizard GUI, click **"Restore AAS"** in the top-right toolbar.
-> 2. Select all `.json` files inside the `Backup_models/` folder.
-> 3. Click **Yes** when prompted to deploy them directly to the BaSyx server.
-> 4. All conveyor modules (`Conveyor_A` through `Conveyor_F`), the punch station (`Punch_FMS`), workpiece (`Product1`), and coordination logic (`FMS`) will be registered and populated in BaSyx.
+3. **Run the Simulation Engine (Layer 3)**
+   - Open the `Layer 3 - DT Unity` project folder in **Unity 6 (6000.3.10f1)** or compatible version.
+   - Open the main scene located at `Assets/Scenes/SampleScene.unity`.
+   - Press **Play** in the editor. Unity will query the running BaSyx server, download the 3D meshes and submodels, and assemble the entire simulation scene procedurally at runtime.
 
-### 3. Open the Simulation Engine (Layer 3)
-1. Launch **Unity 6 (6000.3.10f1)** (or compatible version).
-2. Open the project folder `Layer 3 - DT Unity`.
-3. Open the main scene in `Assets/Scenes/SampleScene.unity`.
-4. Press **Play** to trigger procedural scene assembly automatically fetched from the running BaSyx AAS Server.
-
-### 4. Physical Bench Controller (Optional Hardware Setup)
-Flash `Hardware - FMS DT/FMS_DT.ino` onto your **Industrial Shields M-DUINO 57R+ PLC** (powered by Arduino Mega 2560 & W5500 Ethernet) running FreeRTOS. The controller streams real-time sensor events via low-latency **TCP sockets** (port 8888) and accepts actuation commands via **HTTP REST** (port 80) to sync the Unity Digital Twin with physical hardware.
+4. **Connect the Physical Hardware Controller (Optional)**
+   - To link with the physical testbed, flash the firmware from `Hardware - FMS DT/FMS_DT.ino` onto the **Industrial Shields M-DUINO 57R+ PLC** using Arduino IDE or PlatformIO.
+   - The controller will stream sensor transitions over low-latency TCP sockets (port 8888) and accept motor commands via HTTP REST (port 80) to synchronize with Unity in real time.
 
 ---
 
