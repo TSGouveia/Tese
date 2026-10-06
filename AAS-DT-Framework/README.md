@@ -42,21 +42,26 @@ The architecture spans four decoupled tiers:
 
 ```
 AAS-DT-Framework/
-├── AAS Client/               # Layer 1: Python AAS Authoring Studio
+├── Layer 0 - 3D Models/      # Layer 0: Low-polygon 3D CAD assets (GLB) for authoring new AAS units
+│   ├── Conveyor_Belt.glb     # Linear conveyor module
+│   ├── Conveyor_Horizontal.glb # Translating conveyor diverter module
+│   ├── Conveyor_Rotary.glb   # Rotating conveyor turntable module
+│   ├── Punch_Station.glb     # Workpiece punch / machining station
+│   └── Workpiece.glb         # Dynamic industrial workpiece / puck
+├── Layer 1 - AAS Client/     # Layer 1: Python AAS Authoring Studio
 │   ├── conveyor_wizard.py    # Main GUI Studio for AAS layout generation & submodel creation
-│   ├── 3D_models/            # Low-polygon 3D CAD assets (GLB) for authoring new AAS units
 │   ├── Backup_models/        # Complete pre-configured AAS backups for the modular FMS pilot testbed
 │   └── requirements.txt      # Python dependencies for the authoring studio
-├── AAS Docker/               # Layer 2: Docker Compose infrastructure
+├── Layer 2 - AAS Docker/     # Layer 2: Docker Compose infrastructure
 │   ├── docker-compose.yml    # Eclipse BaSyx v2 (AAS Registry, Submodel Registry, AAS Server), Mosquitto MQTT & InfluxDB
 │   ├── basyx/                # BaSyx configuration properties & YAMLs
 │   ├── mosquitto/            # MQTT broker configuration
 │   └── influxdb/             # InfluxDB database configuration
-├── DT Unity/                 # Layer 3: Unity 3D Simulation & Telemetry Engine
+├── Layer 3 - DT Unity/       # Layer 3: Unity 3D Simulation & Telemetry Engine
 │   ├── Assets/               # C# scripts, prefabs, materials, and AAS procedural generation logic
 │   ├── Packages/             # Unity project dependency manifests
 │   └── ProjectSettings/      # Unity project physics, tag, and layer settings
-└── FMS DT/                   # Hardware Firmware
+└── Hardware - FMS DT/        # Hardware Firmware
     └── FMS_DT.ino            # FreeRTOS C++ code for Industrial Shields M-DUINO PLC control & TCP/HTTP telemetry
 ```
 
@@ -67,7 +72,7 @@ AAS-DT-Framework/
 ### 1. Launch the AAS Containerized Middleware (Layer 2)
 Ensure Docker Desktop is running, then start the BaSyx v2 microservices:
 ```bash
-cd "AAS Docker"
+cd "Layer 2 - AAS Docker"
 docker-compose up -d
 ```
 This starts the AAS Registry, Submodel Registry, AAS Environment Server, Mosquitto MQTT Broker, and InfluxDB telemetry store.
@@ -75,7 +80,7 @@ This starts the AAS Registry, Submodel Registry, AAS Environment Server, Mosquit
 ### 2. Run the AAS Authoring Studio & Deploy Digital Twin (Layer 1)
 Install dependencies and launch the Python GUI to author new AAS packages or deploy the benchmark FMS testbed:
 ```bash
-cd "../AAS Client"
+cd "../Layer 1 - AAS Client"
 pip install -r requirements.txt
 python conveyor_wizard.py
 ```
@@ -88,12 +93,12 @@ python conveyor_wizard.py
 
 ### 3. Open the Simulation Engine (Layer 3)
 1. Launch **Unity 6 (6000.3.10f1)** (or compatible version).
-2. Open the project folder `DT Unity`.
+2. Open the project folder `Layer 3 - DT Unity`.
 3. Open the main scene in `Assets/Scenes/SampleScene.unity`.
 4. Press **Play** to trigger procedural scene assembly automatically fetched from the running BaSyx AAS Server.
 
 ### 4. Physical Bench Controller (Optional Hardware Setup)
-Flash `FMS_DT/FMS_DT.ino` onto your **Industrial Shields M-DUINO 57R+ PLC** (powered by Arduino Mega 2560 & W5500 Ethernet) running FreeRTOS. The controller streams real-time sensor events via low-latency **TCP sockets** (port 8888) and accepts actuation commands via **HTTP REST** (port 80) to sync the Unity Digital Twin with physical hardware.
+Flash `Hardware - FMS DT/FMS_DT.ino` onto your **Industrial Shields M-DUINO 57R+ PLC** (powered by Arduino Mega 2560 & W5500 Ethernet) running FreeRTOS. The controller streams real-time sensor events via low-latency **TCP sockets** (port 8888) and accepts actuation commands via **HTTP REST** (port 80) to sync the Unity Digital Twin with physical hardware.
 
 ---
 
