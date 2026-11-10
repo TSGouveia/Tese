@@ -1,0 +1,632 @@
+\documentclass{ieeeojies}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage[caption=false,font=footnotesize]{subfig}
+\usepackage{url}
+\usepackage{hyperref}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\newcommand{\etal}{\textit{et~al.}}
+
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\bottomfraction}{0.85}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.85}
+\renewcommand{\dbltopfraction}{0.95}
+\renewcommand{\dblfloatpagefraction}{0.85}
+
+\begin{document}
+
+\title{Automatic Generation of Simulation-Based Digital Twins From Asset Administration Shells}
+
+\author{\uppercase{Tiago Gouveia},
+\uppercase{Nelson Freitas}, and 
+\uppercase{Andr{\'e} Rocha}}
+
+\address{Department of Electrical and Computer Engineering, NOVA School of Science and Technology, NOVA University of Lisbon, Caparica, Portugal (e-mail: td.gouveia@campus.fct.unl.pt, n.freitas@campus.fct.unl.pt, ad.rocha@fct.unl.pt)}
+
+\markboth
+{Gouveia \headeretal: Automatic Generation of Simulation-Based Digital Twins From Asset Administration Shells}
+{Gouveia \headeretal: Automatic Generation of Simulation-Based Digital Twins From Asset Administration Shells}
+
+\corresp{Corresponding author: Tiago Gouveia (e-mail: td.gouveia@campus.fct.unl.pt).}
+
+\begin{abstract}
+The Industry~4.0 paradigm relies on Cyber-Physical Production Systems (CPPS) and Reconfigurable Manufacturing Systems (RMS) to achieve agile, resilient shop-floor operations. Within this landscape, Digital Twins (DTs) provide virtual representations capable of mirroring physical assets through real-time bidirectional telemetry. However, conventional industrial simulation workflows suffer from acute engineering bottlenecks: proprietary simulation tool lock-in, unoptimized manufacturing CAD files lacking kinematic joints and trigger volumes, and tedious manual matching of field PLC I/O addresses, rendering plant reconfigurations prohibitively slow and error-prone. To overcome these barriers, this paper presents an open, modular, model-driven framework for the automated procedural generation and live synchronization of simulation-based DTs directly from standardized Asset Administration Shells (AAS, IEC~63278). The proposed architecture spans four decoupled tiers: low-polygon geometric digitization with kinematic rigging in Blender (Layer~0), no-code semantic authoring featuring 3D surface raycasting and AASX packaging (Layer~1), containerized storage and registry services via Eclipse BaSyx~v2 microservices on Docker (Layer~2), and dynamic procedural scene assembly, PhysX contact mechanics, dual-mode execution (Virtual Commissioning and operational DT), and kinematic drift correction in Unity~3D (Layer~3). The framework was empirically validated on a modular Flexible Manufacturing System (FMS) mechatronic testbed driven by an Industrial Shields PLC running FreeRTOS, as well as through parametric scalability stress tests encompassing 800 benchmark runs scaling from 5 to 1000 conveyor modules. Experimental results demonstrate cold-boot instantiation of the physical pilot bench in $2.79 \pm 0.04$\,s and steady-state rendering rates of $489.91 \pm 49.21$\,FPS. Scalability evaluations confirm near-linear scaling up to 250 modules ($254.24$\,FPS) and deterministic real-time execution up to 500 modules ($93.16$\,FPS), establishing open AAS standards as an effective foundation for next-generation automated DTs.
+\end{abstract}
+
+\begin{keywords}
+Asset Administration Shell (AAS), Cyber-Physical Production Systems (CPPS), Digital Twin, Industry~4.0, Procedural Generation, Reconfigurable Manufacturing Systems, Virtual Commissioning.
+\end{keywords}
+
+\titlepgskip=-15pt
+
+\maketitle
+
+\section{Introduction}
+\label{sec:introduction}
+
+Modern manufacturing enterprises face escalating pressures to adapt production lines dynamically to fluctuating market demands, shortened product lifecycles, and high-mix, low-volume customization \cite{Khan2025,Rocha2024}. In traditional Dedicated Manufacturing Systems (DMS), shop-floor topologies were rigid, engineered to produce high volumes of static goods with dedicated, hardwired machinery. In contrast, modern smart manufacturing paradigms demand Reconfigurable Manufacturing Systems (RMS) and Cyber-Physical Production Systems (CPPS), where mechatronic assets, transport conveyors, and robotic workstations can be added, swapped, or rearranged with minimal downtime \cite{Abdel-Aty2022,AshtariTalkhestani2019}.
+
+In this agile industrial landscape, the Digital Twin (DT) has emerged as an indispensable technology for virtual commissioning (VC), operational monitoring, predictive maintenance, and closed-loop control validation \cite{Tao2019,Striffler2023}. While static 3D computer-aided design (CAD) models or digital shadows (DS) provide only unidirectional visualization or telemetry archiving, a true DT maintains automated, bidirectional state synchronization between physical shop-floor assets and their virtual counterparts \cite{Kritzinger2018,Pajpach2023}. Real-time telemetry from physical sensors updates the simulation state, while predictive simulation and control decisions can be dispatched back to physical Programmable Logic Controllers (PLCs).
+
+To prevent multi-vendor fragmentation and promote semantic interoperability across the automation pyramid, the German Plattform Industrie~4.0 and the International Data Spaces Association formulated the Reference Architectural Model Industrie~4.0 (RAMI~4.0, DIN EN IEC~63088) \cite{Pajpach2025}. At the core of RAMI~4.0 lies the Asset Administration Shell (AAS, IEC~63278), maintained by the Industrial Digital Twin Association (IDTA) \cite{Lu2025}. The AAS acts as the standardized digital representation for physical assets, encapsulating mechanical parameters, electrical interfaces, operational variables, and communication bindings into interoperable submodel schemas.
+
+\subsection{Problem Statement and Motivation}
+\label{sec:intro_problem}
+
+Despite the compelling theoretical promises of DTs, their practical implementation and lifecycle maintenance remain major engineering bottlenecks, especially for Small and Medium Enterprises (SMEs) \cite{Schaper2025}. Conventional DT development pipelines suffer from three fundamental limitations:
+
+\begin{enumerate}
+    \item \textbf{Geometric and Kinematic Fragmentation:} Factory machines are initially engineered using mechanical CAD assemblies intended for manufacturing. These models contain millions of dense polygons, internal fasteners, bearing assemblies, and screw threads that quickly saturate real-time graphics and physics engines \cite{Chowdhury2025}. More critically, raw CAD exports strip away local coordinate pivots, motion constraints, stroke limits, and volumetric trigger colliders necessary to detect workpieces within physics runtimes.
+    \item \textbf{Monolithic, Vendor-Locked Scene Construction:} Mainstream industrial simulation platforms (e.g., Siemens Tecnomatix, Dassault 3DEXPERIENCE, Rockwell Emulate3D) require automation engineers to assemble virtual cells manually within proprietary editors, script kinematics by hand, and compile static binary scenes \cite{Striffler2023,Koch2024}. Whenever a conveyor segment is added or rearranged on the factory floor, the simulation project must be manually rebuilt, generating severe maintenance latencies and desynchronization \cite{Alexopoulos2025}.
+    \item \textbf{Decoupled Control and Manual Address Mapping:} Simulation environments are traditionally isolated from control hardware. Moving between offline VC and an operational DT connected to field PLCs requires manually re-mapping hundreds of signal tags and I/O registers across disparate software tools, introducing human error and prohibitive setup overhead \cite{Luder2020,Gollner2022}.
+\end{enumerate}
+
+These bottlenecks explain why existing industrial simulation tools struggle in agile CPPS environments \cite{Rocha2024}. To address these challenges, this research investigates how open, vendor-neutral semantic standards can drive fully procedural simulation pipelines, eliminating pre-compiled scenes and manual re-engineering.
+
+\subsection{Research Question and Core Contributions}
+\label{sec:intro_contributions}
+
+The primary research question addressed in this paper is:
+\begin{quote}
+    \textit{How can standardized Asset Administration Shells be leveraged to procedurally assemble and synchronize interactive, simulation-based Digital Twins at runtime without pre-compiled scenes?}
+\end{quote}
+
+To resolve this question, this paper proposes, implements, and evaluates an open, four-layer, model-driven DT framework. The key technical contributions of this work are:
+
+\begin{enumerate}
+    \item \textbf{An Open Model-Driven Framework and Procedural Pipeline:} A four-tier architecture that completely replaces static, pre-compiled simulation project files by procedurally instantiating 3D visual hierarchies, physics colliders, and network bindings directly from standardized AAS packages at runtime.
+    \item \textbf{A Unified AAS Semantic Submodel Schema:} A portable metamodel specification linking 3D surface geometry (\textit{VisualStructure}), kinematic joint parameters and trigger volumes (\textit{BehaviorMapping}), electrical I/O terminals (\textit{VirtualPins}), declarative IF-THEN interlocks (\textit{ControlLogic}), and communication bindings (\textit{NetworkEndpoint}) into standardized AAS submodels.
+    \item \textbf{An Interactive No-Code Authoring Tool:} A desktop modeling application incorporating 3D surface raycasting for normal-aligned sensor placement, a visual rule editor for edge logic, and automated AASX package compilation via the Eclipse BaSyx Python SDK without manual programming.
+    \item \textbf{Empirical Mechatronic Validation and Scalability Benchmarks:} Comprehensive quantitative evaluation on an operational modular Flexible Manufacturing System (FMS) bench controlled by an Industrial Shields PLC running FreeRTOS, complemented by high-density parametric stress tests across 800 simulation runs scaling up to 1000 conveyor modules.
+\end{enumerate}
+
+The remainder of this paper is organized as follows: Section~\ref{sec:related_work} reviews related work and identifies existing literature gaps. Section~\ref{sec:architecture} presents the conceptual system architecture and semantic metamodel. Section~\ref{sec:implementation} details the technological implementation across software and embedded hardware tiers. Section~\ref{sec:results} discusses the empirical results on the pilot bench and high-density scalability stress tests. Section~\ref{sec:discussion} analyzes research findings and engineering trade-offs. Finally, Section~\ref{sec:conclusion} concludes the paper and outlines future research directions.
+
+\section{Related Work and Research Gaps}
+\label{sec:related_work}
+
+\subsection{Digital Twins and Virtual Commissioning in Smart Manufacturing}
+\label{sec:rw_dt_vc}
+
+The conceptual foundation of the Digital Twin was introduced by Grieves \cite{Grieves2014} and formalized by NASA \cite{Shafto2012}. In manufacturing, Kritzinger \etal \cite{Kritzinger2018} categorized digital representations based on their degree of data coupling: \textit{Digital Model} (manual data flow in both directions), \textit{Digital Shadow} (automated data flow from physical to virtual, manual reverse flow), and \textit{Digital Twin} (fully automated, closed-loop bidirectional synchronization).
+
+Virtual Commissioning (VC) utilizes simulation models to verify PLC control code, kinematic cycles, and collision paths before physical plant deployment \cite{Striffler2023}. Traditional VC operates primarily under Software-in-the-Loop (SiL) or Hardware-in-the-Loop (HiL) setups. However, commercial VC tools remain decoupled from post-commissioning operational phases. Once the physical line begins production, the VC simulation model is typically discarded rather than evolved into an operational DT, because maintaining digital-physical alignment requires excessive manual re-engineering \cite{Schaper2025,Koch2024}.
+
+\subsection{Semantic Interoperability: AAS vs. AutomationML}
+\label{sec:rw_standards}
+
+Semantic modeling standards are critical to overcoming multi-vendor silos in Industry~4.0. AutomationML (AML, IEC~62714) has been widely adopted for engineering data exchange, capturing topology, geometry, and kinematics across CAD and PLC engineering tools \cite{Drath2008,Luder2020}. However, AML is primarily a static engineering format, lacking native REST/MQTT runtime communication interfaces and decentralized discovery registries \cite{Alexopoulos2025}.
+
+In contrast, the Asset Administration Shell (AAS, IEC~63278) provides a comprehensive digital container that bridges engineering data with operational runtime services \cite{Lu2025}. Supported by open-source implementations such as Eclipse BaSyx \cite{Perez2025}, the AAS organizes asset information into standardized submodels accessible via standardized HTTP REST, OPC UA, and MQTT APIs. While the IDTA has standardized submodels for static documentation (e.g., \textit{Digital Nameplate}, \textit{Handover Documentation}), standardized submodel specifications for 3D physics interaction, kinematic bounding, and real-time fieldbus signal synchronization remain an active area of research \cite{Abdel-Aty2022,Pajpach2025}.
+
+\subsection{Game Engines in Industrial Automation}
+\label{sec:rw_game_engines}
+
+Modern game engines, such as Unity~3D and Unreal Engine, have gained significant traction in industrial simulation due to their high-performance rendering pipelines, cross-platform deployment, and robust physics engines (e.g., NVIDIA PhysX) \cite{Zheng2024,Pajpach2022}. Unlike specialized mechanical simulators that require powerful workstations to simulate finite element equations at high computational cost, game engines prioritize bounded frame rates (e.g., 60\,FPS) and interactive responsiveness \cite{Garcia2025}.
+
+However, integrating game engines into industrial automation presents major technical hurdles:
+\begin{itemize}
+    \item \textbf{Coordinate System Inversions:} Mechanical CAD software and robotics frameworks (e.g., ROS, Blender) use right-handed coordinate systems (typically $Z$-up), whereas Unity uses a left-handed coordinate system ($Y$-up), necessitating runtime transformation matrices to prevent geometric inversions.
+    \item \textbf{Contact Mechanics and Drift:} Standard game physics calculates continuous movement through discrete Euler or Verlet numerical integration. Over extended runs, slight numerical integration errors and contact slippage cause moving workpieces to drift from physical sensor triggering points, breaking synchronization unless corrected by closed-loop snapping mechanisms \cite{Kritzinger2018}.
+\end{itemize}
+
+\subsection{Automated Digital Twin Generation Approaches}
+\label{sec:rw_automated_generation}
+
+Efforts to automate DT construction are categorized into three methodological streams:
+\begin{enumerate}
+    \item \textbf{Model-Driven Engineering (MDE):} Alexopoulos \etal \cite{Alexopoulos2025} developed an automated DT generation pipeline ingesting AML factory files into Unity. While effective, the system generates pre-compiled simulation builds that cannot dynamically incorporate newly added assets at runtime without project regeneration. Schaper \etal \cite{Schaper2025} combined AAS with Functional Mock-up Interfaces (FMI) for modular simulation, but focused on offline SiL verification rather than live 3D physics runtime synchronization.
+    \item \textbf{Data-Driven Approaches:} In brownfield facilities lacking CAD models, process mining and system identification techniques reconstruct workflow models directly from event logs and telemetry streams \cite{Lugaresi2021,Garcia2023}. While valuable for queueing analysis, data-driven methods lack explicit 3D geometry and spatial collision dynamics.
+    \item \textbf{Generative AI and Large Language Models:} Recent works explore Large Language Models (LLMs) to generate simulation scripts (e.g., NVIDIA Omniverse pipelines via Python prompts \cite{Dong2024}) or extract AAS submodels from unstructured equipment datasheets \cite{Xia2024,Reichardt2024}. While promising for rapid prototyping, LLMs exhibit stochastic variations and hallucination risks, which preclude their use as deterministic generators for machine safety interlocks and real-time kinematic control \cite{Alexopoulos2025}.
+\end{enumerate}
+
+\subsection{Identification of Research Gaps}
+\label{sec:rw_gaps}
+
+A systematic comparison of state-of-the-art automated DT platforms against the requirements of reconfigurable manufacturing reveals four critical research gaps, summarized in Table~\ref{tab:sota_comparison}:
+
+\begin{enumerate}
+    \item \textbf{Gap 1 (Aspect Fragmentation):} Existing tools treat 3D geometry, kinematic limits, electrical I/O, and control logic in isolated silos, lacking a unified semantic metamodel.
+    \item \textbf{Gap 2 (Proprietary Lock-in):} Current pipelines compile models into proprietary simulator prefabs rather than preserving the standardized AAS as the runtime source of truth.
+    \item \textbf{Gap 3 (Pre-Compiled Build Dependency):} Virtual scenes must be compiled ahead of time in simulation editors, preventing dynamic, zero-touch scene assembly when new assets enter the shop floor.
+    \item \textbf{Gap 4 (Dual-Mode Disconnect):} Existing tools separate offline VC from live DT monitoring, requiring distinct models and re-engineered communication drivers.
+\end{enumerate}
+
+\begin{table*}[t]
+\centering
+\caption{Comparative Analysis of State-of-the-Art Automated Digital Twin Frameworks.}
+\label{tab:sota_comparison}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\textwidth}{@{}lccccc@{}}
+\toprule
+\textbf{Approach} & \textbf{Open Standard} & \textbf{Unified Schema} & \textbf{Procedural Runtime} & \textbf{Physics / Colliders} & \textbf{Live Hardware Sync} \\
+& \textbf{(AAS / AML)} & \textbf{(3D + I/O + Logic)} & \textbf{(Zero Pre-Compilation)} & \textbf{(Rigid-Body Contact)} & \textbf{(Bidirectional Telemetry)} \\
+\midrule
+Alexopoulos \etal \cite{Alexopoulos2025} & AML & Partial (CAD + AML) & No (Pre-compiled build) & Yes & No (Simulation only) \\
+Schaper \etal \cite{Schaper2025} & AAS / AML & No (FMU focused) & No (Offline VC) & Yes & No (Offline SiL) \\
+Chowdhury \etal \cite{Chowdhury2025} & Proprietary & No (Kinematics only) & Partial (Editor scripts) & Yes & No (Offline) \\
+Perez \etal \cite{Perez2025} & AAS & No (Signals only) & No & No & Yes (DataBridge) \\
+Pajpach \etal \cite{Pajpach2023} & AAS / OPC UA & No (Separate models) & No (Pre-compiled) & Yes & Yes (OPC UA polling) \\
+\midrule
+\textbf{This Work} & \textbf{AAS (IEC~63278)} & \textbf{Yes (AASX package)} & \textbf{Yes (100\% in-memory)} & \textbf{Yes (PhysX)} & \textbf{Yes (Dual-Mode + Snapping)} \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\section{Conceptual System Architecture and Semantic Metamodel}
+\label{sec:architecture}
+
+\subsection{Design Requirements}
+\label{sec:arch_requirements}
+
+Following the normative specification methodology of Alem{\~a}o \etal \cite{Alemao2022}, system requirements are divided into Functional Requirements (FR) and Non-Functional Requirements (NFR), classified under the modal taxonomy: \textit{Shall} (mandatory), \textit{Should} (recommended), and \textit{May} (optional):
+
+\begin{itemize}
+    \item \textbf{FR1 (Plug-and-Play Asset Onboarding):} The framework \textit{shall} support the registration and runtime instantiation of industrial assets without recompilation or manual modifications to the simulation software \cite{Rocha2024}.
+    \item \textbf{FR2 (Self-Describing Asset Packages):} All information required to instantiate and execute a DT \textit{shall} be bundled into a portable, standardized package encapsulating 3D visual geometry, kinematics, I/O pin mappings, network endpoints, and control logic \cite{Lu2025,Gollner2022}.
+    \item \textbf{FR3 (Dynamic Procedural Scene Assembly):} The simulation engine \textit{shall} construct the virtual environment procedurally in memory at startup by querying a semantic registry, eliminating hard-coded scenes \cite{Alexopoulos2025}.
+    \item \textbf{FR4 (Physical-Virtual Synchronization and Drift Mitigation):} The simulation engine \textit{shall} maintain bidirectional synchronization with physical hardware and \textit{shall} automatically compensate for numerical drift through ground-truth position snapping \cite{Kritzinger2018}.
+    \item \textbf{NFR1 (Low-Latency Telemetry):} Telemetry updates from field sensors \textit{should} reach the simulation engine with minimal latency to preserve determinism.
+    \item \textbf{NFR2 (Scalability and Modularity):} The registry and repository services \textit{should} support concurrent asset registrations and client queries without performance degradation.
+    \item \textbf{NFR3 (Layer Independence and Fault Isolation):} Architectural tiers \textit{shall} remain functionally decoupled through well-defined APIs. A disruption in the modeling or registry layer \textit{shall not} interrupt running simulation or field automation.
+    \item \textbf{NFR4 (Configuration Usability):} Authoring and packaging an asset descriptor \textit{should not} require software programming, providing an intuitive graphical workflow for automation engineers.
+\end{itemize}
+
+\subsection{Four-Tier System Architecture Overview}
+\label{sec:arch_overview}
+
+To satisfy these requirements, the framework organizes the DT lifecycle into four decoupled tiers, as depicted in the conceptual architecture diagram in Fig.~\ref{fig:arch_conceptual}:
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/Arquitetura.drawio.pdf}
+\caption{Three-layer conceptual system architecture of the proposed Digital Twin framework, supported by the upstream digitization stage (Layer~0).}
+\label{fig:arch_conceptual}
+\end{figure}
+
+\begin{enumerate}
+    \item \textbf{Layer~0 (Physical Asset Digitization):} Acts as the upstream geometric preparation stage. It processes physical machinery dimensions into lightweight, rigged 3D models with aligned pivot axes and volumetric trigger colliders, exported as binary glTF (.glb) files.
+    \item \textbf{Layer~1 (Asset Modeling):} A desktop application that ingests the 3D asset, provides interactive surface raycasting to anchor sensors and actuators directly onto the mesh, edits declarative control logic, and packages all data into an official AASX bundle using the BaSyx Python SDK.
+    \item \textbf{Layer~2 (Storage and Registry):} Containerized Eclipse BaSyx~v2 microservices hosted in Docker, providing decoupled REST endpoints for AAS package ingestion, model retrieval, and discovery registry lookup backed by MongoDB.
+    \item \textbf{Layer~3 (Runtime Execution and Physical Synchronization):} The procedural simulation runtime in Unity~3D. At boot, it queries Layer~2, dynamically downloads active assets, constructs the virtual scene graph in memory, initializes PhysX contact physics, and coordinates dual-mode execution (Mode~A: VC with local rule evaluation; Mode~B: live DT synchronized with PLC hardware over TCP telemetry with drift snapping).
+\end{enumerate}
+
+\subsection{Cross-Layer Information and Interaction Flows}
+\label{sec:arch_flows}
+
+To ensure complete fault isolation (\textbf{NFR3}) and avoid communication channel congestion, the framework separates information exchange into three distinct operational flows:
+
+\begin{enumerate}
+    \item \textbf{Asset Publication Flow (Design-Time: Layer~1 $\rightarrow$ Layer~2):} Occurs infrequently when an engineer authors an asset. Carries heavy payloads (3D binary meshes, textures, submodel JSON manifests) packaged into an immutable AASX container. The container is uploaded via HTTP POST to the BaSyx repository on port~8081, while asset identity and submodel URLs are committed to registries on ports~8082 and 8083.
+    \item \textbf{Dynamic Ingestion Flow (Deployment-Time: Layer~2 $\rightarrow$ Layer~3):} Triggered on demand when the simulation client launches or a new asset enters the cell. The runtime engine first executes lightweight REST discovery requests to retrieve active Asset IDs. Guided by registry responses, it streams the binary GLB meshes and submodel manifests directly into RAM, constructing the 3D scene without pre-compiled assets.
+    \item \textbf{Low-Latency Telemetry Flow (Runtime: Field Hardware $\rightarrow$ Layer~3):} Operates continuously during physical production. Crucially, high-frequency sensor events completely bypass the storage and registry services of Layer~2. Physical controllers stream compact JSON event frames over a dedicated TCP socket (port~8888) directly to Unity. This isolation protects real-time telemetry from database queueing delays, ensuring deterministic response times (\textbf{NFR1}).
+\end{enumerate}
+
+\subsection{Asset Data Model Specification}
+\label{sec:arch_metamodel}
+
+To avoid relying on proprietary simulation tools, the framework defines a technology-neutral data model. The model standardizes how shop-floor machinery is described across all layers, separating visual 3D geometry, kinematics, I/O signals, local control logic, and network endpoints.
+
+Fig.~\ref{fig:arch_metamodel} shows the complete UML Class Diagram of the conceptual asset metamodel. The root entity, \textit{AssetDescriptor}, brings together five submodel classes: \textit{VisualStructure}, \textit{BehaviorMapping}, \textit{VirtualPins}, \textit{NetworkEndpoint}, and \textit{ControlLogic}. All attributes use standard primitive types (\textit{String}, \textit{Float}, \textit{Integer}, \textit{Boolean}, and \textit{Vector3}, representing a 3D float coordinate or vector $(x, y, z)$).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/Modelo de Dados.drawio.pdf}
+\caption{UML Class Diagram of the conceptual asset metamodel and constituent submodel classes.}
+\label{fig:arch_metamodel}
+\end{figure}
+
+\begin{enumerate}
+    \item \textbf{AssetDescriptor (Core Entity):} The main container and identity root for any machine or workstation. It holds: \textit{id} (\textit{String}, $[1]$), a unique identifier used for naming, UIs, and registry lookups; \textit{assetKind} (\textit{String}, $[1]$), the functional type or category (e.g., Type or Instance); and \textit{description} (\textit{String}, $[0..1]$), an optional text description.
+
+    \item \textbf{VisualStructure Class:} Defines the 3D visual and spatial layout of an asset, independent of any graphics format ($1$). Within this submodel, the asset defines a collection of one or more \textit{SceneObject} nodes ($1..*$), where each node carries exactly one \textit{Transform} ($1$). Attributes include:
+    \begin{itemize}
+        \item \textit{VisualStructure}: \textit{structureId} (\textit{String}, $[1]$) and \textit{description} (\textit{String}, $[0..1]$).
+        \item \textit{SceneObject}: \textit{mesh} (\textit{File}, $[1]$) referencing the 3D surface mesh file (.glb); \textit{parent} (\textit{String}, $[0..1]$) defining transform inheritance for multi-part assemblies; and \textit{dynamic} (\textit{Boolean}, $[1]$) indicating whether the component moves during operation.
+        \item \textit{Transform}: position offset \textit{pos} (\textit{Vector3}, $[1]$) in meters $(x, y, z)$ relative to the parent frame; Euler angles \textit{rot} (\textit{Vector3}, $[1]$) in degrees $(\alpha, \beta, \gamma)$; and scale factors \textit{scale} (\textit{Vector3}, $[1]$), defaulted to $(1.0, 1.0, 1.0)$.
+    \end{itemize}
+
+    \item \textbf{BehaviorMapping Class:} Bridges geometry and physics by defining operational mechanics and kinematic properties ($0..1$). It groups one or more \textit{BehaviorBinding} entries ($1..*$) without storing raw boolean signal values. Each binding specifies \textit{pinId} (\textit{String}, $[1]$), \textit{component} (\textit{String}, $[1]$), mechanism \textit{type} (\textit{String}, $[1]$, such as \textit{TranslateContinuous}, \textit{RotateContinuous}, \textit{RotateHinge}, \textit{LinearCylinder}, or \textit{TriggerZone}), and an extensible dictionary of \textit{parameters} (\textit{List$\langle$String, Any$\rangle$}, $[1]$):
+    \begin{itemize}
+        \item \textit{Actuator Parameters}: normalized motion vector \textit{AxisX, AxisY, AxisZ} (\textit{Double}, $[1]$); continuous surface speed or angular rate \textit{Speed} (\textit{Double}, $[1]$); physical controller terminal \textit{RealPortID} (\textit{String}, $[1]$); routing flag \textit{RealActuatorEnabled} (\textit{Boolean}, $[1]$); and visual indicator flag \textit{Visible} (\textit{Boolean}, $[1]$).
+        \item \textit{Sensor Parameters}: workpiece tag filter \textit{TargetFilter} (\textit{String}, $[1]$) to avoid false triggers; electrical polarity \textit{ActiveLow} (\textit{Boolean}, $[1]$); terminal address \textit{RealPortID} (\textit{String}, $[1]$); telemetry routing flag \textit{RealSensorEnabled} (\textit{Boolean}, $[1]$); debug boundary flag \textit{Visible} (\textit{Boolean}, $[1]$); volumetric detection range \textit{SensingRange} (\textit{Double}, $[0..1]$); realignment target \textit{MoveTarget} (\textit{String}, $[0..1]$); trigger edge \textit{MoveOnState} (\textit{Boolean}, $[0..1]$); realignment scope \textit{MoveMode} (\textit{String}, $[0..1]$, selecting Position Only, Rotation Only, or Position and Rotation); target ground-truth coordinates \textit{MovePosX, MovePosY, MovePosZ} (\textit{Double}, $[0..1]$); and target Euler orientation \textit{MoveRotX, MoveRotY, MoveRotZ} (\textit{Double}, $[0..1]$).
+    \end{itemize}
+
+    \item \textbf{VirtualPins Class:} Models the pure electrical I/O terminal interface of the asset ($0..1$), acting as the digital image of controller registers. It holds two \textit{PinGroup} collections categorized by transmission direction: \textit{INPUT} for digital sensors sending state data from the plant, and \textit{OUTPUT} for actuation commands received by the asset. Each group contains individual \textit{Pin} channels ($1..*$), defined by tag name \textit{name} (\textit{String}, $[1]$) and instantaneous discrete boolean state \textit{value} (\textit{Boolean}, $[1]$).
+
+    \item \textbf{ControlLogic Class:} Stores local automated sequence logic and interlocks ($0..1$) without requiring an external PLC. It contains \textit{sequenceId} (\textit{String}, $[1]$), \textit{description} (\textit{String}, $[0..1]$), and declarative conditional IF-THEN rules \textit{rules} (\textit{String}, $[1]$) evaluated by the simulation engine during Virtual Commissioning.
+
+    \item \textbf{NetworkEndpoint Class:} Specifies the network protocol and address to communicate with physical equipment ($0..1$). It defines \textit{endpointId} (\textit{String}, $[1]$), \textit{description} (\textit{String}, $[0..1]$), communication protocol \textit{protocol} (\textit{String}, $[1]$, e.g., TCP socket, HTTP REST), IP address or hostname \textit{endpointIP} (\textit{String}, $[1]$), and destination port \textit{endpointPort} (\textit{Integer}, $[1]$).
+\end{enumerate}
+
+\section{Technological Implementation}
+\label{sec:implementation}
+
+Turning the conceptual architecture into a working implementation requires realizing each layer using concrete software frameworks, standards, and mechatronic hardware. Fig.~\ref{fig:arch_implementation} illustrates the overall system implementation architecture across the four operational tiers.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/Implementacao.drawio.pdf}
+\caption{UML Component Diagram of the framework implementation architecture across the four operational tiers: (0) Physical Asset Digitization in Blender, (1) Asset Modeling in the Python desktop application, (2) Storage and Registry in Eclipse BaSyx~v2 on Docker, and (3) Runtime Execution and Physical Synchronization in Unity~3D with an Industrial Shields M-DUINO PLC.}
+\label{fig:arch_implementation}
+\end{figure}
+
+\subsection{Physical Testbed Context: The Modular FMS Bench}
+\label{sec:impl_testbed}
+
+The framework was implemented and validated on a physical modular Flexible Manufacturing System (FMS) mechatronic testbed, shown in Fig.~\ref{fig:fms_pilot_testbed}, built following the modular CPPS principles of Rocha \etal \cite{Rocha2024}. The testbed is constructed from industrial-grade \textit{fischertechnik} mechatronic components arranged as a closed-loop conveyor circuit. It integrates three stationary linear conveyors (Conveyors~B, D, and F), two rotational turning conveyors (Conveyors~C and E), one translating conveyor (Conveyor~A), and an electromechanical punch station simulating machining or stamping operations.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fms_pilot_bench.jpg}
+\caption{Physical modular FMS conveyor testbed, showing linear/rotational conveyor modules, workpiece optical/magnetic sensors, pneumatic punch mechanism, and Industrial Shields PLC.}
+\label{fig:fms_pilot_testbed}
+\end{figure}
+
+Field instrumentation includes 24\,V~DC magnetic reed switches and optical retroreflective beam sensors for workpiece tracking, microswitch limit sensors for conveyor translation and punch travel limits, and 24\,V~DC permanent-magnet gear motors. Primary automation control is governed by an Industrial Shields M-DUINO 57R+ PLC (based on the ATmega2560 architecture) equipped with an internal W5500 Ethernet controller and optocoupled galvanic isolation boards. Field sensor signals are wired to digital input channels (\texttt{I0\_0}--\texttt{I2\_3}), while motor power relays and punch solenoids are driven via output relay terminals (\texttt{R0\_2}--\texttt{R2\_8}).
+
+\subsection{Layer 0: Physical Asset Digitization in Blender}
+\label{sec:impl_layer0}
+
+Because standard manufacturing CAD assemblies contain excessive polygon counts and lack functional kinematics, Layer~0 was carried out in Blender~5.2 LTS as an upstream preparatory stage:
+\begin{enumerate}
+    \item \textbf{Dimensional Conformance:} Modules were measured on the physical bench using precision gauges and reconstructed at an exact 1:1 metric scale ($1\,\text{unit} = 1.0\,\text{m}$), matching Unity's coordinate system.
+    \item \textbf{Polygon Decimation and Hierarchy Rigging:} Assemblies were partitioned into static frames and dynamic child meshes. Static frames were merged into a single root node positioned at local reference $(0, 0, 0)$. Dynamic sub-meshes (belt surfaces, punch rods, turntable platters) had their coordinate origins (\textit{pivot points}) aligned precisely with their physical axes of motion or rotation, preventing trajectory distortion during runtime execution.
+    \item \textbf{Trigger Envelope Modeling:} Invisible geometric trigger colliders were placed at physical sensor locations to detect workpiece presence. All meshes and materials were exported into self-contained binary glTF (.glb) files.
+\end{enumerate}
+
+\subsection{Layer 1: Asset Modeling Desktop Application}
+\label{sec:impl_wizard}
+
+Layer~1 was implemented as a standalone desktop application developed in Python~3.10 using PyQt6 for the graphical user interface, PyVista/VTK for the interactive 3D viewport, and Trimesh for geometric processing (Fig.~\ref{fig:asset_modeling_gui}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/asset_modeling_gui.png}
+\caption{Graphical user interface of the Asset Modeling desktop application, featuring the interactive 3D viewport, 5-step configuration wizard, and component hierarchy.}
+\label{fig:asset_modeling_gui}
+\end{figure}
+
+The application provides a guided 5-step wizard satisfying requirement \textbf{NFR4} (No-Code Configuration):
+\begin{enumerate}
+    \item \textit{Model Selection (Step 1):} Ingests the binary GLB file into the 3D viewport, normalizing bounding dimensions and verifying the hierarchical tree using Trimesh.
+    \item \textit{Basic Info \& Transform (Step 2):} Defines asset metadata, AAS unique identifier, spatial offsets, and network IP/port.
+    \item \textit{Configure Sensors (Step 3):} Rather than typing 3D coordinates manually, the engineer clicks directly on the surface of the conveyor mesh in the viewport. The application casts a mathematical ray from the camera through the clicked pixel to identify the exact 3D contact point on the surface and calculates the local surface normal vector $\vec{n}$. The virtual sensor is oriented along $\vec{n}$ and anchored to the surface, ensuring that optical beam sensors point outward perpendicularly from the chassis regardless of surface inclination (Fig.~\ref{fig:case_study_step2_sensors}). The engineer binds the sensor to a PLC register (e.g., \texttt{I0\_0}), sets electrical polarity, and specifies drift realignment coordinates.
+    \item \textit{Configure Actuators (Step 4):} Binds movable sub-meshes to output registers (e.g., \texttt{R0\_2}), motion categories, direction vectors, and surface speeds (Fig.~\ref{fig:case_study_step2_actuators}).
+    \item \textit{Review \& Deploy (Step 5):} Serializes the model using the \texttt{basyx-python-sdk} library into standard AAS submodels, bundles the binary GLB mesh as an embedded Blob inside an official AASX archive, and dispatches an HTTP POST request to Layer~2.
+\end{enumerate}
+
+To support standalone validation during VC, the application includes a visual \textit{ControlLogic} editor (Fig.~\ref{fig:rule_editor_gui}). Engineers compose sequence logic using modular blocks (\textit{Set Actuator}, \textit{Wait Time}, \textit{Wait Until}, \textit{If/Then}, \textit{While Loop}, \textit{Call HTTP}), which are serialized as declarative AST rules within the \textit{ControlLogic} submodel.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/rule_editor_gui.png}
+\caption{Visual no-code \textit{ControlLogic} rule editor interface for defining autonomous edge sequences.}
+\label{fig:rule_editor_gui}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\subfloat[Sensor placement via 3D raycasting.\label{fig:case_study_step2_sensors}]{%
+  \includegraphics[width=\linewidth]{figures/5-sensores.png}%
+}
+\par\vspace{2mm}
+\subfloat[Actuator kinematic binding.\label{fig:case_study_step2_actuators}]{%
+  \includegraphics[width=\linewidth]{figures/5-atuadores.png}%
+}
+\caption{Interactive virtual pin configuration: (a) surface raycasting sensor placement, and (b) actuator register mapping.}
+\label{fig:case_study_step2}
+\end{figure}
+
+\subsection{Layer 2: Storage and Registry in Eclipse BaSyx v2}
+\label{sec:impl_basyx}
+
+Layer~2 is realized through containerized Eclipse BaSyx~v2 microservices orchestrated via Docker Compose:
+\begin{itemize}
+    \item \textbf{AAS Environment Repository (port 8081):} Ingests uploaded AASX packages via \texttt{POST /packages}. It decompresses the OPC archive, serves embedded meshes at \texttt{GET /files/\{mesh\}.glb}, and exposes submodels at \texttt{GET /submodels/\{id\}}.
+    \item \textbf{AAS Registry (port 8082):} Lightweight service directory providing \texttt{GET /shell-descriptors} to discover registered Asset IDs and their network URLs.
+    \item \textbf{Submodel Registry (port 8083):} Tracks individual submodel endpoints.
+    \item \textbf{MongoDB Database (port 27017):} Persistent document store for descriptors and properties.
+    \item \textbf{BaSyx Web UI (port 3000):} Web dashboard for operator inspection.
+\end{itemize}
+
+Decoupling registries from heavy model storage guarantees high horizontal scalability (\textbf{NFR2}) and ensures that simulation clients discover active equipment dynamically.
+
+\subsection{Layer 3: Runtime Execution and Physical Synchronization in Unity 3D}
+\label{sec:impl_unity}
+
+The runtime simulation engine was implemented in Unity~6 (v6000.3.10f1) using C\#. Procedural scene instantiation proceeds through three phases:
+
+\begin{enumerate}
+    \item \textbf{Phase 1 (Discovery):} At startup, the runtime queries the BaSyx AAS Registry on port~8082 via \texttt{GET /shell-descriptors}, retrieving active Asset IDs.
+    \item \textbf{Phase 2 (Procedural Construction):} For each asset, the runtime downloads the binary GLB model and submodel descriptors from port~8081. Using \texttt{glTFast}, Unity reconstructs the 3D GameObject hierarchy in memory. A $180^\circ$ rotation around the $Y$-axis aligns Blender's right-handed system with Unity's left-handed space. Physics colliders and rigidbodies are attached dynamically (convex decomposition for dynamic mechanisms; non-convex mesh colliders for static frames). The runtime parses \textit{VirtualPins} and \textit{BehaviorMapping}, creating trigger volumes at the exact raycast coordinates and attaching kinematic motion controllers to conveyor belt meshes.
+    \item \textbf{Phase 3 (Dual-Mode Execution):} The runtime executes in one of two selectable modes:
+    \begin{itemize}
+        \item \textbf{Mode A (Virtual Commissioning):} Evaluates local AST rules from \textit{ControlLogic}. When a virtual workpiece trips a trigger collider, the internal rule engine updates actuator states in a closed software loop without hardware.
+        \item \textbf{Mode B (Digital Twin):} Local rules are disabled. The runtime opens a multi-threaded TCP connection to the physical PLC (port~8888). Incoming telemetry packets update virtual sensor indicators and trigger kinematic position snapping.
+    \end{itemize}
+\end{enumerate}
+
+\subsubsection{PhysX Contact Mechanics and Drift Correction Snapping}
+\label{sec:impl_physics_snapping}
+
+Rather than translating workpieces artificially via transform scripts, conveyors simulate realistic material handling through PhysX contact physics. Conveyor surfaces are configured with PhysX friction coefficients and surface speeds. When workpieces contact the belt, friction, acceleration, and contact forces are simulated naturally.
+
+Because numerical physics calculations and network timing introduce microscopic variations over discrete time steps ($50\,\text{Hz}$ fixed physics loop), virtual workpieces can drift slightly from physical parts over time. To eliminate this positional discrepancy and satisfy requirement \textbf{FR4} (Physical-Virtual Synchronization), the runtime executes a kinematic position snapping mechanism: the instant a physical optical sensor triggers (e.g., register \texttt{I0\_0} rising edge matching $\mathit{MoveOnState}$), the telemetry listener identifies the nearest virtual workpiece and instantly snaps its position to the ground-truth coordinates configured in the sensor's submodel descriptor. This resets accumulated spatial drift to zero at every detection station, ensuring continuous millimeter-level alignment throughout production cycles.
+
+\subsection{Physical Automation Setup and Embedded Firmware}
+\label{sec:impl_firmware}
+
+The Industrial Shields M-DUINO 57R+ PLC (ATmega2560 @ 16\,MHz with W5500 SPI Ethernet controller) executes custom embedded firmware written in C++ running under the FreeRTOS real-time operating system. Field inputs pass through optocoupled galvanic isolation stages to protect 5\,V microcontroller logic from 24\,V DC inductive noise. Firmware execution is structured across four concurrent tasks:
+\begin{enumerate}
+    \item \textbf{Sensor Scanning Task (Priority 3, Highest):} Executes a deterministic 5\,ms scan loop reading digital inputs (\texttt{I0\_0}--\texttt{I2\_3}) with software debounce filtering. Upon detecting a valid signal transition, an event token $\langle pinId, state, timestamp \rangle$ is pushed into a 30-element FIFO queue protected by a FreeRTOS mutex semaphore. Buffering up to 30 events prevents dropped transitions during temporary network jitter.
+    \item \textbf{TCP Telemetry Task (Priority 2):} Blocks on the FIFO queue. When an event token arrives, the task wakes immediately, formats a compact JSON payload (e.g., \texttt{\{"pin":"I0\_0","val":1,"ts":14250\}}, 35 bytes), and streams it over TCP port~8888 directly to Unity with minimal latency, fulfilling \textbf{NFR1}.
+    \item \textbf{HTTP Actuation Task (Priority 1):} Hosts an embedded HTTP REST server on port~80. When receiving an actuation command (e.g., \texttt{POST /actuator?pin=R0\_2\&val=1}), it switches physical relay coils (\texttt{R0\_2}--\texttt{R2\_8}) and returns HTTP 200 OK.
+    \item \textbf{Watchdog Monitor Task (Priority 1):} Monitors TCP client sockets, automatically resetting dropped connections without interrupting PLC execution.
+\end{enumerate}
+
+\subsection{Traceability Matrix}
+\label{sec:impl_traceability}
+
+Table~\ref{tab:traceability_matrix} presents the traceability matrix confirming full coverage of all system requirements across architectural tiers and technologies.
+
+\begin{table*}[t]
+\centering
+\caption{Traceability Matrix Mapping Architectural Layers and Technologies to Design Requirements.}
+\label{tab:traceability_matrix}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\textwidth}{@{}p{3.8cm} p{5.2cm} p{2.2cm} X@{}}
+\toprule
+\textbf{Layer / Component} & \textbf{Core Technologies} & \textbf{Requirements} & \textbf{Functional Role} \\
+\midrule
+\textbf{Layer 0: Digitization} & Blender 5.2 LTS, glTF/GLB & FR2 & 1:1 metric modeling, pivot alignment, low-poly geometry, trigger colliders \\
+\textbf{Layer 1: Modeling App} & Python, PyQt6, PyVista, basyx-python-sdk & FR1, FR2, NFR4 & 3D raycasting sensor mapping, rule editor, standardized AASX packaging \\
+\textbf{Layer 2: Storage \& Reg.} & Eclipse BaSyx~v2, Docker, MongoDB & FR1, FR3, NFR2, NFR3 & Decoupled AAS and submodel registries, dynamic REST discovery \\
+\textbf{Layer 3: Unity Runtime} & Unity~6, C\#, glTFast, PhysX & FR1, FR3, FR4, NFR3 & Procedural scene assembly, contact physics, dual-mode execution, drift snapping \\
+\textbf{Hardware \& Firmware} & Industrial Shields PLC, FreeRTOS, TCP/IP & FR4, NFR1 & 5\,ms input scanning, optocoupled isolation, low-latency TCP telemetry \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\section{Experimental Results and Performance Evaluation}
+\label{sec:results}
+
+All experimental benchmarks were conducted on a workstation equipped with a 13th Generation Intel Core i7-13650HX CPU (14 cores, 20 threads up to 4.9\,GHz), 16\,GB of DDR5 RAM, and an NVIDIA GeForce RTX 4060 Laptop GPU (8\,GB VRAM), running Windows~11 Home and Unity~6 (v6000.3.10f1).
+
+\subsection{Demonstrative Case Study: End-to-End Asset Onboarding}
+\label{sec:res_case_study}
+
+To validate practical workflow usability (\textbf{NFR4}), an end-to-end walkthrough was executed onboarding an additional modular conveyor unit, designated \textbf{Conveyor~G} (Asset ID: \texttt{Conveyor\_G}), into an active production cell:
+
+\begin{enumerate}
+    \item \textbf{CAD Modeling in Blender:} The mechanical structure was modeled in Blender to scale based on physical measurements, partitioning static frames from the movable belt. Pivot axes were aligned with linear motion vectors, and the assembly was exported as \texttt{Conveyor\_G.glb}.
+    \item \textbf{Model Ingestion and Raycast Mapping:} The engineer loaded \texttt{Conveyor\_G.glb} into the Asset Modeling application. Using 3D surface raycasting, an optical sensor was placed by clicking the belt surface, automatically aligning the sensor along the surface normal $\vec{n}$ and binding it to PLC register \texttt{I0\_0} (Fig.~\ref{fig:case_study_step2_sensors}). The belt actuator was bound to register \texttt{R0\_2} with a surface velocity of $0.15\,\text{m/s}$ (Fig.~\ref{fig:case_study_step2_actuators}).
+    \item \textbf{Control Logic Definition:} Using the visual rule editor, a workpiece transfer sequence \textit{A$\rightarrow$G} was defined: belt motion activates when upstream sensor \texttt{I0\_3} trips and stops when local sensor \texttt{I0\_0} is activated.
+    \item \textbf{AASX Packaging and Publication:} The tool compiled the submodels into an official AASX archive and uploaded it via HTTP POST to BaSyx (port~8081). As shown in Fig.~\ref{fig:case_study_step3}, the BaSyx AAS Viewer confirms full registration of \textit{VisualStructure}, \textit{VirtualPins}, \textit{BehaviorMapping}, and \textit{ControlLogic}.
+    \item \textbf{Zero-Touch Procedural Instantiation:} Unity was launched without pre-compiled scenes. The runtime queried BaSyx, dynamically downloaded \texttt{Conveyor\_G.glb} and submodels, procedurally instantiated the mesh hierarchy, attached PhysX colliders, and opened TCP socket communication with the physical PLC, fully integrating the asset in under 3\,s without manual scene editing (Fig.~\ref{fig:case_study_step4}).
+\end{enumerate}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/5-aas.png}
+\caption{Standardized AASX container for Conveyor~G uploaded and registered in Eclipse BaSyx~v2, inspected via the BaSyx AAS Web Viewer.}
+\label{fig:case_study_step3}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/5-unity.png}
+\caption{Zero-touch procedural scene assembly in Unity~3D, showing Conveyor~G dynamically instantiated into the operational DT environment.}
+\label{fig:case_study_step4}
+\end{figure}
+
+\subsection{Empirical Validation: Modular FMS Pilot Bench}
+\label{sec:res_fms_bench}
+
+To benchmark operational performance on realistic mechatronic hardware, an automated test harness executed 100 independent cold-boot lifecycles of the complete modular FMS bench replica (three linear conveyors, two rotational conveyors, one translating conveyor, punch station, and all associated sensors/actuators). Performance metrics recorded across the 100 runs are summarized in Table~\ref{tab:fms_results}.
+
+\begin{table}[t]
+\centering
+\caption{Performance Results for the Modular FMS Pilot Bench Across 100 Cold-Boot Test Runs.}
+\label{tab:fms_results}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lrrr@{}}
+\toprule
+\textbf{Metric} & \textbf{Mean $\pm$ Std} & \textbf{Min} & \textbf{Max} \\
+\midrule
+Startup Initialization Time (s)     & $2.79 \pm 0.04$   & $2.72$   & $2.96$   \\
+Steady-State Frame Rate (FPS)        & $489.91 \pm 49.21$ & $352.66$ & $694.09$ \\
+1\% Low Frame Rate (FPS)             & $272.43 \pm 87.32$ & $104.60$ & $414.18$ \\
+Mean Frame Time (ms)                & $2.36 \pm 0.39$   & $1.56$   & $3.91$   \\
+P95 Tail Latency (ms)               & $3.84 \pm 1.47$   & $2.38$   & $8.53$   \\
+P99 Tail Latency (ms)               & $4.35 \pm 2.01$   & $2.41$   & $9.94$   \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+As shown in Table~\ref{tab:fms_results}, procedural instantiation of the entire pilot bench completes in an average of $2.79\,$s ($\sigma = 0.04\,$s), demonstrating high determinism across cold starts. In steady state, the physics simulation delivers an average rendering throughput of $489.91\,$FPS, corresponding to a frame render latency of $2.36\,$ms. Even under transient workpiece transfer loads, the 1\% low frame rate remains at $272.43\,$FPS, well above the 60\,FPS real-time threshold.
+
+Figure~\ref{fig:fms_distributions} shows the distribution of startup initialization time and steady-state frame rate. Startup latency exhibits a tight interquartile range ($2.76$--$2.80\,$s), confirming that archive extraction and runtime mesh collider creation operate without filesystem stalls. Tail latency analysis reveals that the 99th percentile (P99) frame latency remains strictly below $9.94\,$ms across all 100 test runs.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fms_metrics_distributions.pdf}
+\caption{Distribution of startup initialization time and steady-state frame rate across 100 experimental runs of the modular FMS pilot bench.}
+\label{fig:fms_distributions}
+\end{figure}
+
+Figure~\ref{fig:fms_timeseries} illustrates the dynamic temporal execution timeline during a full operation cycle. During initialization ($t < 2.79\,$s), frame times exhibit a brief transient fluctuation as meshes and colliders are bound into memory. Once procedural assembly concludes, the runtime immediately transitions into a flat, steady execution profile, maintaining sub-3\,ms frame times without pacing stutter or jitter during pallet routing.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fms_timeseries_evolution.pdf}
+\caption{Dynamic execution timeline of the modular FMS bench, contrasting frame rate with frame render latency over simulation time.}
+\label{fig:fms_timeseries}
+\end{figure}
+
+\subsection{High-Density Scalability Stress Testing}
+\label{sec:res_stress_testing}
+
+To determine the computational boundaries and scalability limits of procedural DT generation, a parametric stress benchmark was conducted across eight discrete module scale levels ($N$ conveyor modules):
+\begin{equation}
+    N \in \{5,\, 10,\, 25,\, 50,\, 100,\, 250,\, 500,\, 1000\}.
+\end{equation}
+
+To replicate realistic distributed processing cells, one punch stamping station was procedurally instantiated for every five conveyor modules ($i \in \{3, 8, 13, \dots\}$), scaling from 1 punch station at $N=5$ up to 200 punch stations at $N=1000$ (Fig.~\ref{fig:teste_5_conveyors}). For each density level $N$, 100 independent automated runs were executed (totaling 800 simulation lifecycles), recording telemetry at 500\,ms intervals over steady-state windows. Consolidated results are presented in Table~\ref{tab:consolidated_results}.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/teste_5_conveyors.pdf}
+\caption{Procedural benchmark simulation layout illustrating the modular arrangement of conveyors and integrated punch stations (1 punch per 5 conveyors).}
+\label{fig:teste_5_conveyors}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{Consolidated Scalability Stress Test Results Across 800 Benchmark Runs (Mean $\pm$ Standard Deviation).}
+\label{tab:consolidated_results}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}rrrr@{}}
+\toprule
+\textbf{Conveyors ($N$)} & \textbf{Startup Time (s)} & \textbf{Mean FPS} & \textbf{Frame Time (ms)} \\
+\midrule
+5    & $2.61 \pm 0.10$     & $460.80 \pm 63.73$ & $2.49 \pm 0.27$    \\
+10   & $2.85 \pm 0.04$     & $418.03 \pm 52.84$ & $2.69 \pm 0.28$    \\
+25   & $3.66 \pm 0.05$     & $369.42 \pm 52.10$ & $3.10 \pm 0.36$    \\
+50   & $5.22 \pm 0.09$     & $344.68 \pm 46.22$ & $3.30 \pm 0.37$    \\
+100  & $8.55 \pm 0.11$     & $313.00 \pm 51.02$ & $3.73 \pm 0.51$    \\
+250  & $20.60 \pm 0.40$    & $254.24 \pm 45.37$ & $5.43 \pm 1.42$    \\
+500  & $57.45 \pm 2.77$    & $93.16 \pm 20.98$  & $14.96 \pm 4.68$   \\
+1000 & $416.70 \pm 135.08$ & $13.96 \pm 43.28$  & $342.21 \pm 110.59$\\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\subsubsection{Startup Initialization Complexity}
+\label{sec:res_startup}
+
+Figure~\ref{fig:eval_startup} illustrates the scaling trend of total startup initialization time alongside the unit instantiation cost per conveyor module. For typical production layouts ($N \le 50$), procedural generation is virtually instantaneous: a 5-conveyor cell initializes in $2.61\,$s, while a 50-conveyor layout requires only $5.22\,$s. A substantial facility of 100 conveyors initializes in $8.55\,$s, and a 250-module system assembles in $20.60\,$s.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/eval_startup_complexity.pdf}
+\caption{Procedural scaling complexity: total startup initialization time versus unit instantiation cost per conveyor module.}
+\label{fig:eval_startup}
+\end{figure}
+
+Crucially, the unit startup cost per conveyor module displays an initial downward amortization curve, declining from $522.0\,\text{ms/module}$ at $N=5$ to $104.4\,\text{ms/module}$ at $N=50$, and reaching an optimal minimum of $82.4\,\text{ms/module}$ at $N=250$. This occurs because Unity incurs a fixed baseline initialization overhead to bootstrap core graphics pipelines, allocate runtime memory buffers, and link internal libraries. At small scales ($N=5$), this fixed overhead is divided across few assets. As the layout expands to 50--250 modules, this static cost is amortized smoothly until true linear asset instantiation dominates. Beyond $N=500$, initialization time escalates non-linearly ($57.45\,$s at $N=500$; $416.70\,$s at $N=1000$), caused by main-thread mesh collider baking bottlenecks and sequential file decompression of hundreds of distinct AASX zip archives.
+
+\subsubsection{Rendering Fluidity and FPS Degradation}
+\label{sec:res_fps}
+
+Figure~\ref{fig:eval_fps} contrasts mean steady-state frame rate against the 1\% low FPS metric across module counts, benchmarked against the 60\,FPS target ($16.6\,$ms) and 30\,FPS critical threshold ($33.3\,$ms).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/eval_fps_degradation.pdf}
+\caption{Rendering fluidity degradation across module counts, showing mean steady-state FPS, standard deviation, and 1\% low FPS against real-time targets.}
+\label{fig:eval_fps}
+\end{figure}
+
+Up to 250 conveyor modules, the procedural DT operates with substantial computational headroom. The mean frame rate reaches $460.80\,$FPS for $N=5$, $344.68\,$FPS for $N=50$, and $254.24\,$FPS for $N=250$. The 1\% low frame rate remains above $98.4\,$FPS across these scales, confirming fluid operation without visual hitching.
+
+At $N=500$ modules, the mean frame rate averages $93.16\,$FPS ($\sigma = 20.98\,$FPS), comfortably exceeding the 60\,FPS threshold. However, the 1\% low metric dips to $38.4\,$FPS when dozens of moving pallets simultaneously engage friction colliders. At $N=1000$ modules, the engine experiences severe saturation, averaging $13.96\,$FPS ($\sigma = 43.28\,$FPS) with 1\% low values approaching zero. At this scale, single-threaded PhysX physics updates overwhelm the CPU, proving that unconstrained 1000-module facilities require spatial culling or multi-threaded physics sub-stepping. The high sample standard deviation relative to the mean reflects non-normal, heavily skewed behavior, where the engine alternates between long freeze intervals and transient frame bursts when contacts settle.
+
+\subsubsection{Unit Computational Processing Cost}
+\label{sec:res_cost}
+
+Figure~\ref{fig:eval_cost} presents the unit computational cost per conveyor module per frame in microseconds ($\mu\text{s/conveyor}$).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/eval_unit_frame_cost.pdf}
+\caption{Unit computational processing cost per conveyor module in microseconds ($\mu\text{s/conveyor}$).}
+\label{fig:eval_cost}
+\end{figure}
+
+As shown in Fig.~\ref{fig:eval_cost}, the unit computational cost per conveyor module reveals an inverse scaling efficiency at moderate counts. Processing an individual conveyor requires approximately $498\,\mu\text{s}$ at $N=5$, decreasing to $66\,\mu\text{s}$ at $N=50$, and reaching an optimal minimum of $21.7\,\mu\text{s}$ at $N=250$. Similar to the startup latency behavior, this inverse curve at low module counts is caused by Unity's fixed per-frame baseline engine work (such as main-thread loop orchestration, input polling, and graphics draw call setup), which is initially distributed across only a few conveyors. Once the layout scales to 50 and 250 modules, the engine operates with maximal efficiency before inter-collider matrix checks and physics contacts cause unit costs to rise sharply to $342.2\,\mu\text{s}$ per module at $N=1000$.
+
+\subsubsection{Dynamic Temporal Stability and Statistical Correlations}
+\label{sec:res_stability}
+
+Figure~\ref{fig:eval_timeseries} illustrates the dynamic FPS time-series across the benchmark measurement window, confirming that configurations from $N=5$ to $N=250$ achieve flat, highly stable execution without progressive memory leakage or frame pacing degradation.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/eval_timeseries_fps.pdf}
+\caption{Dynamic simulation fluidity over the benchmark execution window across evaluated module counts.}
+\label{fig:eval_timeseries}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/eval_correlation_matrix.pdf}
+\caption{Pearson linear correlation matrix computed across procedural scalability metrics.}
+\label{fig:eval_correlation}
+\end{figure}
+
+The Pearson linear correlation matrix in Fig.~\ref{fig:eval_correlation} provides quantitative validation of key system dynamics:
+\begin{itemize}
+    \item \textbf{Conveyor Count vs. Frame Time ($r = 0.84$):} Computational frame latency correlates strongly with module count, confirming direct dependence on physics scene complexity.
+    \item \textbf{Frame Time vs. Startup Time ($r = 0.99$):} Demonstrates that the processing overhead of mesh collider generation during startup directly mirrors the ongoing cost of narrow-phase collision calculations during simulation.
+    \item \textbf{Mean FPS vs. 1\% Low FPS ($r = 0.92$):} Confirms that transient frame drops remain tightly coupled to underlying average throughput rather than erratic background spikes.
+\end{itemize}
+
+\section{Discussion and Limitations}
+\label{sec:discussion}
+
+\subsection{Systematic Verification of Research Objectives}
+\label{sec:disc_verification}
+
+The empirical findings from both evaluation tracks directly validate the core research objectives formulated in Section~\ref{sec:introduction}:
+\begin{itemize}
+    \item \textbf{Semantic Asset Integration:} Confirmed. The modular AAS submodel schema successfully united 3D visual geometry, kinematic bounds, virtual I/O pins, and declarative control rules. The exact same AASX packages drove both standalone VC in Unity and live physical hardware telemetry without modifying asset manifests.
+    \item \textbf{Procedural Scene Assembly:} Confirmed. The runtime engine dynamically assembled all visual meshes, physical colliders, and telemetry bindings entirely in memory at launch (cold-boot initialization in $2.79 \pm 0.04\,$s for the pilot bench and $5.22 \pm 0.09\,$s for a 50-conveyor layout), fully eliminating pre-compiled scenes.
+    \item \textbf{Real-Time Synchronization and Scalability:} Confirmed. Decoupling the asynchronous TCP telemetry stream from the fixed physics loop alongside sensor-triggered kinematic snapping maintained continuous physical-digital alignment without drift. Parametric stress testing mapped the deterministic operational ceiling up to 500 modules ($93.16\,$FPS) and isolated the single-threaded CPU physics saturation at $N=1000$.
+\end{itemize}
+
+\subsection{Architectural Trade-Offs and Limitations}
+\label{sec:disc_limitations}
+
+Despite these achievements, several operational limitations must be addressed:
+\begin{enumerate}
+    \item \textbf{Single-Threaded Physics Bottleneck ($N > 500$):} Unity's default PhysX implementation executes rigid-body dynamics on the main CPU thread. While performance is outstanding up to 250 modules ($254\,$FPS), saturation occurs at $N=1000$ ($14\,$FPS). Facilities exceeding 500 active conveyors require spatial culling or multi-threaded ECS physics architectures.
+    \item \textbf{Archive Decompression Overhead:} Extracting hundreds of individual AASX zip archives from disk introduces substantial I/O delays during startup ($416\,$s at $N=1000$). Implementing an in-memory package cache or submodel pre-indexing would substantially compress initialization times.
+    \item \textbf{Geometric Fidelity vs. Simulation Overhead:} The fast startup times observed rely on low-polygon meshes generated in Layer~0. While these meshes accurately capture motion envelopes and sensor triggers, they omit internal manufacturing details (e.g., screw threads, motor windings).
+    \item \textbf{Operational Scope:} The framework is tailored for discrete manufacturing, where solid workpieces trigger discrete binary sensors. Continuous process industries (e.g., fluid dynamics, chemical refining) require differential equations that cannot be modeled solely via rigid-body contact physics, necessitating co-simulation solvers.
+\end{enumerate}
+
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
+
+This paper presented an open, modular, model-driven framework for the automatic generation and real-time synchronization of simulation-based Digital Twins from standardized Asset Administration Shells (IEC~63278). By organizing the pipeline across four decoupled tiers---geometric digitization in Blender (Layer~0), no-code semantic authoring with 3D raycasting in Python (Layer~1), containerized Eclipse BaSyx~v2 microservices on Docker (Layer~2), and dynamic procedural runtime assembly with drift correction in Unity~3D (Layer~3)---the proposed framework completely eliminates pre-compiled simulation scenes and manual I/O mapping.
+
+Empirical evaluation on an operational modular FMS conveyor bench driven by an Industrial Shields PLC running FreeRTOS demonstrated cold-boot instantiation in $2.79 \pm 0.04$\,s and steady-state rendering rates of $489.91 \pm 49.21$\,FPS. Parametric stress testing across 800 benchmark runs scaling up to 1000 conveyor modules established near-linear scaling up to 250 modules ($254.24$\,FPS) and robust real-time performance up to 500 modules ($93.16$\,FPS).
+
+Future research will focus on six key trajectories:
+\begin{enumerate}
+    \item \textbf{Physics Acceleration via Unity DOTS:} Migrating rigid-body dynamics to the Entity Component System (ECS), C\# Job System, and compute shaders to distribute contact calculations across CPU cores and GPU threads for gigafactory density ($N \ge 1000$).
+    \item \textbf{Robotic Manipulation Integration via ROS~2:} Encapsulating URDF kinematic trees into AAS submodels and connecting Unity to ROS~2 via standardized bridges for robotic arm motion planning.
+    \item \textbf{Expansion to Continuous Manufacturing via FMI:} Integrating Functional Mock-up Interface (FMI) standards to couple thermodynamic and fluid solvers with the 3D physics runtime.
+    \item \textbf{Extensible Control Interpreters:} Embedding WebAssembly, Python, and Node-RED execution runtimes into the 3D engine for advanced sequencing logic.
+    \item \textbf{Multi-Agent Systems (MAS) for Plug-and-Produce:} Coupling procedural DT assets with autonomous software agents negotiating workpiece routing via contract net protocols \cite{Rocha2024}.
+    \item \textbf{Extended Reality (XR) Interfaces:} Extending the procedural pipeline to VR headsets for immersive operator training and AR glasses for live on-floor spatial overlays.
+\end{enumerate}
+
+All software artifacts, semantic schemas, and simulation packages supporting this work are publicly available at: \url{https://github.com/TSGouveia/AAS-DT-Framework}.
+
+\bibliographystyle{bibliography/IEEEtran}
+\bibliography{bibliography/paper}
+
+\EOD
+
+\end{document}
