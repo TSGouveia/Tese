@@ -19,7 +19,7 @@ The chapter is organized as follows:
 \begin{itemize}
     \item \Cref{sec:tech_realization} introduces the physical \gls{FMS} bench and gives an overview of the global component architecture and its interfaces.
     \item \Cref{sec:impl_layer0} presents Layer~0 (Physical Asset Digitization), covering physical measurements, low-polygon 3D modeling, pivot rigging, and \gls{GLB} export in Blender.
-    \item \Cref{sec:impl_wizard} describes Layer~1 (Asset Modeling), detailing the PyQt6 and PyVista desktop application, surface raycasting for placing sensors, the no-code control logic editor, and \gls{AASX} package generation with the BaSyx Python \gls{SDK}.
+    \item \Cref{sec:impl_wizard} describes Layer~1 (Asset Modeling), detailing the PyQt6 and PyVista desktop application, the binding of sensors and actuators to model nodes, the no-code control logic editor, and \gls{AASX} package generation with the BaSyx Python \gls{SDK}.
     \item \Cref{sec:impl_basyx} covers Layer~2 (Storage and Registry), explaining the containerized Eclipse BaSyx~v2 microservices, port mappings, and MongoDB database.
     \item \Cref{sec:impl_unity} details Layer~3 (Runtime Execution and Physical Synchronization), focusing on procedural scene assembly in Unity 3D, PhysX contact mechanics, dual-mode execution (\gls{VC} and operational \gls{DT}), and kinematic drift correction.
     \item \Cref{sec:impl_firmware} describes the physical automation setup and embedded firmware running FreeRTOS on an Industrial Shields M-DUINO \gls{PLC}, including sensor scanning, low-latency \gls{TCP} telemetry, and \gls{HTTP} actuation.
@@ -106,7 +106,7 @@ The pivot point of each moving component was aligned with its physical axis of r
 
 Layer~1 was implemented as a standalone desktop application. It combines the Asset Model Editor and Package Exporter roles from \Cref{sec:layer1_conceptual} (\cpageref{sec:layer1_conceptual}) into a single tool. In line with requirement \textbf{NFR4} (Configuration Accessibility), the goal was to allow engineers to configure a \gls{DT} asset without writing any code.
 
-The \gls{UML} Component Diagram in \Cref{fig:component_layer1} shows the component structure of Layer~1 (Asset Modeling), divided into four modules: (1) the 3D Viewer \& Raycaster renders the model and detects user clicks on the mesh surface, (2) the \gls{GUI} \& Event Manager provides the PyQt6 interface with step-by-step tabs, (3) the Pin \& Logic Mapper links visual sensor placements and kinematic rules to controller pin registers, and (4) the BaSyx Python \gls{SDK} builds the in-memory \gls{AAS} submodels, packages the \gls{AASX} archive, and uploads it to Layer~2 via \gls{REST} endpoints.
+The \gls{UML} Component Diagram in \Cref{fig:component_layer1} shows the component structure of Layer~1 (Asset Modeling), divided into four modules: (1) the 3D Viewer renders the model and detects which mesh node the user clicks, (2) the \gls{GUI} \& Event Manager provides the PyQt6 interface with step-by-step tabs, (3) the Pin \& Logic Mapper links visual sensor placements and kinematic rules to controller pin registers, and (4) the BaSyx Python \gls{SDK} builds the in-memory \gls{AAS} submodels, packages the \gls{AASX} archive, and uploads it to Layer~2 via \gls{REST} endpoints.
 
 \begin{figure}[htbp]
     \centering
@@ -144,17 +144,17 @@ As shown in \Cref{fig:conveyor_wizard_gui_screenshot}, the interface is divided 
     \begin{enumerate}
         \item \textit{Model Selection (Step 1):} Selects the asset type and loads the 3D model into the viewport.
         \item \textit{Basic Info \& Transform (Step 2):} Configures metadata (\gls{AAS} ID, asset name, description), 3D transform settings (position, rotation, scale), and communication endpoints (\gls{IP} and port).
-        \item \textit{Configure Sensors (Step 3):} Configures virtual sensor pins directly on the 3D surface using raycasting and sets their parameters.
+        \item \textit{Configure Sensors (Step 3):} Binds virtual sensor pins to the detection volumes modeled in Layer~0 and sets their parameters.
         \item \textit{Configure Actuators (Step 4):} Defines virtual actuator pins, motion types, direction vectors, and speeds mapped to specific mesh nodes.
         \item \textit{Review \& Deploy (Step 5):} Displays the generated submodel tree, previews the \gls{JSON} manifest, and exports or uploads the .aasx bundle.
     \end{enumerate}
     \item \textbf{Model Structure Hierarchy (Right Panel):} Displays the node tree of the asset, allowing users to inspect and select specific sub-components.
 \end{itemize}
 
-\subsection{Interactive Modeling Workflow and Surface Raycasting}
-To satisfy requirement \textbf{FR2} (Self-Describing Asset Packages) and reduce setup mistakes, sensors and actuators are positioned by clicking directly on the 3D model surface instead of typing coordinates manually.
+\subsection{Interactive Modeling Workflow}
+To satisfy requirement \textbf{FR2} (Self-Describing Asset Packages) and reduce setup mistakes, the application never asks for sensor coordinates. Instead, each pin is attached to a named node of the imported model, which the user selects either by clicking it in the 3D viewport or by choosing it in the model hierarchy.
 
-When the user clicks in the viewport, a ray is projected from the camera through the clicked pixel. The raycasting engine finds the exact 3D contact point on the surface and calculates the surface normal vector. This normal vector automatically sets the orientation of the pin, making sure sensors placed on angled or vertical surfaces point outward in the correct direction.
+Sensor pins are bound to the invisible trigger volumes placed at the sensor locations in Layer~0, so their position and orientation are inherited from the modeled geometry. Actuator pins are bound to the movable sub-meshes whose local frames were aligned with their physical axes of motion in Layer~0, and the user only specifies the motion type, direction vector, and speed.
 
 The complete interactive modeling sequence between the engineer, the \gls{GUI}, the 3D viewport, and the \gls{AAS} Data Model is illustrated in the \gls{UML} Sequence Diagram in \Cref{fig:wizard_ui}.
 
@@ -179,7 +179,7 @@ The editor provides nine modular block types to build the logic tree:
 \begin{itemize}
     \item \textbf{Set Actuator:} Changes the state of an actuator pin or motor relay.
     \item \textbf{Wait Time:} Pauses execution for a set number of seconds before continuing.
-    \item \textbf{Wait Until:} Holds execution until a sensor condition is met or a timeout expires.
+    \item \textbf{Wait Until:} Holds execution until a sensor condition is met.
     \item \textbf{If / Then:} Evaluates a condition and runs nested steps when true.
     \item \textbf{If / Else:} Provides two execution branches based on a boolean condition.
     \item \textbf{While Loop:} Repeats a group of steps while a sensor condition holds true.
@@ -273,7 +273,7 @@ The runtime supports two execution modes (\Cref{fig:unity_runtime_sequence}):
     \label{fig:unity_runtime_sequence}
 \end{figure}
 
-Because numerical physics calculations and network timing introduce small variations over time, virtual workpieces can drift slightly from physical parts. To meet requirement \textbf{FR4} (Physical-Virtual Synchronization), the runtime uses a kinematic snapping mechanism. When a physical optical sensor triggers, the runtime finds the nearest virtual workpiece and snaps its position to the known sensor coordinates, eliminating accumulated drift. \Cref{fig:unity_runtime_screenshot} shows the runtime environment running in Unity.
+Because numerical physics calculations and network timing introduce small variations over time, virtual workpieces can drift slightly from physical parts. To meet requirement \textbf{FR4} (Physical-Virtual Synchronization), the runtime uses a kinematic snapping mechanism. When a physical sensor triggers, the runtime finds the nearest virtual workpiece and snaps its position to the known sensor coordinates, eliminating accumulated drift. \Cref{fig:unity_runtime_screenshot} shows the runtime environment running in Unity.
 
 \begin{figure}[htbp]
     \centering
@@ -295,7 +295,7 @@ The physical testbed is a modular closed-loop conveyor system controlled by an I
     \label{fig:arduino_freertos_schema}
 \end{figure}
 
-The physical testbed is instrumented with 24\,V~DC optical and inductive proximity sensors. To protect the 5\,V microcontroller logic from electrical noise and voltage transients caused by motor switching, all field inputs pass through optocoupled galvanic isolation stages before routing to controller \gls{GPIO} pins.
+The physical testbed is instrumented with 24\,V~DC magnetic sensors that detect workpieces along the tracks and push-button limit switches that detect the end positions of the moving conveyors and the punch. To protect the 5\,V microcontroller logic from electrical noise and voltage transients caused by motor switching, all field inputs pass through optocoupled galvanic isolation stages before routing to controller \gls{GPIO} pins.
 
 The embedded firmware runs on the FreeRTOS real-time operating system to guarantee deterministic task scheduling and non-blocking network communication across four concurrent tasks:
 \begin{enumerate}
@@ -309,7 +309,7 @@ The embedded firmware runs on the FreeRTOS real-time operating system to guarant
 
 \Cref{tab:impl_traceability_matrix} maps each operational tier, core technology, and requirement to verify how the technical implementation fulfills the design criteria established in \Cref{sec:design_requirements}.
 
-\Cref{sec:impl_layer0} and \Cref{sec:impl_wizard} address asset preparation and onboarding. By utilizing Blender 5.2 LTS to enforce a 1:1 metric scale, aligned pivot points, and low-polygon geometries, Layer~0 satisfies \textbf{FR2} (Graphical and Kinematic Fidelity). Layer~1 builds upon this foundation via a PyQt6/PyVista desktop application, leveraging 3D surface raycasting, a visual rule editor, and automated \gls{AASX} packaging to fulfill \textbf{FR1} (Modular Asset Specification), \textbf{FR2}, and \textbf{NFR4} (No-Code Configuration).
+\Cref{sec:impl_layer0} and \Cref{sec:impl_wizard} address asset preparation and onboarding. By utilizing Blender 5.2 LTS to enforce a 1:1 metric scale, aligned pivot points, and low-polygon geometries, Layer~0 satisfies \textbf{FR2} (Graphical and Kinematic Fidelity). Layer~1 builds upon this foundation via a PyQt6/PyVista desktop application, leveraging an interactive 3D viewport for pin binding, a visual rule editor, and automated \gls{AASX} packaging to fulfill \textbf{FR1} (Modular Asset Specification), \textbf{FR2}, and \textbf{NFR4} (No-Code Configuration).
 
 At the repository level (\Cref{sec:impl_basyx}), Layer~2 relies on containerized Eclipse BaSyx~v2 microservices deployed via Docker and backed by MongoDB. By maintaining decoupled \gls{AAS} and submodel registries accessible through standard \gls{REST} \gls{API} endpoints, Layer~2 satisfies \textbf{FR1}, \textbf{FR3} (Dynamic Scene Assembly), \textbf{NFR2} (Interoperability), and \textbf{NFR3} (Extensibility and Scalability). 
 
@@ -328,7 +328,7 @@ Finally, the execution loop is closed across Layer~3 and the physical hardware (
         \toprule
         \textbf{Layer / Component} & \textbf{Core Technologies} & \textbf{Requirements} & \textbf{Functional Role} \\ \midrule
         \textbf{Layer 0: Digitization} & Blender 5.2 LTS, \gls{glTF}/\gls{GLB} & FR2 & 1:1 metric modeling, pivot alignment, low-poly geometry \\ \addlinespace[4pt]
-        \textbf{Layer 1: Modeling App} & Python, PyQt6, PyVista, basyx-python-sdk & FR1, FR2, NFR4 & 3D raycasting sensor mapping, rule editor, \gls{AASX} packaging \\ \addlinespace[4pt]
+        \textbf{Layer 1: Modeling App} & Python, PyQt6, PyVista, basyx-python-sdk & FR1, FR2, NFR4 & 3D pin binding to model nodes, rule editor, \gls{AASX} packaging \\ \addlinespace[4pt]
         \textbf{Layer 2: Storage \& Reg.} & Eclipse BaSyx v2, Docker, MongoDB, \gls{REST} & FR1, FR3, NFR2, NFR3 & Decoupled \gls{AAS} and submodel registries, dynamic asset discovery \\ \addlinespace[4pt]
         \textbf{Layer 3: Unity Runtime} & Unity 3D, C\#, glTFast, PhysX & FR1, FR3, FR4, NFR3 & Procedural scene assembly, contact physics, dual-mode execution, drift correction \\ \addlinespace[4pt]
         \textbf{Hardware \& Firmware} & Industrial Shields \gls{PLC}, FreeRTOS, \gls{TCP}/\gls{IP} & FR4, NFR1 & Fast 5\,ms input scanning, optocoupled isolation, dual-channel communication \\ \bottomrule
@@ -340,5 +340,5 @@ Finally, the execution loop is closed across Layer~3 and the physical hardware (
 \section{Chapter Summary}
 \label{sec:impl_summary}
 
-This chapter presented the physical and software realization of the \gls{DT} framework across four tiers. Layer~0 digitized existing conveyor hardware in Blender to produce low-poly \gls{GLB} models with properly aligned motion pivots. Layer~1 implemented the Python desktop application, enabling engineers to visually instrument equipment using 3D raycasting and generate standardized \gls{AASX} packages without programming. Layer~2 realized model storage and discovery registries using containerized Eclipse BaSyx~v2 microservices on Docker backed by MongoDB. Finally, Layer~3 implemented the runtime in Unity 3D, providing procedural scene assembly, PhysX contact mechanics, dual-mode execution (\gls{VC} and operational \gls{DT}), and drift correction. The experimental evaluation of this implementation is presented in \Cref{cha:discussion}.
+This chapter presented the physical and software realization of the \gls{DT} framework across four tiers. Layer~0 digitized existing conveyor hardware in Blender to produce low-poly \gls{GLB} models with properly aligned motion pivots. Layer~1 implemented the Python desktop application, enabling engineers to visually instrument equipment in a 3D viewport and generate standardized \gls{AASX} packages without programming. Layer~2 realized model storage and discovery registries using containerized Eclipse BaSyx~v2 microservices on Docker backed by MongoDB. Finally, Layer~3 implemented the runtime in Unity 3D, providing procedural scene assembly, PhysX contact mechanics, dual-mode execution (\gls{VC} and operational \gls{DT}), and drift correction. The experimental evaluation of this implementation is presented in \Cref{cha:discussion}.
 
