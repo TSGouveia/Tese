@@ -167,7 +167,7 @@
             <mxPoint x="1245" y="850" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="m13" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#475569;fontSize=13;fontStyle=0" value="PhysX Raycast / Collision Trigger (Detect Workpiece)">
+        <mxCell id="m13" edge="1" parent="1" style="html=1;verticalAlign=bottom;endArrow=block;strokeWidth=2;strokeColor=#475569;fontSize=13;fontStyle=0" value="PhysX Trigger Overlap (Detect Workpiece)">
           <mxGeometry relative="1" as="geometry">
             <mxPoint x="795" y="890" as="sourcePoint" />
             <mxPoint x="1020" y="890" as="targetPoint" />

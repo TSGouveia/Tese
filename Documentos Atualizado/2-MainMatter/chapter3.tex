@@ -36,7 +36,6 @@ To clearly define the necessity of each requirement, this work adopts the modal 
 \begin{itemize}
     \item \textbf{‘‘Shall’’:} Mandatory and strictly required for system compliance.
     \item \textbf{‘‘Should’’:} Recommended feature or architectural intention that is desirable, but whose absence does not compromise basic compliance.
-    \item \textbf{‘‘May’’:} Optional capability that provides additional flexibility without affecting core execution.
 \end{itemize}
 
 Based on these principles and the gaps identified in the literature, the functional and non-functional requirements are defined below:
@@ -74,11 +73,11 @@ These requirements define the criteria that guide the three-layer conceptual arc
 Current industrial \gls{DT} implementations face several practical bottlenecks that limit their flexibility and scalability on the shop floor:
 
 \begin{enumerate}
-    \item \textbf{Monolithic Coupling and Engineering Overhead:} Most commercial simulation platforms bundle 3D geometry, kinematic definitions, control scripts, and communication drivers into a single proprietary project file \cite{Striffler2023,Koch2024}. When a shop-floor station is modified, such as adjusting the stroke of a pneumatic cylinder, changing a clamp, or moving a proximity sensor, the virtual model cannot adapt on its own. An engineer must reopen the simulation tool, manually edit the mechanics and signal links, and redeploy the scene. This manual maintenance creates significant downtime and makes rapid reconfiguration difficult.
+    \item \textbf{Monolithic Coupling and Engineering Overhead:} Most commercial simulation platforms bundle 3D geometry, kinematic definitions, control scripts, and communication drivers into a single proprietary project file \cite{Striffler2023}. When a shop-floor station is modified, such as adjusting the stroke of a pneumatic cylinder, changing a clamp, or moving a proximity sensor, the virtual model cannot adapt on its own. An engineer must reopen the simulation tool, manually edit the mechanics and signal links, and redeploy the scene. This manual maintenance creates significant downtime and makes rapid reconfiguration difficult.
 
     \item \textbf{Fragmented Engineering Data:} Machine specifications are usually split across different tools and file types. Mechanics are stored in \gls{CAD} files, electrical connections in circuit diagrams or spreadsheets, and control logic in \gls{PLC} programs \cite{Luder2020,Ahvanouee2025}. For instance, adding a new conveyor module requires manually matching \gls{PLC} \gls{IO} addresses with simulation tags and positioning the 3D meshes by hand. Without a standardized, self-contained asset format, these disconnected sources lead to configuration mistakes and prolonged setup times \cite{Gollner2022,Schaper2025}.
 
-    \item \textbf{Network Latency and Channel Congestion:} Several experimental architectures send both heavy visual assets and real-time operational data across the same communication channel or \gls{API} endpoint \cite{Gil2024,Pajpach2023}. Downloading large 3D models while simultaneously streaming high-frequency sensor updates creates network delays and jitter. In fast assembly lines, delayed sensor readings cause the simulation to lag behind the physical equipment, creating positional drift and breaking synchronization \cite{Kritzinger2018}.
+    \item \textbf{Network Latency and Channel Congestion:} Several experimental architectures serve both heavy visual assets and real-time operational data from the same \gls{AAS} server \cite{Pajpach2023}, and routing high-rate updates through \gls{AAS} middleware can be too slow for fluid motion \cite{Garcia2025}. Downloading large 3D models while simultaneously streaming high-frequency sensor updates creates network delays and jitter. In fast assembly lines, delayed sensor readings cause the simulation to lag behind the physical equipment, creating positional drift and breaking synchronization.
 
     \item \textbf{Lack of Simulation-Ready Models for Existing Machinery:} Many factories rely on brownfield equipment that either lacks 3D \glspl{DM} entirely or only has detailed manufacturing \gls{CAD} drawings \cite{Lee2014,Striffler2023}. These manufacturing files often contain thousands of internal details, such as screw threads or wiring harnesses, while lacking kinematic joints and local pivot axes. Loading such models directly into a real-time physics engine degrades rendering performance and prevents moving components from functioning correctly.
 \end{enumerate}
@@ -279,7 +278,7 @@ The attributes in the \textit{VisualStructure} hierarchy are:
 
 \textbf{\textit{Transform}:}
 \begin{itemize}
-    \item \textbf{\textit{pos}} (\textit{Vector3}, $[1]$): The 3D position offset $(x, y, z)$ in meters relative to the parent frame.
+    \item \textbf{\textit{pos}} (\textit{Vector3}, $[1]$): The 3D position offset $(x, y, z)$ relative to the parent frame.
     \item \textbf{\textit{rot}} (\textit{Vector3}, $[1]$): Euler angles $(\alpha, \beta, \gamma)$ in degrees (pitch, yaw, roll).
     \item \textbf{\textit{scale}} (\textit{Vector3}, $[1]$): Scale factors $(s_x, s_y, s_z)$, set to $(1.0, 1.0, 1.0)$ by default.
 \end{itemize}
@@ -316,7 +315,7 @@ The attributes across the \textit{BehaviorMapping} hierarchy (\Cref{fig:metamode
 \begin{itemize}
     \item \textbf{\textit{pinId}} (\textit{String}, $[1]$): The identifier of the corresponding logical channel defined in \textit{VirtualPins} that drives or observes this component.
     \item \textbf{\textit{component}} (\textit{String}, $[1]$): The targeted \textit{SceneObject} node in \textit{VisualStructure} whose physical behavior is modulated by this binding.
-    \item \textbf{\textit{type}} (\textit{String}, $[1]$): The functional mechanism category governing execution logic in the physics runtime, such as continuous linear or rotational conveyors (\textit{TranslateContinuous}, \textit{RotateContinuous}), mechanical linkages and joints (\textit{RotateHinge}, \textit{LinearCylinder}), or spatial detection volumes (\textit{TriggerZone}).
+    \item \textbf{\textit{type}} (\textit{String}, $[1]$): The functional mechanism category governing execution logic in the physics runtime, such as conveyor belts (\textit{Conveyor}), continuous linear or rotational motion (\textit{TranslateContinuous}, \textit{RotateContinuous}), strokes between configurable limits (\textit{TranslateFixed}, \textit{RotateHinge}), or spatial detection volumes (\textit{TriggerZone}).
     \item \textbf{\textit{parameters}} (\textit{List$\langle$String, Any$\rangle$}, $[1]$): Dynamic dictionary of operational configuration settings. Rather than enforcing rigid sub-classing for every physical mechanism, this attribute is modeled as an extensible key-value collection. This preserves backward compatibility while accommodating both actuators and sensors:
     \begin{enumerate}
         \item \textbf{Actuator Parameters:}

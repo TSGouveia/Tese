@@ -253,7 +253,7 @@ An \gls{AASX} package bundles:
 
 Using \gls{AASX} allows an asset to be distributed as a single file. An application can download the package and immediately load its 3D model, joints, pin mappings, and connection addresses without needing extra files.
 
-\Cref{fig:pajpach_aasx_conveyor} illustrates how a physical conveyor module is traditionally modeled inside the standard \gls{IDTA} toolchain using the official \gls{AASX} Package Explorer \cite{Pajpach2025}. In conventional workflows, the automation engineer must manually populate extensive hierarchical tables, defining properties, ranges, and submodel element collections without visual feedback or spatial awareness of the physical asset.
+\Cref{fig:pajpach_aasx_conveyor} illustrates how a physical conveyor module is traditionally modeled inside the standard \gls{IDTA} toolchain using the official \gls{AASX} Package Explorer \cite{Pajpach2025}. In this toolchain, the package is authored as a hierarchical tree of properties, ranges, and submodel element collections, without visual feedback on the geometry of the physical asset.
 
 \begin{figure}[htbp]
     \centering
@@ -270,7 +270,7 @@ To use \glspl{AAS} during operation, server software must host them and provide 
     \begin{itemize}
         \item \textit{AAS Server:} Hosts \gls{AAS} data and provides standard \gls{REST} endpoints.
         \item \textit{AAS Registry:} Keeps track of where each asset is hosted so applications can find them.
-        \item \textit{DataBridge:} Connects \gls{AAS} properties directly to field protocols like \gls{OPCUA} and \gls{MQTT} \cite{Perez2025,Caldana2025}.
+        \item \textit{DataBridge:} Connects \gls{AAS} properties directly to field protocols like \gls{OPCUA} and \gls{MQTT} \cite{Perez2025}.
     \end{itemize}
     \item \textbf{AASX Package Explorer:} A graphical tool used to create, inspect, and validate \gls{AASX} files \cite{Pajpach2025}.
     \item \textbf{Development Libraries:} Open-source libraries such as aas-core and basyx-python-sdk allow software applications to read and write \gls{AAS} data across Python, C\#, and TypeScript.
@@ -289,11 +289,11 @@ Real-time game engines, especially Unity and Unreal Engine, have become popular 
 \begin{enumerate}
     \item \textbf{Rendering Speed:} Game engines are optimized for graphics hardware, rendering complex 3D scenes smoothly at 60 \gls{FPS} or higher.
     \item \textbf{Flexible Scripting:} Unlike closed industrial simulation software, engines like Unity provide open programming environments (C\#) that make it straightforward to add network libraries for \gls{MQTT}, \gls{OPCUA}, or \gls{REST} \glspl{API}.
-    \item \textbf{Lower Licensing Barriers:} Standard game engine licenses are generally more accessible than specialized industrial simulation software (such as Siemens Tecnomatix) \cite{Pajpach2022}.
+    \item \textbf{Built-In Physics:} Engines such as Unity combine real-time 3D visualization with a rigid-body physics engine that reproduces real-world motion and contacts \cite{Pajpach2022}.
     \item \textbf{Cross-Platform Support:} Projects can run on desktop computers, web browsers, or \gls{XR} headsets \cite{Garcia2025}.
 \end{enumerate}
 
-Platforms like NVIDIA Omniverse (based on the \gls{USD} format) are also growing, but Unity remains widely used in research due to its lightweight runtime, physics engine, and extensive documentation \cite{Alexopoulos2025,Garcia2025,Pajpach2023}.
+Platforms like NVIDIA Omniverse (based on the \gls{USD} format) are also growing, but Unity remains widely used in research on industrial \glspl{DT} \cite{Alexopoulos2025,Garcia2025,Pajpach2023}.
 
 \subsection{Bridging \texorpdfstring{\gls{CAD}}{CAD} and Real-Time Graphics}
 
@@ -332,16 +332,16 @@ When complex multi-body physics equations are needed, game engines can use the \
 
 Connecting a game engine to industrial hardware requires care with thread timing. Game engines run on a continuous loop that updates graphics every frame (often 60 to 120 times per second) and updates physics at fixed intervals (typically 50~Hz, or every 20~ms).
 
-If network queries (\gls{OPCUA}, \gls{MQTT}, or \gls{REST}) run directly on the main graphics thread, network delays or packet retransmissions can block the engine loop and degrade rendering performance \cite{Pajpach2022}.
+If network queries (\gls{OPCUA}, \gls{MQTT}, or \gls{REST}) run directly on the main graphics thread, network delays or packet retransmissions can block the engine loop and degrade rendering performance.
 
-To ensure smooth runtime performance, industrial game engine architectures decouple communication onto background worker threads \cite{Pajpach2022,Pajpach2023,Garcia2025}:
+A common way to keep the runtime responsive is to decouple communication from the engine loop:
 \begin{enumerate}
     \item \textbf{Background Threads:} Network listeners run on separate threads or coroutines, receiving incoming sensor and controller frames asynchronously.
     \item \textbf{Thread-Safe Data Exchange:} Incoming states are placed into thread-safe queues or buffers to safely transfer data to Unity's main thread.
     \item \textbf{Decoupled Physics Execution:} The engine's fixed physics loop reads the buffered states at regular intervals, preventing communication latency from stalling visual and mechanical simulation.
 \end{enumerate}
 
-\Cref{fig:pajpach_unity_dataflow} shows an example architecture from \textcite{Pajpach2023}, where Unity 3D retrieves 3D models from an \gls{AAS} repository and exchanges runtime signals with a physical \gls{PLC} through an \gls{OPCUA} server and Node-RED middleware. Similarly, \textcite{Garcia2025} used Unity 3D with BaSyx \gls{AAS} data spaces for remote line monitoring.
+\Cref{fig:pajpach_unity_dataflow} shows an example architecture from \textcite{Pajpach2023}, where \gls{CAD} models are stored in an \gls{AAS} repository and a Unity 3D model exchanges runtime signals with a physical \gls{PLC} through an \gls{OPCUA} server and Node-RED middleware. Similarly, \textcite{Garcia2025} connected a Unity 3D \gls{DT} to BaSyx-based \gls{AAS} data spaces for remote operation, but had to fall back to a direct \gls{OPCUA} connection because updates through BaSyx, in the order of 1 to 2~s, were too slow for continuous 3D motion.
 
 \begin{figure}[htbp]
     \centering
@@ -370,11 +370,11 @@ Traditional \gls{DT} development is mostly manual. As shown in \Cref{fig:toolcha
     \label{fig:toolchain_fragmentation}
 \end{figure}
 
-To build a simulation model, an engineer has to collect all these files, import 3D meshes into the engine, set up parent-child relationships, configure joint limits, and manually connect virtual sensors to \gls{PLC} addresses \cite{Alexopoulos2025,Koch2024}.
+To build a simulation model, an engineer has to collect all these files, import 3D meshes into the engine, set up parent-child relationships, configure joint limits, and manually connect virtual sensors to \gls{PLC} addresses \cite{Alexopoulos2025,Striffler2023}.
 
 This manual approach has three main drawbacks:
 \begin{enumerate}
-    \item \textbf{High Time and Cost:} Building a model for a single workstation can take several weeks of engineering work \cite{Garcia2023}.
+    \item \textbf{High Time and Cost:} Modeling each asset by hand is difficult and time-consuming \cite{Garcia2023}, and the definition of kinematics in particular remains a manual process \cite{Striffler2023}.
     \item \textbf{Risk of Configuration Errors:} Connecting hundreds of signal addresses by hand easily leads to mistakes that can cause simulation bugs.
     \item \textbf{Maintenance Delays:} In reconfigurable factories, machines are frequently moved or swapped. If the simulation model is not updated immediately, it quickly becomes outdated and unreliable \cite{Ahvanouee2025,Herzog2025}.
 \end{enumerate}
@@ -387,7 +387,7 @@ Model-driven approaches use existing engineering files as the source to build th
 
 Examples include:
 \begin{itemize}
-    \item \textbf{AutomationML-Based Methods:} \textcite{Alexopoulos2025} parse \gls{AML} files containing plant topology and device types to instantiate 3D machines and set up communication drivers in Unity, as shown in \Cref{fig:alexopoulos_architecture}. \textcite{Chowdhury2025} extract part relationships and mass properties from \gls{CAD} files to assemble motion models in Unreal Engine using \gls{FMI}.
+    \item \textbf{AutomationML-Based Methods:} \textcite{Alexopoulos2025} parse \gls{AML} files containing plant topology and device types to instantiate 3D machines and set up communication drivers in Unity, as shown in \Cref{fig:alexopoulos_architecture}. \textcite{Chowdhury2025} extract part hierarchies, joint types, and constraints from \gls{CAD} files to assemble motion models in Unreal Engine using \gls{FMI}.
     \item \textbf{AAS-Based Configuration:} \textcite{Pretz2025} use \gls{AAS} descriptions to configure \glspl{AMR} automatically. \textcite{Ahvanouee2025} use \gls{AAS} submodels to exchange data between different engineering tools across supply chain partners.
     \item \textbf{SysML Models:} \textcite{Heermann2024} use textual \gls{SysML}~v2 models to generate \gls{DT} software modules and \gls{MQTT} topic structures.
     \item \textbf{ECAD and Multi-Physics Synthesis:} \textcite{Schaper2025} parse electrical and fluid schematics together with \gls{AAS} component data to connect \gls{FMU} simulation blocks automatically. \textcite{Koch2024} similarly generate simulation models using structured component descriptions.
@@ -473,11 +473,11 @@ To synthesize these gaps, \Cref{tab:sota_comparison} compares the proposed frame
         \textbf{Approach} & \textbf{Open Standard} & \textbf{Unified Schema} & \textbf{Procedural} & \textbf{Physics /} & \textbf{Live Hardware} \\
         & \textbf{(\gls{AAS} / \gls{AML})} & \textbf{(3D + \gls{IO} + Logic)} & \textbf{Runtime} & \textbf{Colliders} & \textbf{Synchronization} \\
         \midrule
-        \textcite{Alexopoulos2025}   & \gls{AML}            & Partial (\gls{CAD} + \gls{AML})     & No (Pre-compiled) & Yes & No (Simulation only) \\
+        \textcite{Alexopoulos2025}   & \gls{AML}            & Partial (\gls{CAD} + \gls{AML})     & No (Pre-compiled) & Yes & Yes (\gls{IOT} middleware) \\
         \textcite{Schaper2025}       & \gls{AAS} / \gls{AML}      & No (\gls{FMU} focused)        & No (Offline \gls{VC})   & Yes & No (Offline \gls{SIL}) \\
         \textcite{Chowdhury2025}     & Proprietary    & No (Kinematics only)    & Partial (Editor)  & Yes & No (Offline) \\
         \textcite{Perez2025}         & \gls{AAS}            & No (Signals only)       & No                & No  & Yes (DataBridge) \\
-        \textcite{Pajpach2023}       & \gls{AAS} / \gls{OPCUA}   & No (Separate models)    & No (Pre-compiled) & Yes & Yes (\gls{OPCUA} polling) \\
+        \textcite{Pajpach2023}       & \gls{AAS} / \gls{OPCUA}   & No (Separate models)    & No (Pre-compiled) & Yes & Yes (\gls{OPCUA}) \\
         \midrule
         \textbf{This Dissertation}   & \textbf{\gls{AAS} (\gls{IEC}~63278)} & \textbf{Yes (\gls{AASX} package)} & \textbf{Yes (100\% in-memory)} & \textbf{Yes} & \textbf{Yes (Dual-mode)} \\
         \bottomrule

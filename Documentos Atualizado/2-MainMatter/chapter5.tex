@@ -45,16 +45,16 @@ With the \gls{GLB} file produced, the automation engineer opens the lightweight 
 The engineer loads the binary \gls{GLB} file into the workspace, prompting the ingestion pipeline to parse the internal scene graph, normalize bounding dimensions, and populate the interactive node hierarchy tree. The user inspects the component to verify that node names match the intended physical taxonomy and confirms that pivot orientations align with expected motion vectors before proceeding to semantic pin configuration.
 
 \subsection{Interactive Pin Mapping and Control Logic Definition}
-In the third stage, the engineer equips the geometric mesh with cyber-physical semantics without writing software scripts. Rather than manually measuring and typing three-dimensional coordinates, the engineer clicks directly onto the surface of the conveyor mesh in the viewport. The application casts a ray from the camera, calculates the exact surface intersection point, and computes the surface normal vector.
+In the third stage, the engineer equips the geometric mesh with cyber-physical semantics without writing software scripts. Rather than measuring and typing three-dimensional coordinates, the engineer attaches each pin to a named node of the model, selected in the viewport or in the model hierarchy. \Cref{fig:case_study_step2} illustrates this step on a linear conveyor of the bench, whose module layout Conveyor~G replicates.
 
-A virtual optical beam sensor is aligned along the surface normal and anchored to the clicked coordinate. In the configuration panel, the user specifies its operational properties, including register binding (\texttt{I0\_0}), polarity (active-low), and ground-truth workpiece snapping coordinates for position drift correction. Moving parts, such as the conveyor surface, are bound to actuator registers (\texttt{R0\_2}). If local edge behavior is needed, such as stopping the belt automatically when a photoeye is blocked without waiting for master \gls{PLC} polling, the user defines local event-condition-action rules in the \textit{ControlLogic} editor.
+The sensor pin \texttt{Sensor\_Product} is attached to the \texttt{TriggerZone} node, the detection volume modeled in Layer~0, with the \textit{TriggerZone} mechanism and a \texttt{Metal} target filter, so that only workpieces react with it. The same form sets the electrical polarity (\textit{Active Low}), routes the pin to a physical \gls{PLC} input (in the example, \texttt{I2\_1}), and enables snapping of detected workpieces to the sensor center for drift correction. The belt sub-mesh is then bound to two actuator pins, \texttt{Move\_Conveyor\_IN} and \texttt{Move\_Conveyor\_OUT}, with the \textit{Conveyor} mechanism, opposite axis directions, and a configured surface speed. For Conveyor~G, which has no physical counterpart, neither pin is routed to hardware. If local edge behavior is needed, the user defines event-condition-action rules in the \textit{ControlLogic} editor.
 
 \begin{figure}[htbp]
     \centering
     \begin{subfigure}[b]{0.95\linewidth}
         \centering
         \includegraphics[width=\linewidth,height=0.34\textheight,keepaspectratio]{5-Figures/5-sensores}
-        \caption{Interactive optical sensor placement via surface raycasting.}
+        \caption{Sensor pin bound to the trigger volume of the conveyor.}
         \label{fig:case_study_step2_sensors}
     \end{subfigure}
     \par\vspace{0.4cm}
@@ -64,7 +64,7 @@ A virtual optical beam sensor is aligned along the surface normal and anchored t
         \caption{Actuator kinematic configuration and output register binding.}
         \label{fig:case_study_step2_actuators}
     \end{subfigure}
-    \caption{Interactive virtual pin mapping in the desktop onboarding wizard, showing: (a) sensor placement using surface raycasting, and (b) kinematic actuator binding.}
+    \caption{Interactive virtual pin mapping in the desktop onboarding wizard, showing: (a) sensor binding to a detection volume, and (b) kinematic actuator binding.}
     \label{fig:case_study_step2}
 \end{figure}
 
@@ -86,9 +86,9 @@ The serialized submodel definitions and the binary \gls{GLB} mesh are packed int
 \subsection{Zero-Touch Procedural Instantiation and Live Telemetry}
 In the final stage, the Unity 3D simulation environment is launched without pre-baked assets. Upon initialization, the Unity runtime queries the BaSyx registry over \gls{REST}, retrieves active Asset IDs, and downloads the associated \gls{GLB} binary files and submodel manifests into transient memory.
 
-The runtime procedural builder parses the \textit{VisualStructure} and instantiates the mesh hierarchy, inspecting component meshes dynamically to attach optimized physics colliders and configure physical rigidbodies. The builder then parses \textit{VirtualPins} and \textit{BehaviorMapping} to instantiate trigger zones at the exact coordinates recorded during raycasting, binding them to internal signal dispatchers, while configuring surface velocities, rotation axes, and constraints onto designated mobile parts. If present, \textit{ControlLogic} rules are loaded by the local rule interpreter, completing the procedural assembly of the simulation scene (\Cref{fig:case_study_step4}).
+The runtime procedural builder parses the \textit{VisualStructure} and instantiates the mesh hierarchy, inspecting component meshes dynamically to attach optimized physics colliders and configure physical rigidbodies. The builder then parses \textit{VirtualPins} and \textit{BehaviorMapping} to activate the trigger volumes modeled in Layer~0, binding them to internal signal dispatchers, while configuring surface velocities, rotation axes, and constraints onto designated mobile parts. If present, \textit{ControlLogic} rules are loaded by the local rule interpreter, completing the procedural assembly of the simulation scene (\Cref{fig:case_study_step4}).
 
-Finally, the simulation engine connects to the physical controller via \gls{TCP} telemetry. When a workpiece on the physical workbench crosses an optical sensor, the physical \gls{PLC} sets register \texttt{I0\_0} to HIGH. The telemetry listener receives the frame, trips the corresponding virtual sensor indicator, and immediately executes kinematic position snapping to reconcile any cumulative micro-slip, maintaining sub-millimeter positional fidelity throughout production cycles.
+Finally, the simulation engine connects to the physical controller via \gls{TCP} telemetry. When a workpiece on the physical workbench reaches a magnetic sensor, for example the sensor of Conveyor~B on input \texttt{I0\_0}, the \gls{PLC} reports the transition over the telemetry channel. The telemetry listener updates the corresponding virtual sensor, and the waiting transfer sequence snaps the virtual workpiece to the sensor position, so that the accumulated drift is reset at every station instead of growing over production cycles.
 
 \begin{figure}[htbp]
     \centering
@@ -109,7 +109,7 @@ To evaluate whether the runtime operates with sufficient responsiveness and dete
 \begin{itemize}
     \item \textbf{Rendering Throughput (\gls{FPS}) and Target Thresholds:} In interactive 3D simulations, 60\,\gls{FPS} (16.6\,ms per frame) is widely regarded as the target benchmark for fluid, real-time visualization and synchronized interaction. A threshold of 30\,\gls{FPS} (33.3\,ms per frame) represents the acceptable operational minimum, below which visual stutter becomes noticeable and input latency can interfere with monitoring.
     \item \textbf{Mean Frame Time:} While \gls{FPS} measures frequency, the frame time (in milliseconds) directly quantifies the computational cost spent by the engine in each update tick, measuring how much margin remains before missing the next frame deadline.
-    \item \textbf{1\% Low \gls{FPS}:} The average frame rate of the slowest 1\% of frames. Unlike the overall average \gls{FPS}, which can hide momentary freezing, this metric reveals transient stutter caused by simultaneous sensor triggers or complex collision bursts.
+    \item \textbf{1\% Low \gls{FPS}:} The 1st percentile of the frame rates sampled every 500\,ms in the steady-state window. Unlike the overall average \gls{FPS}, which can hide momentary freezing, this metric reveals transient stutter caused by simultaneous sensor triggers or complex collision bursts.
     \item \textbf{P95 and P99 Tail Latency:} The 95th and 99th percentiles of frame render times. In real-time \gls{DT} synchronization, these tail metrics ensure that even rare latency spikes do not breach controller communication windows or cause packet processing delays.
 \end{itemize}
 
@@ -216,7 +216,7 @@ The empirical results show that for realistic production line scales (between 5 
     \label{fig:eval_startup_complexity}
 \end{figure}
 
-As shown in \Cref{fig:eval_startup_complexity}, the unit startup time per conveyor module exhibits an initial downward curve, dropping from 522.0\,ms/module at $N=5$ to 104.4\,ms/module at $N=50$, and reaching a minimum of 82.4\,ms/module at $N=250$. This higher unit time at smaller scales occurs because the Unity engine itself incurs an intrinsic baseline startup latency to bootstrap the core runtime, compile and link dynamic scripts, initialize graphics rendering pipelines, load shader variants, and allocate disk buffers. When only a small number of conveyors is instantiated (such as $N=5$), this substantial fixed engine initialization cost is divided among very few assets, resulting in artificially high unit costs. As the facility scales up to 50 and 250 conveyors, this upfront static engine overhead becomes negligible, amortizing smoothly across the larger asset population until true per-module instantiation complexity dominates.
+As shown in \Cref{fig:eval_startup_complexity}, the unit startup time per conveyor module exhibits an initial downward curve, dropping from 522.3\,ms/module at $N=5$ to 104.3\,ms/module at $N=50$, and reaching a minimum of 82.4\,ms/module at $N=250$. This higher unit time at smaller scales occurs because the Unity engine itself incurs an intrinsic baseline startup latency to bootstrap the core runtime, compile and link dynamic scripts, initialize graphics rendering pipelines, load shader variants, and allocate disk buffers. When only a small number of conveyors is instantiated (such as $N=5$), this substantial fixed engine initialization cost is divided among very few assets, resulting in artificially high unit costs. As the facility scales up to 50 and 250 conveyors, this upfront static engine overhead becomes negligible, amortizing smoothly across the larger asset population until true per-module instantiation complexity dominates.
 
 However, beyond $N=500$, initialization time increases non-linearly, reaching $57.45\,$s at 500 modules and $416.70\,$s at 1000 modules. This escalation is driven by the main-thread bottleneck of Unity's mesh collider generation and the sequential file decompression of multiple \gls{AASX} zip archives.
 
@@ -232,9 +232,9 @@ To evaluate visual responsiveness and stability, \Cref{fig:eval_fps_degradation}
     \label{fig:eval_fps_degradation}
 \end{figure}
 
-For layouts up to 250 conveyor modules, the procedural \gls{DT} operates with substantial performance headroom. The mean frame rate reaches $460.80\,$\gls{FPS} for 5 conveyors, $344.68\,$\gls{FPS} for 50 conveyors, and $254.24\,$\gls{FPS} for 250 conveyors. The 1\% low frame rate remains above $98.4\,$\gls{FPS} across these scales, confirming that the simulation runs smoothly without stuttering or visual hitching during workpiece transitions.
+For layouts up to 250 conveyor modules, the procedural \gls{DT} operates with substantial performance headroom. The mean frame rate reaches $460.80\,$\gls{FPS} for 5 conveyors, $344.68\,$\gls{FPS} for 50 conveyors, and $254.24\,$\gls{FPS} for 250 conveyors. The 1\% low frame rate remains above $98.9\,$\gls{FPS} across these scales, confirming that the simulation runs smoothly without stuttering or visual hitching during workpiece transitions.
 
-At $N=500$ modules, the mean frame rate drops to $93.16\,$\gls{FPS} ($\sigma = 20.98\,$\gls{FPS}). While this average comfortably exceeds the 60\,\gls{FPS} threshold, the 1\% low metric decreases to $38.4\,$\gls{FPS}. This dip occurs when dozens of moving pallets simultaneously engage belt friction colliders, triggering bursts of narrow-phase collision calculations.
+At $N=500$ modules, the mean frame rate drops to $93.16\,$\gls{FPS} ($\sigma = 20.98\,$\gls{FPS}). While this average comfortably exceeds the 60\,\gls{FPS} threshold, the 1\% low metric decreases to $39.0\,$\gls{FPS}. This dip occurs when dozens of moving pallets simultaneously engage belt friction colliders, triggering bursts of narrow-phase collision calculations.
 
 At $N=1000$ modules, the system experiences severe bottlenecking, averaging $13.96\,$\gls{FPS} ($\sigma = 43.28\,$\gls{FPS}) with 1\% low values approaching zero. At this scale, the single-threaded PhysX physics update saturates the \gls{CPU}, exceeding the real-time threshold and proving that unconstrained 1000-module facilities require spatial culling or multi-threaded physics sub-stepping. The high sample standard deviation relative to the mean reflects this non-normal, heavily skewed behavior, where the engine alternates between long freeze intervals (single-digit frame rates) and brief, transient frame bursts when physics contacts temporarily settle.
 

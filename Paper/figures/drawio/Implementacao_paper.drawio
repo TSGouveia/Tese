@@ -10,7 +10,7 @@
         <mxCell id="R4p7xMKH7e2ikrvYrVqG-2" parent="1" style="text;html=1;whiteSpace=wrap;align=center;verticalAlign=bottom;rounded=1;fontSize=20;fontFamily=Helvetica;glass=0;fillColor=none;strokeColor=none;fontColor=#333333;strokeWidth=2;fontStyle=1" value="&lt;div&gt;Visual Data&lt;/div&gt;" vertex="1">
           <mxGeometry height="50" width="160" x="391.918" y="270" as="geometry" />
         </mxCell>
-        <mxCell id="R4p7xMKH7e2ikrvYrVqG-3" parent="1" style="html=1;dropTarget=0;whiteSpace=wrap;rounded=1;fontSize=24;fontFamily=Helvetica;fillColor=#A5CEEB;strokeColor=#5C99D6;strokeWidth=2;fontStyle=1;spacingTop=0;spacingLeft=6;spacingRight=6;" value="3D Viewer &amp;amp; Raycaster" vertex="1">
+        <mxCell id="R4p7xMKH7e2ikrvYrVqG-3" parent="1" style="html=1;dropTarget=0;whiteSpace=wrap;rounded=1;fontSize=24;fontFamily=Helvetica;fillColor=#A5CEEB;strokeColor=#5C99D6;strokeWidth=2;fontStyle=1;spacingTop=0;spacingLeft=6;spacingRight=6;" value="3D Viewer &amp;amp; Node Picker" vertex="1">
           <mxGeometry height="90" width="180" x="255" y="325" as="geometry" />
         </mxCell>
         <mxCell id="R4p7xMKH7e2ikrvYrVqG-4" parent="R4p7xMKH7e2ikrvYrVqG-3" style="shape=module;jettyWidth=8;jettyHeight=4;fontFamily=Helvetica;strokeWidth=2;fontStyle=1;strokeColor=#5C99D6;fontSize=24;" value="" vertex="1">

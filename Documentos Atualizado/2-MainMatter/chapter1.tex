@@ -89,7 +89,7 @@ This work uses a four-layer architecture to connect physical factory equipment w
 
 In Layer~0 (Geometric Preparation), physical machine dimensions are measured and turned into lightweight 3D models in Blender. Coordinate origins and movement axes are aligned with physical pivots, and unnecessary interior geometry is removed.
 
-In Layer~1 (Semantic Authoring), a Python desktop application lets users import the 3D model, configure machine properties, and place sensors on surfaces using raycasting. The tool then builds and exports an \gls{AASX} package containing the 3D mesh and all required submodels.
+In Layer~1 (Semantic Authoring), a Python desktop application lets users import the 3D model, configure machine properties, and bind sensors and actuators to the parts of the model selected in a 3D viewport. The tool then builds and exports an \gls{AASX} package containing the 3D mesh and all required submodels.
 
 In Layer~2 (Middleware and Storage), Eclipse BaSyx~v2 microservices running in Docker containers store the uploaded \gls{AASX} packages and host \gls{REST} registries so client applications can discover available machines on the network.
 
@@ -99,7 +99,7 @@ The main contributions of this dissertation are:
 \begin{enumerate}
     \item \textbf{An Open Model-Driven Framework and Procedural Pipeline:} A four-layer architecture that replaces static, pre-compiled simulation files by procedurally generating interactive virtual environments directly from \gls{AAS} packages at runtime.
     \item \textbf{A Unified \gls{AAS} Submodel Schema:} A portable metamodel specification linking 3D meshes, kinematic joint limits, virtual \gls{IO} pins, and IF-THEN control logic rules into standardized submodel structures.
-    \item \textbf{An Interactive No-Code Authoring Tool:} A desktop application incorporating 3D surface raycasting for visual sensor placement and automated \gls{AASX} bundle generation without manual programming.
+    \item \textbf{An Interactive No-Code Authoring Tool:} A desktop application incorporating an interactive 3D viewport for binding sensors and actuators to the modeled geometry and automated \gls{AASX} bundle generation without manual programming.
     \item \textbf{Empirical Evaluation and Performance Benchmarks:} Quantitative experimental validation on physical mechatronic hardware and parametric stress tests up to 1000 conveyor modules, establishing realistic latency, startup time, and frame rate bounds for procedurally assembled \glspl{DT}.
 \end{enumerate}
 
